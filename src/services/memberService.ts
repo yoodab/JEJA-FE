@@ -1,34 +1,58 @@
-import axios from 'axios'
-import { Member } from '../types/member'
+import type { Member } from '../types/member'
+import api from './api'
 
-// Example axios instance if you later point to a real API.
-// const api = axios.create({ baseURL: '/api' })
+// 생성 요청 DTO (memberId, soonId, soonName, hasAccount는 서버에서 결정)
+export interface CreateMemberRequest {
+  name: string
+  phone: string
+  birthDate: string
+  status: string
+  role: string
+}
 
-const mockMembers: Member[] = [
-  { id: 1, name: '김민수', role: '일반청년', status: '재적', phone: '010-1234-5678' },
-  { id: 2, name: '이수정', role: '순장', status: '재적', phone: '010-2345-6789' },
-  { id: 3, name: '박지훈', role: '일반청년', status: '새신자', phone: '010-3456-7890' },
-  { id: 4, name: '정하늘', role: '관리자', status: '재적', phone: '010-4567-8901' },
-  { id: 5, name: '최예린', role: '일반청년', status: '휴학', phone: '010-5678-9012' },
-]
+// 수정 요청 DTO
+export interface UpdateMemberRequest {
+  name?: string
+  phone?: string
+  birthDate?: string
+  status?: string
+  role?: string
+}
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+// API 응답 타입
+interface ApiResponse<T> {
+  status: string
+  code: string
+  message: string
+  data: T
+}
 
+// 전체 멤버 목록 조회 - GET /api/admin/members
 export async function getMembers(): Promise<Member[]> {
-  await delay(1000)
-  return mockMembers
+  const response = await api.get<ApiResponse<Member[]>>('/api/admin/members')
+  return response.data.data
 }
 
-export async function getMemberById(id: number): Promise<Member | undefined> {
-  await delay(500)
-  return mockMembers.find((member) => member.id === id)
+// 특정 멤버 상세 조회 - GET /api/admin/members/{memberId}
+export async function getMemberById(memberId: number): Promise<Member> {
+  const response = await api.get<Member>(`/api/admin/members/${memberId}`)
+  return response.data
 }
 
-export async function createMember(memberData: Omit<Member, 'id'>): Promise<Member> {
-  await delay(500)
-  const newMember: Member = { ...memberData, id: mockMembers.length + 1 }
-  mockMembers.push(newMember)
-  return newMember
+// 새 멤버 등록 - POST /api/admin/members
+// 성공 시 Body: 생성된 memberId (number)
+export async function createMember(payload: CreateMemberRequest): Promise<number> {
+  const response = await api.post<number>('/api/admin/members', payload)
+  return response.data
 }
 
+// 멤버 정보 수정 - PATCH /api/admin/members/{memberId}
+export async function updateMember(memberId: number, payload: UpdateMemberRequest): Promise<void> {
+  await api.patch(`/api/admin/members/${memberId}`, payload)
+}
+
+// 멤버 삭제 - DELETE /api/admin/members/{memberId}
+export async function deleteMember(memberId: number): Promise<void> {
+  await api.delete(`/api/admin/members/${memberId}`)
+}
 

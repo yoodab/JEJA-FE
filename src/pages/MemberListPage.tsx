@@ -1,40 +1,28 @@
 import type { Member } from '../types/member'
 
+// 백엔드 DTO에 맞춘 목 데이터
 const members: Member[] = [
   {
-    id: 1,
-    name: '김민수',
-    role: '일반청년',
+    memberId: 1,
+    name: '이리더',
+    phone: '010-1111-2222',
+    birthDate: '1995-03-10',
     status: '재적',
-    phone: '010-1234-5678',
+    role: '리더',
+    soonId: 10,
+    soonName: '믿음셀',
+    hasAccount: true,
   },
   {
-    id: 2,
-    name: '이수정',
-    role: '순장',
-    status: '재적',
-    phone: '010-2345-6789',
-  },
-  {
-    id: 3,
-    name: '박지훈',
-    role: '일반청년',
+    memberId: 2,
+    name: '김새신',
+    phone: '010-7777-8888',
+    birthDate: '2002-01-15',
     status: '새신자',
-    phone: '010-3456-7890',
-  },
-  {
-    id: 4,
-    name: '정하늘',
-    role: '관리자',
-    status: '재적',
-    phone: '010-4567-8901',
-  },
-  {
-    id: 5,
-    name: '최예린',
-    role: '일반청년',
-    status: '휴학',
-    phone: '010-5678-9012',
+    role: '일반',
+    soonId: 10,
+    soonName: '믿음셀',
+    hasAccount: false,
   },
 ]
 
@@ -73,7 +61,7 @@ function MemberListPage() {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {members.map((member) => (
-              <tr key={member.id} className="hover:bg-slate-50/60">
+              <tr key={member.memberId} className="hover:bg-slate-50/60">
                 <td className="px-6 py-4 text-sm font-medium text-slate-900">
                   {member.name}
                 </td>
