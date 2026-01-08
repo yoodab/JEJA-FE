@@ -161,7 +161,7 @@ function ReportManagePage() {
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-      <div className="mx-auto max-w-7xl space-y-6">
+      <div className="mx-auto max-w-6xl space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div className="flex items-center gap-3">
             <button
@@ -171,9 +171,14 @@ function ReportManagePage() {
             >
               ← 돌아가기
             </button>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">Reports</p>
-              <p className="text-sm font-semibold text-slate-900">보고서 관리</p>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-xl">
+                📄
+              </div>
+              <div>
+                <p className="text-base font-bold text-slate-900">보고서 관리</p>
+                <p className="text-xs text-slate-500">주간·월간 보고서 작성</p>
+              </div>
             </div>
           </div>
           <div className="flex gap-2">

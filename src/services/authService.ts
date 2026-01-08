@@ -1,9 +1,18 @@
 import api from './api'
+import { setAuth } from '../utils/auth'
 
 // 로그인 요청 DTO
 export interface LoginRequestDto {
   loginId: string
   password: string
+}
+
+// API 공통 응답 타입
+interface ApiResponse<T> {
+  status?: string
+  code?: string
+  message?: string
+  data?: T
 }
 
 // 로그인 응답 DTO
@@ -37,8 +46,9 @@ export interface SignupRequestDto {
  */
 export async function login(data: LoginRequestDto): Promise<void> {
   return new Promise<void>((resolve, reject) => {
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
     const xhr = new XMLHttpRequest()
-    xhr.open('POST', 'http://localhost:8080/api/auth/login', true)
+    xhr.open('POST', `${API_BASE_URL}/api/auth/login`, true)
     xhr.setRequestHeader('Content-Type', 'application/json')
     
     xhr.onload = function() {
@@ -66,23 +76,27 @@ export async function login(data: LoginRequestDto): Promise<void> {
           
           // 토큰 저장
           if (token) {
-            localStorage.setItem('token', token)
-            localStorage.setItem('accessToken', token)
+            let userRole = responseData?.data?.role
+            // 백엔드에서 'ADMIN', 'PASTOR' 형식으로 올 경우 'ROLE_' 접두사 추가
+            if (userRole && !userRole.startsWith('ROLE_')) {
+              userRole = `ROLE_${userRole}`
+            }
+            
+            // 디버깅을 위한 로그
+            if (import.meta.env.DEV) {
+              console.log('로그인 성공:', {
+                hasToken: !!token,
+                originalRole: responseData?.data?.role,
+                normalizedRole: userRole,
+              })
+            }
+            
+            setAuth(token, userRole)
+            resolve()
           } else {
             reject(new Error('토큰을 받아오지 못했습니다.'))
             return
           }
-          
-          // userRole 저장
-          const userRole = responseData?.data?.role
-          if (userRole) {
-            localStorage.setItem('userRole', userRole)
-          }
-          
-          // 로그인 상태 저장
-          localStorage.setItem('isLoggedIn', 'true')
-          
-          resolve()
         } catch (error) {
           console.error('로그인 응답 처리 중 오류:', error)
           reject(error)

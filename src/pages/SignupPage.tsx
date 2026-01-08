@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { AxiosError } from 'axios'
 import { signup } from '../services/authService'
 
 function SignupPage() {
@@ -25,9 +26,24 @@ function SignupPage() {
       // 잠깐 메시지를 보여준 뒤 로그인 페이지로 이동
       setTimeout(() => {
         navigate('/login', { replace: true })
-      }, 800)
+      }, 1500)
     } catch (err: unknown) {
-      setError('회원가입 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+      // 에러 메시지 추출
+      let errorMessage = '회원가입 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
+      
+      if (err instanceof Error) {
+        errorMessage = err.message
+      } else if (err instanceof AxiosError) {
+        // Axios 에러인 경우 서버 응답에서 메시지 추출
+        const serverMessage = err.response?.data?.message || err.response?.data?.error
+        if (serverMessage) {
+          errorMessage = serverMessage
+        } else if (err.message) {
+          errorMessage = err.message
+        }
+      }
+      
+      setError(errorMessage)
     } finally {
       setIsLoading(false)
     }

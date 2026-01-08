@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { AxiosError } from 'axios'
 import { login } from '../services/authService'
 
 function LoginPage() {
@@ -18,8 +19,22 @@ function LoginPage() {
       // 로그인 성공 시 일반 유저 메인으로 이동
       navigate('/user-dashboard', { replace: true })
     } catch (err: unknown) {
-      // 백엔드에서 내려주는 에러 메시지가 있다면 여기서 파싱해서 보여줄 수 있습니다.
-      setError('이메일 또는 비밀번호를 다시 확인해주세요.')
+      // 에러 메시지 추출
+      let errorMessage = '로그인에 실패했습니다. 아이디와 비밀번호를 확인해주세요.'
+      
+      if (err instanceof Error) {
+        errorMessage = err.message
+      } else if (err instanceof AxiosError) {
+        // Axios 에러인 경우 서버 응답에서 메시지 추출
+        const serverMessage = err.response?.data?.message || err.response?.data?.error
+        if (serverMessage) {
+          errorMessage = serverMessage
+        } else if (err.message) {
+          errorMessage = err.message
+        }
+      }
+      
+      setError(errorMessage)
     } finally {
       setIsLoading(false)
     }
@@ -34,7 +49,7 @@ function LoginPage() {
           </p>
           <h1 className="mt-2 text-2xl font-bold">로그인</h1>
           <p className="mt-1 text-sm text-slate-600">
-            로그인 폼을 여기에 추가해주세요.
+            청년부 관리 시스템에 로그인하세요.
           </p>
         </div>
         <form onSubmit={handleSubmit} className="mt-6 space-y-5">

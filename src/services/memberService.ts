@@ -35,8 +35,8 @@ export async function getMembers(): Promise<Member[]> {
 
 // 특정 멤버 상세 조회 - GET /api/admin/members/{memberId}
 export async function getMemberById(memberId: number): Promise<Member> {
-  const response = await api.get<Member>(`/api/admin/members/${memberId}`)
-  return response.data
+  const response = await api.get<ApiResponse<Member>>(`/api/admin/members/${memberId}`)
+  return response.data.data
 }
 
 // 새 멤버 등록 - POST /api/admin/members

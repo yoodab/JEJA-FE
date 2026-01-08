@@ -20,3 +20,86 @@ body {
 #root {
   min-height: 100vh;
 }
+
+/* Toast UI Editor 스타일 커스터마이징 */
+.toastui-editor-wrapper {
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.toastui-editor-wrapper:focus-within {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.toastui-editor-defaultUI {
+  border: none;
+}
+
+.toastui-editor-toolbar {
+  background-color: #f8fafc;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+/* 탭 버튼 숨기기 (Write, Preview) */
+.toastui-editor-defaultUI-toolbar .toastui-editor-tabs,
+.toastui-editor-tabs,
+button[aria-label="Write"],
+button[aria-label="Preview"] {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* 모드 전환 버튼 숨기기 (Markdown, WYSIWYG) */
+.toastui-editor-defaultUI .toastui-editor-mode-switch,
+.toastui-editor-mode-switch,
+button[aria-label="Markdown"],
+button[aria-label="WYSIWYG"] {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* placeholder 숨기기 */
+.toastui-editor-contents .toastui-editor-contents p[data-placeholder]::before,
+.toastui-editor-contents p[data-placeholder]::before,
+.toastui-editor-contents p:empty::before {
+  display: none !important;
+  content: none !important;
+}
+
+/* WYSIWYG 모드에서 placeholder 숨기기 */
+.toastui-editor-contents .toastui-editor-ww-container p:empty::before,
+.toastui-editor-ww-container p:empty::before {
+  display: none !important;
+  content: none !important;
+}
+
+/* 에디터 내부의 불필요한 텍스트 숨기기 */
+.toastui-editor-contents {
+  font-size: 0.875rem;
+  color: #334155;
+}
+
+/* 에디터 내용 영역의 특정 텍스트 숨기기 - JavaScript로 처리 */
+
+.toastui-editor-contents {
+  font-size: 0.875rem;
+  color: #334155;
+}
+
+.toastui-editor-contents img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 1rem 0;
+}
+
+.toastui-editor-contents a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.toastui-editor-contents a:hover {
+  color: #1d4ed8;
+}
