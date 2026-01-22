@@ -1,4 +1,4 @@
-import type { Member } from '../types/member'
+import type * as member from '../types/member'
 import api from './api'
 
 // 생성 요청 DTO (memberId, soonId, soonName, hasAccount는 서버에서 결정)
@@ -28,14 +28,14 @@ interface ApiResponse<T> {
 }
 
 // 전체 멤버 목록 조회 - GET /api/admin/members
-export async function getMembers(): Promise<Member[]> {
-  const response = await api.get<ApiResponse<Member[]>>('/api/admin/members')
+export async function getMembers(): Promise<member.Member[]> {
+  const response = await api.get<ApiResponse<member.Member[]>>('/api/admin/members')
   return response.data.data
 }
 
 // 특정 멤버 상세 조회 - GET /api/admin/members/{memberId}
-export async function getMemberById(memberId: number): Promise<Member> {
-  const response = await api.get<ApiResponse<Member>>(`/api/admin/members/${memberId}`)
+export async function getMemberById(memberId: number): Promise<member.Member> {
+  const response = await api.get<ApiResponse<member.Member>>(`/api/admin/members/${memberId}`)
   return response.data.data
 }
 

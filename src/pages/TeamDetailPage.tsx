@@ -287,7 +287,7 @@ function TeamDetailPage() {
 
   const [activeTab, setActiveTab] = useState<TabType>('intro')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [userRole, setUserRole] = useState<string | null>(null)
+  const [, setUserRole] = useState<string | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [isTeamLeader, setIsTeamLeader] = useState(false)
   const [isTeamMember, setIsTeamMember] = useState(false)

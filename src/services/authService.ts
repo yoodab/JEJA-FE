@@ -7,13 +7,6 @@ export interface LoginRequestDto {
   password: string
 }
 
-// API 공통 응답 타입
-interface ApiResponse<T> {
-  status?: string
-  code?: string
-  message?: string
-  data?: T
-}
 
 // 로그인 응답 DTO
 interface LoginResponseDto {

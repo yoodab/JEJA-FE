@@ -11,7 +11,7 @@ interface RichTextEditorProps {
   placeholder?: string
 }
 
-export default function RichTextEditor({ value, onChange, placeholder = '내용을 입력하세요' }: RichTextEditorProps) {
+export default function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   const editorRef = useRef<Editor>(null)
   const isUpdatingRef = useRef(false)
 
@@ -151,7 +151,7 @@ export default function RichTextEditor({ value, onChange, placeholder = '내용�
           ['code', 'codeblock'],
         ]}
         hooks={{
-          addImageBlobHook: (blob, callback) => {
+          addImageBlobHook: (blob: Blob, callback: (arg0: string, arg1: string) => void) => {
             // 이미지를 base64로 변환하여 삽입
             const reader = new FileReader()
             reader.onload = () => {

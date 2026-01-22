@@ -48,7 +48,6 @@ export interface GuestAttendanceResponse {
 // 오늘 출석 여부 확인
 export async function getTodayAttendance(): Promise<TodayAttendanceStatus> {
   try {
-    const today = new Date().toISOString().split('T')[0]
     const response = await api.get<ApiResponse<TodayAttendanceStatus>>(
       `/api/attendance/today`
     )

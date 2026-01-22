@@ -90,14 +90,24 @@ const latestAlbums = [
   },
 ];
 
-const latestSchedules = [
+
+interface DashboardSchedule {
+  id: number;
+  title: string;
+  date: string;
+  time: string;
+  type: string;
+  shareScope: "loggedIn" | "guest" | "private"; // private 포함 확인
+}
+
+const latestSchedules: DashboardSchedule[] = [
   {
     id: 1,
     title: "주일예배",
     date: "2024-12-22",
     time: "11:00",
     type: "예배",
-    shareScope: "loggedIn" as const,
+    shareScope: "loggedIn" ,
   },
   {
     id: 2,
@@ -105,7 +115,7 @@ const latestSchedules = [
     date: "2024-12-23",
     time: "19:00",
     type: "모임",
-    shareScope: "loggedIn" as const,
+    shareScope: "loggedIn" ,
   },
   {
     id: 3,
@@ -113,7 +123,7 @@ const latestSchedules = [
     date: "2024-12-31",
     time: "22:00",
     type: "예배",
-    shareScope: "guest" as const,
+    shareScope: "guest" ,
   },
 ];
 

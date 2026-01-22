@@ -1,19 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getMembers, updateMember, type Member } from '../services/memberService'
+import { getMembers, updateMember } from '../services/memberService'
+import type { Member } from '../types/member' // 경로를 types 폴더로 변경
 
-interface AttendanceRecord {
-  id: string
-  name: string
-  checked: boolean
-}
 
-interface AttendanceSheet {
-  date: string
-  totalAttendance: number
-  offering: number
-  records: AttendanceRecord[]
-}
 
 type TabType = 'check' | 'confirmation'
 
@@ -516,7 +506,7 @@ function AttendanceManagePage() {
                       className="rounded-lg bg-slate-50 px-3 py-1.5 text-xs"
                     >
                       <span className="font-semibold text-slate-700">{soonName}:</span>
-                      <span className="ml-1 text-slate-600">{soonMembers.length}명</span>
+                      <span className="ml-1 text-slate-600">{(soonMembers as Member[]).length}명</span>
                     </div>
                   ))}
                 </div>
@@ -754,7 +744,7 @@ function AttendanceManagePage() {
                         const trends = getAttendanceTrend()
                         const maxCount = Math.max(...trends.map((t) => t.count), 1)
                         const points: string[] = []
-                        const circles: JSX.Element[] = []
+                        const circles: React.ReactElement[] = []
 
                         trends.forEach((trend, index) => {
                           const x = 50 + index * 60

@@ -191,9 +191,9 @@ function SoonManagePage() {
           const exists = soon.members.some((m) => m.id === draggedMember.id)
           const baseMembers = exists
             ? soon.members.map((m) =>
-                m.id === draggedMember.id ? { ...m, role: '순장' } : m
+                m.id === draggedMember.id ? { ...m, role: '순장' as const } : m
               )
-            : [...soon.members, { ...draggedMember, role: '순장' }]
+            : [...soon.members, { ...draggedMember, role: '순장' as const }]
 
           return {
             ...soon,
@@ -240,20 +240,6 @@ function SoonManagePage() {
     setSoons([...soons, newSoon])
   }
 
-  const handleUpdateSoonInfo = (soonId: string, field: keyof Soon, value: string) => {
-    setSoons((prevSoons) =>
-      prevSoons.map((soon) => {
-        if (soon.id === soonId) {
-          // 순장 이름이 변경되면 순 이름도 함께 변경
-          if (field === 'leader') {
-            return { ...soon, [field]: value, name: value }
-          }
-          return { ...soon, [field]: value }
-        }
-        return soon
-      })
-    )
-  }
 
   const handleEditSoon = (soonId: string) => {
     setEditingSoonId(soonId)
@@ -365,7 +351,6 @@ function SoonManagePage() {
         {/* 순 목록 (카드 뷰) */}
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           {filteredSoons.map((soon) => {
-            const leaderMember = soon.members.find((m) => m.role === '순장')
             const normalMembers = soon.members.filter((m) => m.role !== '순장')
             const memberCount = normalMembers.length
 

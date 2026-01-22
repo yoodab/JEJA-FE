@@ -57,17 +57,6 @@ function MemberManagePage() {
     setShowModal(true)
   }
 
-  const handleEdit = (member: Member) => {
-    setEditingMember(member)
-    setFormData({
-      name: member.name,
-      phone: member.phone,
-      birthDate: member.birthDate,
-      status: member.status,
-      role: member.role,
-    })
-    setShowModal(true)
-  }
 
   const handleDelete = async (memberId: number) => {
     if (confirm('성도 정보를 삭제하시겠습니까?')) {

@@ -9,7 +9,6 @@ import {
   type PendingUserDto,
   type ApprovedUserDto,
 } from '../services/adminService'
-import api from '../services/api'
 
 // 슬라이드 타입
 type SlideType = 'text' | 'image'
@@ -307,10 +306,6 @@ function HomepageManagePage() {
     }
   }, [draggingElementId, dragOffset])
 
-  const handleTextDragEnd = () => {
-    setDraggingElementId(null)
-    setDragOffset({ x: 0, y: 0 })
-  }
 
   // 텍스트 요소 수정
   const handleUpdateTextElement = (id: string, field: keyof TextElement, value: string | number) => {

@@ -149,7 +149,7 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 // 앨범 목록 조회 - GET /api/albums
-export async function getAlbums(page?: number, size?: number): Promise<AlbumListItem[]> {
+export async function getAlbums(): Promise<AlbumListItem[]> {
   // 임시: 약간의 지연 시뮬레이션
   await new Promise((resolve) => setTimeout(resolve, 300))
 
