@@ -1,0 +1,20 @@
+name: Frontend Auto Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+    # ★ 중요: 'frontend' 폴더 안의 파일이 바뀔 때만 실행해라!
+    # (백엔드 코드 고쳤는데 프론트가 빌드되면 시간 낭비니까요)
+    paths:
+      - 'frontend/**'
+
+jobs:
+  deploy-front:
+    runs-on: self-hosted
+
+    steps:
+      - name: Execute Frontend Deploy Script
+        run: |
+          # 스크립트 실행
+          cd /home/dabin
+          ./deploy-front.sh
