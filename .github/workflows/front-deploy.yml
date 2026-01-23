@@ -17,35 +17,42 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v3
 
-      # 3. .env 파일 생성 (폴더 이동 없이 바로 생성)
-      # - name: Create .env file
-      #   run: |
-      #     echo "VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}" > .env
-
-      # 4. 의존성 설치 및 빌드 (폴더 이동 없이 바로 실행)
+      # 3. 의존성 설치 및 빌드
       - name: Install & Build
         env:
-          VITE_API_BASE_URL: https://api.jeja.shop
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
         run: |
-          echo "현재 적용된 API 주소: $VITE_API_BASE_URL" 
-          
+          echo "현재 적용된 API 주소: $VITE_API_BASE_URL"
           npm install --legacy-peer-deps
           npm run build
 
-      # 5. 결과물 이동
+      # 4. 결과물 이동 
       - name: Deploy to Nginx
         run: |
           echo "Nginx가 바라보는 폴더로 배포 시작!"
           
-          # 1. Nginx가 보고 있는 폴더 비우기 (경로 수정)
+          # Nginx가 실제로 보고 있는 폴더 비우기
           sudo rm -rf /home/dabin/frontend/dist/*
           
-          # 2. 혹시 모르니 폴더가 없으면 생성
+          # 폴더가 없을 수도 있으니 생성 (안전장치)
           sudo mkdir -p /home/dabin/frontend/dist/
 
-          # 3. 새 빌드 파일 복사 (경로 수정)
+          # 빌드된 파일(dist)을 Nginx 폴더로 복사
           sudo cp -r dist/* /home/dabin/frontend/dist/
           
-          # 4. Nginx 재시작
+          # Nginx 재시작
           sudo systemctl restart nginx
-          echo "진짜 배포 끝! 이제 확인해보세요."
+          echo "파일 교체 완료!"
+
+      # 5. Cloudflare 캐시 자동 삭제 
+      - name: Purge Cloudflare Cache
+        env:
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          echo "Cloudflare 캐시를 삭제합니다..."
+          curl -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/purge_cache" \
+          -H "Authorization: Bearer $CF_API_TOKEN" \
+          -H "Content-Type: application/json" \
+          --data '{"purge_everything":true}'
+          echo "캐시 삭제 요청 완료!"
