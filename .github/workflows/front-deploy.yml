@@ -9,8 +9,32 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - name: Execute Frontend Deploy Script
+      # 1. Runner 작업 폴더 청소
+      - name: Clean up old files
+        run: sudo rm -rf ./*
+
+      # 2. 코드 다운로드
+      - name: Checkout source code
+        uses: actions/checkout@v3
+
+      # 3. .env 파일 생성 (폴더 이동 없이 바로 생성)
+      - name: Create .env file
         run: |
-          # 스크립트 실행
-          cd /home/dabin
-          ./deploy-front.sh
+          echo "VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}" > .env
+
+      # 4. 의존성 설치 및 빌드 (폴더 이동 없이 바로 실행)
+      - name: Install & Build
+        run: |
+          npm install
+          npm run build
+
+      # 5. 결과물 이동 (경로 수정됨: frontend/dist -> dist)
+      - name: Deploy to Nginx
+        run: |
+          # dist 폴더 내용을 웹서버로 복사
+          sudo rm -rf /var/www/html/*
+          sudo cp -r dist/* /var/www/html/
+          
+          # Nginx 재시작
+          sudo systemctl restart nginx
+          echo "배포 끝!"
