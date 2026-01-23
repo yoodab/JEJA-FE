@@ -25,7 +25,7 @@ jobs:
       # 4. 의존성 설치 및 빌드 (폴더 이동 없이 바로 실행)
       - name: Install & Build
         env:
-          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+          VITE_API_BASE_URL: https://api.jeja.shop
         run: |
           echo "현재 적용된 API 주소: $VITE_API_BASE_URL" 
           
