@@ -32,13 +32,20 @@ jobs:
           npm install --legacy-peer-deps
           npm run build
 
-      # 5. 결과물 이동 (경로 수정됨: frontend/dist -> dist)
+      # 5. 결과물 이동
       - name: Deploy to Nginx
         run: |
-          # dist 폴더 내용을 웹서버로 복사
-          sudo rm -rf /var/www/html/*
-          sudo cp -r dist/* /var/www/html/
+          echo "Nginx가 바라보는 폴더로 배포 시작!"
           
-          # Nginx 재시작
+          # 1. Nginx가 보고 있는 폴더 비우기 (경로 수정)
+          sudo rm -rf /home/dabin/frontend/dist/*
+          
+          # 2. 혹시 모르니 폴더가 없으면 생성
+          sudo mkdir -p /home/dabin/frontend/dist/
+
+          # 3. 새 빌드 파일 복사 (경로 수정)
+          sudo cp -r dist/* /home/dabin/frontend/dist/
+          
+          # 4. Nginx 재시작
           sudo systemctl restart nginx
-          echo "배포 끝!"
+          echo "진짜 배포 끝! 이제 확인해보세요."
