@@ -25,7 +25,8 @@ jobs:
       # 4. 의존성 설치 및 빌드 (폴더 이동 없이 바로 실행)
       - name: Install & Build
         run: |
-          npm install
+          # 버전 호환성 무시하고 강제 설치 옵션 추가
+          npm install --legacy-peer-deps
           npm run build
 
       # 5. 결과물 이동 (경로 수정됨: frontend/dist -> dist)
