@@ -39,7 +39,7 @@ export interface SignupRequestDto {
  */
 export async function login(data: LoginRequestDto): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+    const API_BASE_URL = 'https://api.jeja.shop'
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${API_BASE_URL}/api/auth/login`, true)
     xhr.setRequestHeader('Content-Type', 'application/json')

@@ -2,7 +2,8 @@ import axios, { AxiosError } from 'axios'
 import { clearAuth, getToken } from '../utils/auth'
 
 // 환경 변수에서 API base URL 가져오기
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+const API_BASE_URL = 'https://api.jeja.shop'
+console.log("현재 API 주소:", API_BASE_URL, "환경변수:", import.meta.env.VITE_API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
