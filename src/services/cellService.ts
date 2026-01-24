@@ -37,7 +37,7 @@ export async function getCells(year: number): Promise<Cell[]> {
     leaderMemberId: cell.leader?.memberId || null,
     leaderName: cell.leader?.name || null,
     leaderPhone: cell.leader?.phone || null,
-    members: cell.members || [],
+    members: (cell.members || []).filter((m: any) => m.memberId !== (cell.leader?.memberId)),
   }))
 }
 

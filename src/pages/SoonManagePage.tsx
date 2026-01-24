@@ -21,6 +21,7 @@ function SoonManagePage() {
   const [showAssignmentModal, setShowAssignmentModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingCellId, setEditingCellId] = useState<number | null>(null)
+  const [deletedCellIds, setDeletedCellIds] = useState<number[]>([])
   
   // Drag & Drop states
   const [draggedMember, setDraggedMember] = useState<Member | null>(null)
@@ -50,6 +51,7 @@ function SoonManagePage() {
       ])
       setCells(cellsData)
       setUnassignedMembers(unassignedData)
+      setDeletedCellIds([])
     } catch (error) {
       console.error('데이터를 불러오는데 실패했습니다:', error)
       alert('데이터를 불러오는데 실패했습니다.')
@@ -174,6 +176,11 @@ function SoonManagePage() {
       
       const createdCellsMap = new Map<number, number>() // tempId -> realId
 
+      // Step 0: 삭제된 셀 처리
+      if (deletedCellIds.length > 0) {
+        await Promise.all(deletedCellIds.map(id => deleteCell(id)))
+      }
+
       // Step 1: 신규 셀 생성 (순차적)
       for (const cell of newCells) {
         try {
@@ -245,22 +252,50 @@ function SoonManagePage() {
     setCells(prev => [...prev, newCell])
   }
 
-  // 순 삭제
-  const handleDeleteSoon = async (cellId: number) => {
-    // 임시 셀이면 그냥 삭제
-    if (cellId < 0) {
-        setCells(prev => prev.filter(c => c.cellId !== cellId))
-        return
+  // 순 삭제 (로컬 상태만 변경)
+  const handleDeleteSoon = (cellId: number) => {
+    // 1. 셀 찾기
+    const targetCell = cells.find(c => c.cellId === cellId)
+    if (!targetCell) return
+
+    // 임시 셀이고 멤버가 없으면 즉시 삭제 (UX 편의성)
+    if (cellId < 0 && targetCell.members.length === 0 && !targetCell.leaderMemberId) {
+      setCells(prev => prev.filter(c => c.cellId !== cellId))
+      return
     }
 
     if (!window.confirm('정말로 이 순을 삭제하시겠습니까? 배정된 순원들은 미배정 상태가 됩니다.')) return
 
-    try {
-      await deleteCell(cellId)
-      fetchData()
-    } catch (error) {
-      console.error('순 삭제 실패:', error)
-      alert('순 삭제에 실패했습니다.')
+    // 2. 멤버들을 미배정으로 이동 (리더 포함)
+    const membersToRelease = [...targetCell.members]
+    
+    // 리더가 있고 멤버 목록에 없다면 추가
+    if (targetCell.leaderMemberId && targetCell.leaderName) {
+        if (!membersToRelease.some(m => m.memberId === targetCell.leaderMemberId)) {
+             membersToRelease.push({
+                memberId: targetCell.leaderMemberId,
+                name: targetCell.leaderName,
+                birthDate: '',
+                phone: targetCell.leaderPhone || '',
+                address: '',
+                role: '순장'
+             } as any)
+        }
+    }
+
+    setUnassignedMembers(prev => {
+      // 중복 방지
+      const existingIds = new Set(prev.map(m => m.memberId))
+      const newMembers = membersToRelease.filter(m => !existingIds.has(m.memberId))
+      return [...prev, ...newMembers]
+    })
+
+    // 3. 셀 목록에서 제거
+    setCells(prev => prev.filter(c => c.cellId !== cellId))
+
+    // 4. 삭제된 ID 추적 (기존 셀인 경우만)
+    if (cellId > 0) {
+      setDeletedCellIds(prev => [...prev, cellId])
     }
   }
 
@@ -332,7 +367,7 @@ function SoonManagePage() {
             onClick={() => setShowAssignmentModal(true)}
             className="rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
           >
-            순 배정 관리
+            순 배정
           </button>
         </div>
       </header>
@@ -340,13 +375,13 @@ function SoonManagePage() {
       {/* 통계 카드 영역 */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">총 순 개수</p>
+          <p className="text-xs text-slate-500">순 개수</p>
           <p className="mt-1 text-2xl font-bold text-slate-900">{cells.length}개</p>
         </div>
         <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">총 순원 수</p>
+          <p className="text-xs text-slate-500">재적 인원</p>
           <p className="mt-1 text-2xl font-bold text-emerald-600">
-            {cells.reduce((acc, cell) => acc + cell.members.length, 0) + unassignedMembers.length}명
+            {cells.reduce((acc, cell) => acc + cell.members.length + (cell.leaderMemberId ? 1 : 0), 0) + unassignedMembers.length}명
           </p>
         </div>
         <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -376,22 +411,7 @@ function SoonManagePage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                <button
-                  onClick={() => handleEditSoon(cell.cellId)}
-                  className="rounded p-1.5 text-slate-400 hover:bg-slate-50 hover:text-emerald-600"
-                  title="수정"
-                >
-                  ✎
-                </button>
-                <button
-                  onClick={() => handleDeleteSoon(cell.cellId)}
-                  className="rounded p-1.5 text-slate-400 hover:bg-slate-50 hover:text-red-600"
-                  title="삭제"
-                >
-                  ✕
-                </button>
-              </div>
+              {/* 수정/삭제 버튼 제거됨 */}
             </div>
             
             <div className="flex-1 p-4">
@@ -429,7 +449,7 @@ function SoonManagePage() {
           {/* 모달 헤더 */}
           <div className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4 shadow-sm">
             <div className="flex items-center gap-4">
-              <h2 className="text-xl font-bold text-slate-900">순 배정 관리</h2>
+              <h2 className="text-xl font-bold text-slate-900">순 배정</h2>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
                 {selectedYear}년도
               </span>
@@ -515,9 +535,16 @@ function SoonManagePage() {
                                 className="flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden"
                             >
                                 {/* Header / Leader Zone */}
-                                <div className="p-3 bg-slate-50 border-b border-slate-100">
-                                    <div className="text-center mb-2">
-                                        <h4 className="font-bold text-slate-900 text-sm">{cell.cellName}</h4>
+                                <div className="relative border-b border-slate-100 bg-slate-50 p-3">
+                                    <button
+                                      onClick={() => handleDeleteSoon(cell.cellId)}
+                                      className="absolute right-2 top-2 text-slate-400 hover:text-red-500"
+                                      title="순 삭제"
+                                    >
+                                      ✕
+                                    </button>
+                                    <div className="mb-2 text-center">
+                                        <h4 className="text-sm font-bold text-slate-900">{cell.cellName}</h4>
                                     </div>
                                     
                                     {/* Leader Drop Zone */}
@@ -592,7 +619,7 @@ function SoonManagePage() {
                                                 </button>
                                             </div>
                                         ))}
-                                        {cell.members.filter(m => m.memberId !== cell.leaderMemberId).length === 0 && (
+                                        {cell.members.length === 0 && (
                                             <div className="flex h-full items-center justify-center text-xs text-slate-300 py-4">
                                                 순원 배치 (드래그)
                                             </div>
