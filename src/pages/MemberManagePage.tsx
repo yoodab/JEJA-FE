@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Member } from '../types/member'
-import { getMembers, createMember, updateMember, deleteMember } from '../services/memberService'
+import { getMembers, createMember, updateMember, deleteMember, uploadMembersFromExcel } from '../services/memberService'
 import type { CreateMemberRequest, UpdateMemberRequest } from '../services/memberService'
+import { formatRoles, formatMemberStatus } from '../types/member'
 
 type SortField = 'name' | 'role' | 'status' | 'phone' | 'birthDate' | null
 type SortDirection = 'asc' | 'desc'
@@ -12,6 +13,7 @@ function MemberManagePage() {
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [showExcelExample, setShowExcelExample] = useState(false)
   const [editingMember, setEditingMember] = useState<Member | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('전체')
@@ -19,12 +21,14 @@ function MemberManagePage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [inlineEditingId, setInlineEditingId] = useState<number | null>(null)
   const [inlineFormData, setInlineFormData] = useState<UpdateMemberRequest | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [formData, setFormData] = useState<CreateMemberRequest>({
     name: '',
     phone: '',
     birthDate: '',
-    status: '재적',
-    role: '일반',
+    status: 'ACTIVE',  // 백엔드 Enum 값
+    role: 'MEMBER',    // 백엔드 Enum 값
   })
 
   // 멤버 목록 로드
@@ -35,8 +39,8 @@ function MemberManagePage() {
   const loadMembers = async () => {
     try {
       setLoading(true)
-      const data = await getMembers()
-      setMembers(data)
+      const response = await getMembers()
+      setMembers(response.content)
     } catch (error) {
       console.error('멤버 목록 로드 실패:', error)
       alert('멤버 목록을 불러오는데 실패했습니다.')
@@ -51,8 +55,9 @@ function MemberManagePage() {
       name: '',
       phone: '',
       birthDate: '',
-      status: '재적',
-      role: '일반',
+      gender: '',
+      status: 'ACTIVE',  // 백엔드 Enum 값
+      role: 'MEMBER',    // 백엔드 Enum 값
     })
     setShowModal(true)
   }
@@ -79,18 +84,18 @@ function MemberManagePage() {
 
     try {
       if (editingMember) {
-        // 수정
+        // 수정 - 백엔드 Enum 값으로 변환하여 전송
         const updateData: UpdateMemberRequest = {
           name: formData.name,
           phone: formData.phone,
           birthDate: formData.birthDate,
-          status: formData.status,
-          role: formData.role,
+          status: formData.status,  // 이미 백엔드 Enum 값
+          role: formData.role,      // 이미 백엔드 Enum 값
         }
         await updateMember(editingMember.memberId, updateData)
         alert('성도 정보가 수정되었습니다.')
       } else {
-        // 생성
+        // 생성 - 백엔드 Enum 값으로 변환하여 전송
         await createMember(formData)
         alert('성도가 등록되었습니다.')
       }
@@ -102,17 +107,20 @@ function MemberManagePage() {
     }
   }
 
-  const statusColors = {
-    재적: 'bg-emerald-100 text-emerald-700',
-    휴먼: 'bg-yellow-100 text-yellow-700',
-    퇴회: 'bg-slate-100 text-slate-700',
-    새신자: 'bg-blue-100 text-blue-700',
+  // 백엔드 Enum 값에 따른 색상 매핑
+  const getStatusColor = (status: string) => {
+    const statusMap: Record<string, string> = {
+      ACTIVE: 'bg-emerald-100 text-emerald-700',
+      INACTIVE: 'bg-yellow-100 text-yellow-700',
+      NEWCOMER: 'bg-blue-100 text-blue-700',
+    }
+    return statusMap[status] || 'bg-slate-100 text-slate-700'
   }
 
-  const roleColors = {
-    리더: 'bg-purple-100 text-purple-700',
-    일반: 'bg-slate-100 text-slate-700',
-    순장: 'bg-blue-100 text-blue-700',
+  const getRoleColor = (roles: string[]) => {
+    if (roles.includes('CELL_LEADER')) return 'bg-blue-100 text-blue-700'
+    if (roles.includes('TEAM_LEADER')) return 'bg-purple-100 text-purple-700'
+    return 'bg-slate-100 text-slate-700'
   }
 
   const handleSort = (field: SortField) => {
@@ -127,7 +135,8 @@ function MemberManagePage() {
   const filteredMembers = members.filter((member) => {
     const matchesSearch = member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       member.phone.includes(searchTerm)
-    const matchesStatus = statusFilter === '전체' || member.status === statusFilter
+    // statusFilter는 한글 값이므로, 백엔드 Enum 값과 비교
+    const matchesStatus = statusFilter === '전체' || formatMemberStatus(member.memberStatus) === statusFilter
     return matchesSearch && matchesStatus
   })
 
@@ -143,12 +152,12 @@ function MemberManagePage() {
         bValue = b.name
         break
       case 'role':
-        aValue = a.role
-        bValue = b.role
+        aValue = formatRoles(a.roles)
+        bValue = formatRoles(b.roles)
         break
       case 'status':
-        aValue = a.status
-        bValue = b.status
+        aValue = formatMemberStatus(a.memberStatus)
+        bValue = formatMemberStatus(b.memberStatus)
         break
       case 'phone':
         aValue = a.phone
@@ -183,12 +192,14 @@ function MemberManagePage() {
 
   const startInlineEdit = (member: Member) => {
     setInlineEditingId(member.memberId)
+    // 백엔드 Enum 값을 그대로 사용 (서비스에서 변환)
     setInlineFormData({
       name: member.name,
       phone: member.phone,
       birthDate: member.birthDate,
-      status: member.status,
-      role: member.role,
+      gender: member.gender || '',
+      status: member.memberStatus,  // 백엔드 Enum 값
+      role: member.roles[0] || 'MEMBER',  // 첫 번째 역할 사용 (백엔드 Enum 값)
     })
   }
 
@@ -225,6 +236,48 @@ function MemberManagePage() {
     setInlineFormData(null)
   }
 
+  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // 엑셀 파일인지 확인
+    const validExtensions = ['.xlsx', '.xls']
+    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'))
+    if (!validExtensions.includes(fileExtension)) {
+      alert('엑셀 파일(.xlsx, .xls)만 업로드 가능합니다.')
+      e.target.value = '' // 파일 선택 초기화
+      return
+    }
+
+    try {
+      setIsUploading(true)
+      await uploadMembersFromExcel(file)
+      alert('엑셀 업로드가 완료되었습니다.')
+      // 파일 선택 초기화
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+      // 멤버 목록 새로고침
+      loadMembers()
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '엑셀 업로드에 실패했습니다.'
+      alert(errorMessage)
+      console.error('Failed to upload Excel:', err)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleExcelUploadClick = () => {
+    // 예시 모달 먼저 표시
+    setShowExcelExample(true)
+  }
+
+  const handleExcelFileSelect = () => {
+    setShowExcelExample(false)
+    fileInputRef.current?.click()
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -247,13 +300,30 @@ function MemberManagePage() {
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleCreate}
-            className="rounded-full bg-sky-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700"
-          >
-            + 성도 등록
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleExcelUploadClick}
+              disabled={isUploading}
+              className="rounded-full bg-green-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isUploading ? '업로드 중...' : '📊 엑셀 업로드'}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleExcelUpload}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={handleCreate}
+              className="rounded-full bg-sky-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700"
+            >
+              + 성도 등록
+            </button>
+          </div>
         </header>
 
         {/* 통계 카드 */}
@@ -265,19 +335,19 @@ function MemberManagePage() {
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs text-slate-500">재적</p>
             <p className="mt-1 text-2xl font-bold text-emerald-600">
-              {members.filter((m) => m.status === '재적').length}명
+              {members.filter((m) => m.memberStatus === 'ACTIVE').length}명
             </p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs text-slate-500">휴먼</p>
             <p className="mt-1 text-2xl font-bold text-yellow-600">
-              {members.filter((m) => m.status === '휴먼').length}명
+              {members.filter((m) => m.memberStatus === 'INACTIVE').length}명
             </p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs text-slate-500">새신자</p>
             <p className="mt-1 text-2xl font-bold text-blue-600">
-              {members.filter((m) => m.status === '새신자').length}명
+              {members.filter((m) => m.memberStatus === 'NEWCOMER').length}명
             </p>
           </div>
         </div>
@@ -361,6 +431,9 @@ function MemberManagePage() {
                       </button>
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">
+                      성별
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">
                       <button
                         type="button"
                         onClick={() => handleSort('role')}
@@ -394,7 +467,7 @@ function MemberManagePage() {
                 <tbody className="divide-y divide-slate-200">
                   {sortedMembers.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">
+                      <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-500">
                         등록된 성도가 없습니다.
                       </td>
                     </tr>
@@ -445,46 +518,56 @@ function MemberManagePage() {
                               formatPhoneNumber(member.phone)
                             )}
                           </td>
+                          <td className="px-4 py-3 text-sm text-slate-600">
+                            {isEditing ? (
+                              <select
+                                value={inlineFormData?.gender || ''}
+                                onChange={(e) => handleInlineChange('gender', e.target.value)}
+                                className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                              >
+                                <option value="">선택</option>
+                                <option value="남성">남성</option>
+                                <option value="여성">여성</option>
+                              </select>
+                            ) : (
+                              member.gender || '-'
+                            )}
+                          </td>
                           <td className="px-4 py-3">
                             {isEditing ? (
                               <select
-                                value={inlineFormData?.role || '일반'}
+                                value={inlineFormData?.role || 'MEMBER'}
                                 onChange={(e) => handleInlineChange('role', e.target.value)}
                                 className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs"
                               >
-                                <option value="일반">일반</option>
-                                <option value="리더">리더</option>
-                                <option value="순장">순장</option>
+                                <option value="MEMBER">일반</option>
+                                <option value="TEAM_LEADER">리더</option>
+                                <option value="CELL_LEADER">순장</option>
                               </select>
                             ) : (
                               <span
-                                className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                                  roleColors[member.role as keyof typeof roleColors] || roleColors.일반
-                                }`}
+                                className={`rounded-full px-2 py-1 text-xs font-semibold ${getRoleColor(member.roles)}`}
                               >
-                                {member.role}
+                                {formatRoles(member.roles)}
                               </span>
                             )}
                           </td>
                           <td className="px-4 py-3">
                             {isEditing ? (
                               <select
-                                value={inlineFormData?.status || '재적'}
+                                value={inlineFormData?.status || 'ACTIVE'}
                                 onChange={(e) => handleInlineChange('status', e.target.value)}
                                 className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs"
                               >
-                                <option value="재적">재적</option>
-                                <option value="휴먼">휴먼</option>
-                                <option value="퇴회">퇴회</option>
-                                <option value="새신자">새신자</option>
+                                <option value="ACTIVE">재적</option>
+                                <option value="INACTIVE">휴먼</option>
+                                <option value="NEWCOMER">새신자</option>
                               </select>
                             ) : (
                               <span
-                                className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                                  statusColors[member.status as keyof typeof statusColors] || statusColors.재적
-                                }`}
+                                className={`rounded-full px-2 py-1 text-xs font-semibold ${getStatusColor(member.memberStatus)}`}
                               >
-                                {member.status}
+                                {formatMemberStatus(member.memberStatus)}
                               </span>
                             )}
                           </td>
@@ -631,6 +714,18 @@ function MemberManagePage() {
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   />
                 </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-700">성별</label>
+                  <select
+                    value={formData.gender}
+                    onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">선택</option>
+                    <option value="남성">남성</option>
+                    <option value="여성">여성</option>
+                  </select>
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-slate-700">상태</label>
@@ -639,10 +734,9 @@ function MemberManagePage() {
                       onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     >
-                      <option value="재적">재적</option>
-                      <option value="휴먼">휴먼</option>
-                      <option value="퇴회">퇴회</option>
-                      <option value="새신자">새신자</option>
+                      <option value="ACTIVE">재적</option>
+                      <option value="INACTIVE">휴먼</option>
+                      <option value="NEWCOMER">새신자</option>
                     </select>
                   </div>
                   <div>
@@ -652,9 +746,9 @@ function MemberManagePage() {
                       onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     >
-                      <option value="일반">일반</option>
-                      <option value="리더">리더</option>
-                      <option value="순장">순장</option>
+                      <option value="MEMBER">일반</option>
+                      <option value="TEAM_LEADER">리더</option>
+                      <option value="CELL_LEADER">순장</option>
                     </select>
                   </div>
                 </div>
@@ -673,6 +767,80 @@ function MemberManagePage() {
                   className="flex-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
                 >
                   저장
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 엑셀 업로드 예시 모달 */}
+        {showExcelExample && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
+              <h3 className="mb-4 text-lg font-semibold text-slate-900">엑셀 파일 형식 안내</h3>
+              <p className="mb-4 text-sm text-slate-600">
+                엑셀 파일은 아래 형식에 맞춰 작성해주세요. 첫 번째 행은 헤더(컬럼명)로 사용됩니다.
+              </p>
+              
+              {/* 예시 테이블 */}
+              <div className="mb-6 overflow-x-auto rounded-lg border border-slate-200">
+                <table className="min-w-full divide-y divide-slate-200 bg-white">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">이름</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">생년월일</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">연락처</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">성별</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    <tr>
+                      <td className="px-4 py-3 text-sm text-slate-900">홍길동</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">1995-03-15</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">010-1234-5678</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">남성</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 text-sm text-slate-900">김영희</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">1998-07-22</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">010-9876-5432</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">여성</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 text-sm text-slate-900">이철수</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">1996-11-08</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">010-5555-7777</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">남성</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* 주의사항 */}
+              <div className="mb-6 rounded-lg bg-blue-50 p-4">
+                <h4 className="mb-2 text-sm font-semibold text-blue-900">주의사항</h4>
+                <ul className="space-y-1 text-xs text-blue-800">
+                  <li>• 생년월일은 YYYY-MM-DD 형식으로 작성해주세요 (예: 1995-03-15)</li>
+                  <li>• 연락처는 하이픈(-) 포함 또는 제외 모두 가능합니다</li>
+                  <li>• 성별은 "남성" 또는 "여성"으로 작성해주세요</li>
+                  <li>• 첫 번째 행은 반드시 헤더(컬럼명)여야 합니다</li>
+                </ul>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowExcelExample(false)}
+                  className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  닫기
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExcelFileSelect}
+                  className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+                >
+                  파일 선택하기
                 </button>
               </div>
             </div>

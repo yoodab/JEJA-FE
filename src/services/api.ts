@@ -1,9 +1,11 @@
 import axios, { AxiosError } from 'axios'
-import { clearAuth, getToken } from '../utils/auth'
+import { clearAuth, getToken, setAuth } from '../utils/auth'
 
-// 환경 변수에서 API base URL 가져오기
-const API_BASE_URL = 'https://api.jeja.shop'
-console.log("현재 API 주소:", API_BASE_URL, "환경변수:", import.meta.env.VITE_API_BASE_URL);
+// 환경 변수에서 API base URL 가져오기 (환경 변수 우선, 없으면 기본값)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.jeja.shop'
+if (import.meta.env.DEV) {
+  console.log("현재 API 주소:", API_BASE_URL, "환경변수:", import.meta.env.VITE_API_BASE_URL);
+}
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -47,9 +49,47 @@ api.interceptors.request.use(
   },
 )
 
-// 응답 인터셉터: 401/403 에러 시 자동 로그아웃 처리
+// 응답 인터셉터: 로그인 응답에서 토큰 추출, 401/403 에러 시 자동 로그아웃 처리
 api.interceptors.response.use(
   (response) => {
+    // 로그인 API 응답인 경우 헤더에서 토큰 추출
+    // 주의: CORS 설정에 따라 헤더 접근이 제한될 수 있음
+    const requestUrl = response.config?.url || ''
+    if (requestUrl.includes('/api/auth/login')) {
+      try {
+        const authHeader = response.headers['authorization'] || response.headers['Authorization']
+        if (authHeader) {
+          const token = typeof authHeader === 'string' 
+            ? authHeader.replace(/^Bearer\s+/i, '').trim()
+            : null
+          
+          if (token) {
+            // 응답 데이터에서 role 추출
+            const responseData = response.data
+            const role = responseData?.data?.role || null
+            
+            if (import.meta.env.DEV) {
+              console.log('✅ Login token extracted from response header:', {
+                hasToken: !!token,
+                role,
+              })
+            }
+            
+            // 토큰과 역할 저장
+            if (role) {
+              setAuth(token, role)
+            } else {
+              setAuth(token)
+            }
+          }
+        }
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.warn('⚠️ Failed to extract token from login response header:', error)
+        }
+      }
+    }
+    
     return response
   },
   (error: AxiosError) => {
