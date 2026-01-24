@@ -1,46 +1,95 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { Member } from '../types/member'
-import { getMembers, createMember, updateMember, deleteMember, uploadMembersFromExcel } from '../services/memberService'
+import type { Member, MemberStats } from '../types/member'
+import { getMembers, createMember, updateMember, deleteMember, uploadMembersFromExcel, getMemberStats } from '../services/memberService'
 import type { CreateMemberRequest, UpdateMemberRequest } from '../services/memberService'
-import { formatRoles, formatMemberStatus } from '../types/member'
-
-type SortField = 'name' | 'role' | 'status' | 'phone' | 'birthDate' | null
-type SortDirection = 'asc' | 'desc'
-
+import { formatRoles, formatMemberStatus, getMemberStatusColor } from '../types/member'
+import MemberDetailModal from '../components/member/MemberDetailModal'
+import MemberEditModal from '../components/member/MemberEditModal'
+import { formatPhoneNumber } from '../utils/format'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
 function MemberManagePage() {
   const navigate = useNavigate()
+  
+  // Data State
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
-  const [showModal, setShowModal] = useState(false)
-  const [showExcelExample, setShowExcelExample] = useState(false)
-  const [editingMember, setEditingMember] = useState<Member | null>(null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('전체')
-  const [sortField, setSortField] = useState<SortField>(null)
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
-  const [inlineEditingId, setInlineEditingId] = useState<number | null>(null)
-  const [inlineFormData, setInlineFormData] = useState<UpdateMemberRequest | null>(null)
-  const [isUploading, setIsUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [formData, setFormData] = useState<CreateMemberRequest>({
-    name: '',
-    phone: '',
-    birthDate: '',
-    status: 'ACTIVE',  // 백엔드 Enum 값
-    role: 'MEMBER',    // 백엔드 Enum 값
+  const [currentPage, setCurrentPage] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const [totalElements, setTotalElements] = useState(0)
+  const pageSize = 20
+
+  // Stats State
+  const [stats, setStats] = useState<MemberStats>({
+    totalCount: 0,
+    activeCount: 0,
+    inactiveCount: 0,
+    newcomerCount: 0
   })
 
-  // 멤버 목록 로드
+  // Filter & Search State
+  const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+  const [selectedStatus, setSelectedStatus] = useState<string>('') // '' means ALL
+  
+  // Modal State
+  const [detailMember, setDetailMember] = useState<Member | null>(null)
+  const [editModalData, setEditModalData] = useState<{ open: boolean, member: Member | null }>({ 
+    open: false, 
+    member: null 
+  })
+  
+  // Excel Upload State
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  
+  // Kebab Menu State
+  const [activeMenuId, setActiveMenuId] = useState<number | null>(null)
+
+  // Load Stats on Mount
+  useEffect(() => {
+    loadStats()
+  }, [])
+
+  const loadStats = async () => {
+    try {
+      const data = await getMemberStats()
+      setStats(data)
+    } catch (error) {
+      console.error('통계 로드 실패:', error)
+    }
+  }
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(0)
+  }, [debouncedSearchTerm, selectedStatus])
+
+  // Load Members
   useEffect(() => {
     loadMembers()
-  }, [])
+  }, [currentPage, debouncedSearchTerm, selectedStatus])
 
   const loadMembers = async () => {
     try {
       setLoading(true)
-      const response = await getMembers()
+      const response = await getMembers({
+        page: currentPage,
+        size: pageSize,
+        keyword: debouncedSearchTerm,
+        status: selectedStatus || undefined
+      })
       setMembers(response.content)
+      setTotalPages(response.totalPages)
+      setTotalElements(response.totalElements)
     } catch (error) {
       console.error('멤버 목록 로드 실패:', error)
       alert('멤버 목록을 불러오는데 실패했습니다.')
@@ -49,19 +98,25 @@ function MemberManagePage() {
     }
   }
 
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (activeMenuId !== null && !(event.target as Element).closest('.kebab-menu-container')) {
+        setActiveMenuId(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [activeMenuId])
+
   const handleCreate = () => {
-    setEditingMember(null)
-    setFormData({
-      name: '',
-      phone: '',
-      birthDate: '',
-      gender: '',
-      status: 'ACTIVE',  // 백엔드 Enum 값
-      role: 'MEMBER',    // 백엔드 Enum 값
-    })
-    setShowModal(true)
+    setEditModalData({ open: true, member: null })
   }
 
+  const handleEdit = (member: Member) => {
+    setEditModalData({ open: true, member })
+    setActiveMenuId(null)
+  }
 
   const handleDelete = async (memberId: number) => {
     if (confirm('성도 정보를 삭제하시겠습니까?')) {
@@ -74,178 +129,37 @@ function MemberManagePage() {
         alert('멤버 삭제에 실패했습니다.')
       }
     }
+    setActiveMenuId(null)
   }
 
-  const handleSave = async () => {
-    if (!formData.name) {
-      alert('이름을 입력해주세요.')
-      return
-    }
-
+  const handleSaveMember = async (data: CreateMemberRequest | UpdateMemberRequest) => {
     try {
-      if (editingMember) {
-        // 수정 - 백엔드 Enum 값으로 변환하여 전송
-        const updateData: UpdateMemberRequest = {
-          name: formData.name,
-          phone: formData.phone,
-          birthDate: formData.birthDate,
-          status: formData.status,  // 이미 백엔드 Enum 값
-          role: formData.role,      // 이미 백엔드 Enum 값
-        }
-        await updateMember(editingMember.memberId, updateData)
+      if (editModalData.member) {
+        // Update
+        await updateMember(editModalData.member.memberId, data as UpdateMemberRequest)
         alert('성도 정보가 수정되었습니다.')
       } else {
-        // 생성 - 백엔드 Enum 값으로 변환하여 전송
-        await createMember(formData)
+        // Create
+        await createMember(data as CreateMemberRequest)
         alert('성도가 등록되었습니다.')
       }
-      setShowModal(false)
       loadMembers()
+      loadStats() // Reload stats
     } catch (error) {
-      console.error('멤버 저장 실패:', error)
-      alert(editingMember ? '멤버 수정에 실패했습니다.' : '멤버 등록에 실패했습니다.')
+      console.error('저장 실패:', error)
+      alert('저장에 실패했습니다.')
     }
-  }
-
-  // 백엔드 Enum 값에 따른 색상 매핑
-  const getStatusColor = (status: string) => {
-    const statusMap: Record<string, string> = {
-      ACTIVE: 'bg-emerald-100 text-emerald-700',
-      INACTIVE: 'bg-yellow-100 text-yellow-700',
-      NEWCOMER: 'bg-blue-100 text-blue-700',
-    }
-    return statusMap[status] || 'bg-slate-100 text-slate-700'
-  }
-
-  const getRoleColor = (roles: string[]) => {
-    if (roles.includes('CELL_LEADER')) return 'bg-blue-100 text-blue-700'
-    if (roles.includes('TEAM_LEADER')) return 'bg-purple-100 text-purple-700'
-    return 'bg-slate-100 text-slate-700'
-  }
-
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortField(field)
-      setSortDirection('asc')
-    }
-  }
-
-  const filteredMembers = members.filter((member) => {
-    const matchesSearch = member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      member.phone.includes(searchTerm)
-    // statusFilter는 한글 값이므로, 백엔드 Enum 값과 비교
-    const matchesStatus = statusFilter === '전체' || formatMemberStatus(member.memberStatus) === statusFilter
-    return matchesSearch && matchesStatus
-  })
-
-  const sortedMembers = [...filteredMembers].sort((a, b) => {
-    if (!sortField) return 0
-
-    let aValue: string | number
-    let bValue: string | number
-
-    switch (sortField) {
-      case 'name':
-        aValue = a.name
-        bValue = b.name
-        break
-      case 'role':
-        aValue = formatRoles(a.roles)
-        bValue = formatRoles(b.roles)
-        break
-      case 'status':
-        aValue = formatMemberStatus(a.memberStatus)
-        bValue = formatMemberStatus(b.memberStatus)
-        break
-      case 'phone':
-        aValue = a.phone
-        bValue = b.phone
-        break
-      case 'birthDate':
-        aValue = a.birthDate || ''
-        bValue = b.birthDate || ''
-        break
-      default:
-        return 0
-    }
-
-    if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1
-    if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1
-    return 0
-  })
-
-  const formatPhoneNumber = (value: string) => {
-    const digits = value.replace(/\D/g, '')
-
-    if (digits.length <= 3) return digits
-    if (digits.length <= 7) {
-      return `${digits.slice(0, 3)}-${digits.slice(3)}`
-    }
-    if (digits.length <= 11) {
-      return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`
-    }
-
-    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7, 11)}`
-  }
-
-  const startInlineEdit = (member: Member) => {
-    setInlineEditingId(member.memberId)
-    // 백엔드 Enum 값을 그대로 사용 (서비스에서 변환)
-    setInlineFormData({
-      name: member.name,
-      phone: member.phone,
-      birthDate: member.birthDate,
-      gender: member.gender || '',
-      status: member.memberStatus,  // 백엔드 Enum 값
-      role: member.roles[0] || 'MEMBER',  // 첫 번째 역할 사용 (백엔드 Enum 값)
-    })
-  }
-
-  const handleInlineChange = (field: keyof UpdateMemberRequest, value: string) => {
-    if (!inlineFormData) return
-    setInlineFormData({
-      ...inlineFormData,
-      [field]: value,
-    })
-  }
-
-  const handleInlineSave = async (memberId: number) => {
-    if (!inlineFormData) return
-
-    if (!inlineFormData.name) {
-      alert('이름을 입력해주세요.')
-      return
-    }
-
-    try {
-      await updateMember(memberId, inlineFormData)
-      alert('성도 정보가 수정되었습니다.')
-      setInlineEditingId(null)
-      setInlineFormData(null)
-      loadMembers()
-    } catch (error) {
-      console.error('인라인 멤버 수정 실패:', error)
-      alert('멤버 수정에 실패했습니다.')
-    }
-  }
-
-  const handleInlineCancel = () => {
-    setInlineEditingId(null)
-    setInlineFormData(null)
   }
 
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // 엑셀 파일인지 확인
     const validExtensions = ['.xlsx', '.xls']
     const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'))
     if (!validExtensions.includes(fileExtension)) {
       alert('엑셀 파일(.xlsx, .xls)만 업로드 가능합니다.')
-      e.target.value = '' // 파일 선택 초기화
+      e.target.value = ''
       return
     }
 
@@ -253,29 +167,23 @@ function MemberManagePage() {
       setIsUploading(true)
       await uploadMembersFromExcel(file)
       alert('엑셀 업로드가 완료되었습니다.')
-      // 파일 선택 초기화
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
-      // 멤버 목록 새로고침
       loadMembers()
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '엑셀 업로드에 실패했습니다.'
       alert(errorMessage)
-      console.error('Failed to upload Excel:', err)
     } finally {
       setIsUploading(false)
     }
   }
 
-  const handleExcelUploadClick = () => {
-    // 예시 모달 먼저 표시
-    setShowExcelExample(true)
-  }
-
-  const handleExcelFileSelect = () => {
-    setShowExcelExample(false)
-    fileInputRef.current?.click()
+  // Helper for Gender Display
+  const getGenderDisplay = (gender: string) => {
+    if (gender === 'MALE') return '남'
+    if (gender === 'FEMALE') return '여'
+    return '-'
   }
 
   return (
@@ -303,7 +211,7 @@ function MemberManagePage() {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={handleExcelUploadClick}
+              onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
               className="rounded-full bg-green-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -326,33 +234,33 @@ function MemberManagePage() {
           </div>
         </header>
 
-        {/* 통계 카드 */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        {/* Statistics Cards (Grid Layout) */}
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs text-slate-500">총 인원</p>
-            <p className="mt-1 text-2xl font-bold text-slate-900">{members.length}명</p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">{stats.totalCount}명</p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs text-slate-500">재적</p>
             <p className="mt-1 text-2xl font-bold text-emerald-600">
-              {members.filter((m) => m.memberStatus === 'ACTIVE').length}명
+              {stats.activeCount}명
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-xs text-slate-500">휴먼</p>
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-xs text-slate-500">비활동 (장결/이동/졸업)</p>
             <p className="mt-1 text-2xl font-bold text-yellow-600">
-              {members.filter((m) => m.memberStatus === 'INACTIVE').length}명
+              {stats.inactiveCount}명
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs text-slate-500">새신자</p>
             <p className="mt-1 text-2xl font-bold text-blue-600">
-              {members.filter((m) => m.memberStatus === 'NEWCOMER').length}명
+              {stats.newcomerCount}명
             </p>
           </div>
         </div>
 
-        {/* 필터 및 검색 */}
+        {/* Filter & Search */}
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex-1 min-w-[200px]">
@@ -364,309 +272,117 @@ function MemberManagePage() {
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               />
             </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            >
-              <option value="전체">전체</option>
-              <option value="재적">재적</option>
-              <option value="휴먼">휴먼</option>
-              <option value="퇴회">퇴회</option>
-              <option value="새신자">새신자</option>
-            </select>
+            <div className="w-full sm:w-auto">
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">전체 상태</option>
+                <option value="NEWCOMER">새신자</option>
+                <option value="ACTIVE">재적</option>
+                <option value="LONG_TERM_ABSENT">장결자</option>
+                <option value="MOVED">교회 이동</option>
+                <option value="GRADUATED">졸업</option>
+              </select>
+            </div>
           </div>
         </div>
 
-        {/* 성도 목록 */}
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {/* Member Table */}
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           {loading ? (
             <div className="p-8 text-center text-sm text-slate-500">로딩 중...</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full table-fixed">
-                <thead className="bg-slate-50">
+              <table className="w-full min-w-max text-left">
+                <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 w-16">번호</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 w-40">
-                      <button
-                        type="button"
-                        onClick={() => handleSort('name')}
-                        className="flex items-center gap-1 hover:text-slate-900 transition-colors"
-                      >
-                        이름
-                        {sortField === 'name' && (
-                          <span className="text-sky-600">
-                            {sortDirection === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">
-                      <button
-                        type="button"
-                        onClick={() => handleSort('birthDate')}
-                        className="flex items-center gap-1 hover:text-slate-900 transition-colors"
-                      >
-                        생년월일
-                        {sortField === 'birthDate' && (
-                          <span className="text-sky-600">
-                            {sortDirection === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">
-                      <button
-                        type="button"
-                        onClick={() => handleSort('phone')}
-                        className="flex items-center gap-1 hover:text-slate-900 transition-colors"
-                      >
-                        연락처
-                        {sortField === 'phone' && (
-                          <span className="text-sky-600">
-                            {sortDirection === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">
-                      성별
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">
-                      <button
-                        type="button"
-                        onClick={() => handleSort('role')}
-                        className="flex items-center gap-1 hover:text-slate-900 transition-colors"
-                      >
-                        역할
-                        {sortField === 'role' && (
-                          <span className="text-sky-600">
-                            {sortDirection === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">
-                      <button
-                        type="button"
-                        onClick={() => handleSort('status')}
-                        className="flex items-center gap-1 hover:text-slate-900 transition-colors"
-                      >
-                        상태
-                        {sortField === 'status' && (
-                          <span className="text-sky-600">
-                            {sortDirection === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-700 w-24"></th>
+                    <th className="px-4 py-3 text-xs font-semibold text-slate-700 w-16">사진</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-slate-700">이름</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-slate-700 w-16">성별</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-slate-700">생년월일</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-slate-700">연락처</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-slate-700">상태</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-700 w-16"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {sortedMembers.length === 0 ? (
+                  {members.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-500">
+                      <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">
                         등록된 성도가 없습니다.
                       </td>
                     </tr>
                   ) : (
-                    sortedMembers.map((member, index) => {
-                      const isEditing = inlineEditingId === member.memberId && inlineFormData
-
-                      return (
-                        <tr
-                          key={member.memberId}
-                          className="hover:bg-slate-50 cursor-pointer"
-                          onDoubleClick={() => startInlineEdit(member)}
-                        >
-                          <td className="px-4 py-3 text-sm text-slate-500">{index + 1}</td>
-                          <td className="px-4 py-3 text-sm font-medium text-slate-900 w-40">
-                            {isEditing ? (
-                              <input
-                                type="text"
-                                value={inlineFormData?.name || ''}
-                                onChange={(e) => handleInlineChange('name', e.target.value)}
-                                className="w-full h-8 rounded-lg border border-slate-300 px-2 text-sm"
+                    members.map((member) => (
+                      <tr
+                        key={member.memberId}
+                        onClick={() => setDetailMember(member)}
+                        className="hover:bg-slate-50 cursor-pointer transition-colors"
+                      >
+                        <td className="px-4 py-3">
+                          <div className="h-10 w-10 overflow-hidden rounded-full bg-slate-200 flex items-center justify-center">
+                            {member.memberImageUrl ? (
+                              <img
+                                src={`${API_BASE_URL}${member.memberImageUrl}`}
+                                alt={member.name}
+                                className="h-full w-full object-cover"
                               />
                             ) : (
-                              member.name
+                              <svg className="h-6 w-6 text-slate-400" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M24 20.993V24H0v-2.996A14.977 14.977 0 0112.004 15c4.904 0 9.26 2.354 11.996 5.993zM16.002 8.999a4 4 0 11-8 0 4 4 0 018 0z" />
+                              </svg>
                             )}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-slate-600">
-                            {isEditing ? (
-                              <input
-                                type="date"
-                                value={inlineFormData?.birthDate || ''}
-                                onChange={(e) => handleInlineChange('birthDate', e.target.value)}
-                                className="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm"
-                              />
-                            ) : (
-                              member.birthDate || '-'
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-slate-600">
-                            {isEditing ? (
-                              <input
-                                type="tel"
-                                value={inlineFormData ? formatPhoneNumber(inlineFormData.phone || '') : ''}
-                                onChange={(e) => handleInlineChange('phone', formatPhoneNumber(e.target.value))}
-                                className="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm"
-                              />
-                            ) : (
-                              formatPhoneNumber(member.phone)
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-slate-600">
-                            {isEditing ? (
-                              <select
-                                value={inlineFormData?.gender || ''}
-                                onChange={(e) => handleInlineChange('gender', e.target.value)}
-                                className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm font-bold text-slate-900">{member.name}</td>
+                        <td className="px-4 py-3 text-sm text-slate-600">{getGenderDisplay(member.gender)}</td>
+                        <td className="px-4 py-3 text-sm text-slate-600">{member.birthDate || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-600">{formatPhoneNumber(member.phone)}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${getMemberStatusColor(member.memberStatus as string)}`}>
+                            {formatMemberStatus(member.memberStatus as string)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right relative kebab-menu-container">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setActiveMenuId(activeMenuId === member.memberId ? null : member.memberId)
+                            }}
+                            className="p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200"
+                          >
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+                            </svg>
+                          </button>
+                          
+                          {activeMenuId === member.memberId && (
+                            <div className="absolute right-0 top-full mt-1 w-24 rounded-lg border border-slate-100 bg-white shadow-lg z-10 overflow-hidden">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleEdit(member)
+                                }}
+                                className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
                               >
-                                <option value="">선택</option>
-                                <option value="남성">남성</option>
-                                <option value="여성">여성</option>
-                              </select>
-                            ) : (
-                              member.gender || '-'
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            {isEditing ? (
-                              <select
-                                value={inlineFormData?.role || 'MEMBER'}
-                                onChange={(e) => handleInlineChange('role', e.target.value)}
-                                className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                                수정
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDelete(member.memberId)
+                                }}
+                                className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
                               >
-                                <option value="MEMBER">일반</option>
-                                <option value="TEAM_LEADER">리더</option>
-                                <option value="CELL_LEADER">순장</option>
-                              </select>
-                            ) : (
-                              <span
-                                className={`rounded-full px-2 py-1 text-xs font-semibold ${getRoleColor(member.roles)}`}
-                              >
-                                {formatRoles(member.roles)}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            {isEditing ? (
-                              <select
-                                value={inlineFormData?.status || 'ACTIVE'}
-                                onChange={(e) => handleInlineChange('status', e.target.value)}
-                                className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs"
-                              >
-                                <option value="ACTIVE">재적</option>
-                                <option value="INACTIVE">휴먼</option>
-                                <option value="NEWCOMER">새신자</option>
-                              </select>
-                            ) : (
-                              <span
-                                className={`rounded-full px-2 py-1 text-xs font-semibold ${getStatusColor(member.memberStatus)}`}
-                              >
-                                {formatMemberStatus(member.memberStatus)}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right w-24">
-                            {isEditing ? (
-                              <div className="flex justify-end gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleInlineSave(member.memberId)}
-                                  className="rounded-lg p-2 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
-                                  title="저장"
-                                >
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className="h-4 w-4"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                    strokeWidth={2}
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      d="M5 13l4 4L19 7"
-                                    />
-                                  </svg>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleInlineCancel}
-                                  className="rounded-lg p-2 text-slate-600 hover:bg-slate-50 hover:text-slate-700 transition-colors"
-                                  title="취소"
-                                >
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className="h-4 w-4"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                    strokeWidth={2}
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      d="M6 18L18 6M6 6l12 12"
-                                    />
-                                  </svg>
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="flex justify-end gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => startInlineEdit(member)}
-                                  className="rounded-lg p-2 text-slate-600 hover:bg-sky-50 hover:text-sky-600 transition-colors"
-                                  title="수정"
-                                >
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className="h-4 w-4"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                    strokeWidth={2}
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                                    />
-                                  </svg>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDelete(member.memberId)}
-                                  className="rounded-lg p-2 text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition-colors"
-                                  title="삭제"
-                                >
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className="h-4 w-4"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                    strokeWidth={2}
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                    />
-                                  </svg>
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })
+                                삭제
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))
                   )}
                 </tbody>
               </table>
@@ -674,182 +390,87 @@ function MemberManagePage() {
           )}
         </div>
 
-        {/* 모달 */}
-        {showModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
-              <h3 className="mb-4 text-lg font-semibold text-slate-900">
-                {editingMember ? '성도 수정' : '성도 등록'}
-              </h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-700">이름 *</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-700">연락처</label>
-                  <input
-                    type="tel"
-                    value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        phone: formatPhoneNumber(e.target.value),
-                      })
-                    }
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-700">생년월일</label>
-                  <input
-                    type="date"
-                    value={formData.birthDate}
-                    onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-700">성별</label>
-                  <select
-                    value={formData.gender}
-                    onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  >
-                    <option value="">선택</option>
-                    <option value="남성">남성</option>
-                    <option value="여성">여성</option>
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-700">상태</label>
-                    <select
-                      value={formData.status}
-                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                    >
-                      <option value="ACTIVE">재적</option>
-                      <option value="INACTIVE">휴먼</option>
-                      <option value="NEWCOMER">새신자</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-700">역할</label>
-                    <select
-                      value={formData.role}
-                      onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                    >
-                      <option value="MEMBER">일반</option>
-                      <option value="TEAM_LEADER">리더</option>
-                      <option value="CELL_LEADER">순장</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-6 flex gap-2">
+        {/* Pagination Component */}
+        {totalPages > 0 && (
+          <div className="flex justify-center items-center space-x-2 py-4">
+            <button
+              onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+              disabled={currentPage === 0}
+              className="px-3 py-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+            >
+              Prev
+            </button>
+            
+            {(() => {
+              const MAX_VISIBLE_PAGES = 5
+              let startPage = 0
+              let endPage = totalPages - 1
+
+              if (totalPages > MAX_VISIBLE_PAGES) {
+                // Logic for many pages (Sliding Window)
+                const half = Math.floor(MAX_VISIBLE_PAGES / 2)
+                startPage = Math.max(0, currentPage - half)
+                endPage = startPage + MAX_VISIBLE_PAGES - 1
+
+                // Correction for the end of the list
+                if (endPage >= totalPages) {
+                  endPage = totalPages - 1
+                  startPage = Math.max(0, endPage - MAX_VISIBLE_PAGES + 1)
+                }
+              }
+
+              // Now generate the array of page numbers
+              const pageNumbers = []
+              for (let i = startPage; i <= endPage; i++) {
+                pageNumbers.push(i)
+              }
+
+              return pageNumbers.map((pageNum) => (
                 <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  key={pageNum}
+                  onClick={() => setCurrentPage(pageNum)}
+                  className={`w-8 h-8 flex items-center justify-center rounded ${
+                    currentPage === pageNum
+                      ? 'bg-blue-600 text-white font-bold'
+                      : 'border border-slate-300 text-slate-600 hover:bg-slate-100'
+                  }`}
                 >
-                  취소
+                  {pageNum + 1}
                 </button>
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  className="flex-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
-                >
-                  저장
-                </button>
-              </div>
-            </div>
+              ))
+            })()}
+
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
+              disabled={currentPage === totalPages - 1}
+              className="px-3 py-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+            >
+              Next
+            </button>
           </div>
         )}
 
-        {/* 엑셀 업로드 예시 모달 */}
-        {showExcelExample && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
-              <h3 className="mb-4 text-lg font-semibold text-slate-900">엑셀 파일 형식 안내</h3>
-              <p className="mb-4 text-sm text-slate-600">
-                엑셀 파일은 아래 형식에 맞춰 작성해주세요. 첫 번째 행은 헤더(컬럼명)로 사용됩니다.
-              </p>
-              
-              {/* 예시 테이블 */}
-              <div className="mb-6 overflow-x-auto rounded-lg border border-slate-200">
-                <table className="min-w-full divide-y divide-slate-200 bg-white">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">이름</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">생년월일</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">연락처</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">성별</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    <tr>
-                      <td className="px-4 py-3 text-sm text-slate-900">홍길동</td>
-                      <td className="px-4 py-3 text-sm text-slate-600">1995-03-15</td>
-                      <td className="px-4 py-3 text-sm text-slate-600">010-1234-5678</td>
-                      <td className="px-4 py-3 text-sm text-slate-600">남성</td>
-                    </tr>
-                    <tr>
-                      <td className="px-4 py-3 text-sm text-slate-900">김영희</td>
-                      <td className="px-4 py-3 text-sm text-slate-600">1998-07-22</td>
-                      <td className="px-4 py-3 text-sm text-slate-600">010-9876-5432</td>
-                      <td className="px-4 py-3 text-sm text-slate-600">여성</td>
-                    </tr>
-                    <tr>
-                      <td className="px-4 py-3 text-sm text-slate-900">이철수</td>
-                      <td className="px-4 py-3 text-sm text-slate-600">1996-11-08</td>
-                      <td className="px-4 py-3 text-sm text-slate-600">010-5555-7777</td>
-                      <td className="px-4 py-3 text-sm text-slate-600">남성</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* 주의사항 */}
-              <div className="mb-6 rounded-lg bg-blue-50 p-4">
-                <h4 className="mb-2 text-sm font-semibold text-blue-900">주의사항</h4>
-                <ul className="space-y-1 text-xs text-blue-800">
-                  <li>• 생년월일은 YYYY-MM-DD 형식으로 작성해주세요 (예: 1995-03-15)</li>
-                  <li>• 연락처는 하이픈(-) 포함 또는 제외 모두 가능합니다</li>
-                  <li>• 성별은 "남성" 또는 "여성"으로 작성해주세요</li>
-                  <li>• 첫 번째 행은 반드시 헤더(컬럼명)여야 합니다</li>
-                </ul>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowExcelExample(false)}
-                  className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  닫기
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExcelFileSelect}
-                  className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
-                >
-                  파일 선택하기
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Modals */}
+      {detailMember && (
+        <MemberDetailModal 
+          member={detailMember} 
+          onClose={() => setDetailMember(null)} 
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
+      )}
+      
+      {editModalData.open && (
+        <MemberEditModal
+          member={editModalData.member}
+          onClose={() => setEditModalData({ open: false, member: null })}
+          onSave={handleSaveMember}
+        />
+      )}
     </div>
   )
 }
 
 export default MemberManagePage
-

@@ -4,6 +4,8 @@ import type { Member } from '../types/member'
 import { getMembers, uploadMembersFromExcel } from '../services/memberService'
 import { formatRoles, formatMemberStatus } from '../types/member'
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+
 function MemberListPage() {
   const navigate = useNavigate()
   const [members, setMembers] = useState<Member[]>([])
@@ -168,6 +170,9 @@ function MemberListPage() {
               <table className="min-w-full divide-y divide-slate-200">
                 <thead className="bg-slate-50">
                   <tr>
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 w-20">
+                      사진
+                    </th>
                     <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       이름
                     </th>
@@ -194,6 +199,21 @@ function MemberListPage() {
                 <tbody className="divide-y divide-slate-100">
                   {members.map((member) => (
                     <tr key={member.memberId} className="hover:bg-slate-50/60">
+                      <td className="px-6 py-4">
+                        <div className="h-10 w-10 overflow-hidden rounded-full bg-slate-200 flex items-center justify-center">
+                          {member.memberImageUrl ? (
+                            <img
+                              src={`${API_BASE_URL}${member.memberImageUrl}`}
+                              alt={member.name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <svg className="h-6 w-6 text-slate-400" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M24 20.993V24H0v-2.996A14.977 14.977 0 0112.004 15c4.904 0 9.26 2.354 11.996 5.993zM16.002 8.999a4 4 0 11-8 0 4 4 0 018 0z" />
+                            </svg>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-6 py-4 text-sm font-medium text-slate-900">
                         {member.name}
                       </td>

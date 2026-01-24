@@ -78,7 +78,7 @@ export async function checkGuestAttendance(
   attendanceData: GuestAttendanceRequest
 ): Promise<GuestAttendanceResponse> {
   // 비로그인 사용자용이므로 인증 토큰 없이 직접 axios 사용
-  const API_BASE_URL = 'https://api.jeja.shop'
+  const API_BASE_URL = 'http://localhost:8080'
   const response = await axios.post<GuestAttendanceResponse>(
     `${API_BASE_URL}/api/attendance/guest`,
     attendanceData,

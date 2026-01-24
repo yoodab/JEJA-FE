@@ -38,7 +38,7 @@ export interface SignupRequestDto {
 export async function login(data: LoginRequestDto): Promise<LoginResponseData> {
   return new Promise<LoginResponseData>((resolve, reject) => {
     // api.ts와 동일한 baseURL 사용 (환경 변수 우선, 없으면 기본값)
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.jeja.shop'
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${API_BASE_URL}/api/auth/login`, true)
     xhr.setRequestHeader('Content-Type', 'application/json')

@@ -7,12 +7,39 @@ export interface Member {
   name: string
   phone: string
   birthDate: string
-  memberStatus: string  // NEWCOMER, ACTIVE, INACTIVE 등
+  memberStatus: MemberStatus | string
   memberImageUrl: string | null
-  roles: string[]  // ["MEMBER", "CELL_LEADER", "TEAM_LEADER"] 등
+  // roles: string[]  // Removed from DTO as per instructions, keeping optional if backend still sends it but ignored
+  roles?: string[]
   hasAccount: boolean
   gender: string
   age: number
+}
+
+export type MemberStatus = 'NEWCOMER' | 'ACTIVE' | 'LONG_TERM_ABSENT' | 'MOVED' | 'GRADUATED'
+
+export interface MemberStats {
+  totalCount: number
+  activeCount: number
+  inactiveCount: number // This might be LONG_TERM_ABSENT + MOVED + GRADUATED or specific field? 
+  // User spec: "inactiveCount: 0" in example. 
+  // Actually the spec says: totalCount, activeCount, inactiveCount, newcomerCount.
+  // I should just match the JSON spec.
+  newcomerCount: number
+}
+
+/**
+ * 백엔드 Gender Enum을 한글 문자열로 변환
+ * @param gender 백엔드에서 받은 gender (예: "MALE", "FEMALE")
+ * @returns 한글 성별 문자열 (예: "남성")
+ */
+export function formatGender(gender: string): string {
+  const genderMap: Record<string, string> = {
+    MALE: '남성',
+    FEMALE: '여성',
+    NONE: '미입력',
+  }
+  return genderMap[gender] || gender
 }
 
 /**
@@ -20,7 +47,7 @@ export interface Member {
  * @param roles 백엔드에서 받은 roles 배열 (예: ["MEMBER", "CELL_LEADER"])
  * @returns 한글 역할 문자열 (예: "순장")
  */
-export function formatRoles(roles: string[]): string {
+export function formatRoles(roles: string[] | undefined): string {
   if (!roles || roles.length === 0) {
     return '일반'
   }
@@ -43,17 +70,27 @@ export function formatRoles(roles: string[]): string {
 
 /**
  * 백엔드 MemberStatus Enum을 한글 문자열로 변환
- * @param status 백엔드에서 받은 memberStatus (예: "ACTIVE", "INACTIVE", "NEWCOMER")
- * @returns 한글 상태 문자열 (예: "재적")
  */
 export function formatMemberStatus(status: string): string {
   const statusMap: Record<string, string> = {
-    ACTIVE: '재적',
-    INACTIVE: '휴먼',
     NEWCOMER: '새신자',
-    // 추가 상태가 있을 수 있음
+    ACTIVE: '재적',
+    LONG_TERM_ABSENT: '장결자',
+    MOVED: '교회 이동',
+    GRADUATED: '졸업',
   }
   return statusMap[status] || status
+}
+
+export function getMemberStatusColor(status: string): string {
+  switch (status) {
+    case 'NEWCOMER': return 'bg-blue-100 text-blue-700'
+    case 'ACTIVE': return 'bg-green-100 text-green-700'
+    case 'LONG_TERM_ABSENT': return 'bg-orange-100 text-orange-700'
+    case 'MOVED': return 'bg-gray-100 text-gray-700'
+    case 'GRADUATED': return 'bg-purple-100 text-purple-700'
+    default: return 'bg-slate-100 text-slate-500'
+  }
 }
 
 /**
