@@ -224,7 +224,8 @@ function NewcomerManagePage() {
   useEffect(() => {
     const fetchTeamMembers = async () => {
       try {
-        const allMembers = await getMembers()
+        const response = await getMembers({ page: 0, size: 1000 })
+        const allMembers = response.content
         // 새신자팀(clubId: 3) 멤버 필터링 (임시로 모든 멤버 사용, 실제로는 팀별 필터링 필요)
         setTeamMembers(allMembers)
       } catch (error) {

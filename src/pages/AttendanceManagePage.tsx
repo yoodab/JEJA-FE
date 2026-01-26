@@ -45,7 +45,9 @@ function AttendanceManagePage() {
     const loadMembers = async () => {
       try {
         setLoading(true)
-        const allMembers = await getMembers()
+        // 모든 멤버를 가져오기 위해 충분히 큰 size 설정
+        const response = await getMembers({ page: 0, size: 1000 })
+        const allMembers = response.content
         setMembers(allMembers)
         
         // 초기 출석 데이터 설정 (샘플 데이터 - 최근 6개월간의 출석 기록 생성)
@@ -146,13 +148,14 @@ function AttendanceManagePage() {
 
   // 새신자와 장결자 필터링
   const regularMembers = members.filter(
-    (m) => m.status !== '새신자' && m.status !== '장기결석'
+    (m) => m.memberStatus !== 'NEWCOMER' && m.memberStatus !== 'LONG_TERM_ABSENT'
   )
-  const newcomers = members.filter((m) => m.status === '새신자')
-  const longTermAbsentees = members.filter((m) => m.status === '장기결석')
+  const newcomers = members.filter((m) => m.memberStatus === 'NEWCOMER')
+  const longTermAbsentees = members.filter((m) => m.memberStatus === 'LONG_TERM_ABSENT')
 
   // 순 정보로 그룹화
   const membersBySoon = regularMembers.reduce((acc, member) => {
+    // TODO: 백엔드 API에서 soonName을 받아오도록 수정 필요
     const soonName = member.soonName || '미배정'
     if (!acc[soonName]) {
       acc[soonName] = []
@@ -182,7 +185,7 @@ function AttendanceManagePage() {
   // 수정 모달 열기
   const handleOpenEditModal = (member: Member) => {
     setEditingMember(member)
-    setEditStatus(member.status)
+    setEditStatus(member.memberStatus as string)
     setShowEditModal(true)
   }
 
@@ -191,10 +194,10 @@ function AttendanceManagePage() {
     if (!editingMember) return
     
     try {
-      await updateMember(editingMember.memberId, { status: editStatus })
+      await updateMember(editingMember.memberId, { memberStatus: editStatus })
       setMembers((prev) =>
         prev.map((m) =>
-          m.memberId === editingMember.memberId ? { ...m, status: editStatus } : m
+          m.memberId === editingMember.memberId ? { ...m, memberStatus: editStatus } : m
         )
       )
       setShowEditModal(false)
@@ -1193,11 +1196,11 @@ function AttendanceManagePage() {
                         onChange={(e) => setEditStatus(e.target.value)}
                         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                       >
-                        <option value="재적">재적</option>
-                        <option value="새신자">새신자</option>
-                        <option value="장기결석">장기결석</option>
-                        <option value="휴먼">휴먼</option>
-                        <option value="퇴회">퇴회</option>
+                        <option value="ACTIVE">재적</option>
+                        <option value="NEWCOMER">새신자</option>
+                        <option value="LONG_TERM_ABSENT">장기결석</option>
+                        <option value="MOVED">교회 이동</option>
+                        <option value="GRADUATED">졸업</option>
                       </select>
                     </div>
                     <div className="flex justify-end gap-2">

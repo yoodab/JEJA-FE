@@ -17,7 +17,8 @@ function BirthdayManagePage() {
       try {
         setLoading(true)
         setError(null)
-        const data = await getMembers()
+        const response = await getMembers({ page: 0, size: 1000 })
+        const data = response.content
         setMembers(data)
       } catch (err) {
         console.error('생일자 목록 로드 실패:', err)

@@ -6,7 +6,9 @@ import {
   updateCell,
   deleteCell,
   getUnassignedMembers,
-  assignMembersToCell,
+  syncCellMembers,
+  updateCellMembersBatch,
+  activateSeason,
   type Cell,
 } from '../services/cellService'
 import type { Member } from '../types/member'
@@ -21,7 +23,6 @@ function SoonManagePage() {
   const [showAssignmentModal, setShowAssignmentModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingCellId, setEditingCellId] = useState<number | null>(null)
-  const [deletedCellIds, setDeletedCellIds] = useState<number[]>([])
   
   // Drag & Drop states
   const [draggedMember, setDraggedMember] = useState<Member | null>(null)
@@ -49,9 +50,18 @@ function SoonManagePage() {
         getCells(selectedYear),
         getUnassignedMembers(selectedYear),
       ])
+      
+      // Filter out any members from unassigned that are already in cells (Frontend Safety)
+      const assignedMemberIds = new Set<number>()
+      cellsData.forEach(cell => {
+        if (cell.leaderMemberId) assignedMemberIds.add(cell.leaderMemberId)
+        cell.members.forEach(m => assignedMemberIds.add(m.memberId))
+      })
+      
+      const cleanUnassignedData = unassignedData.filter(m => !assignedMemberIds.has(m.memberId))
+
       setCells(cellsData)
-      setUnassignedMembers(unassignedData)
-      setDeletedCellIds([])
+      setUnassignedMembers(cleanUnassignedData)
     } catch (error) {
       console.error('데이터를 불러오는데 실패했습니다:', error)
       alert('데이터를 불러오는데 실패했습니다.')
@@ -78,8 +88,8 @@ function SoonManagePage() {
     if (!draggedMember) return
 
     // 1. Remove from source (Uniqueness Guarantee)
-    // Remove from unassigned list
-    let nextUnassigned = unassignedMembers.filter((m) => m.memberId !== draggedMember.memberId)
+    // Remove from unassigned list first
+    const cleanUnassigned = unassignedMembers.filter((m) => m.memberId !== draggedMember.memberId)
 
     // Remove from ALL cells (members list and leader position)
     let nextCells = cells.map((cell) => {
@@ -102,40 +112,56 @@ function SoonManagePage() {
     // 2. Add to target
     if (targetCellId === -1) {
         // Drop to Unassigned Zone
-        nextUnassigned.push(draggedMember)
+        // Check if already exists to be double safe
+        if (!cleanUnassigned.some(m => m.memberId === draggedMember.memberId)) {
+          cleanUnassigned.push(draggedMember)
+        }
+        setUnassignedMembers(cleanUnassigned)
+        setCells(nextCells)
     } else {
         // Add to target cell
         nextCells = nextCells.map((cell) => {
           if (cell.cellId === targetCellId) {
             // Prepare members array: add dragged member if not already present
+            // Note: We used nextCells which already has the member removed, so we just add it.
+            // But we double check for safety.
             const alreadyIn = cell.members.some(m => m.memberId === draggedMember.memberId)
             let newMembers = [...cell.members]
+            
             if (!alreadyIn) {
-              newMembers.push(draggedMember)
+               // Only push if we are NOT making it a leader, OR if we are making it a leader we handle it below
+               // Actually, if zone is leader, we don't add to members list.
+               if (zone !== 'leader') {
+                 newMembers.push(draggedMember)
+               }
             }
 
+            // If dropped to leader zone
             if (zone === 'leader') {
               return {
                 ...cell,
                 leaderMemberId: draggedMember.memberId,
                 leaderName: draggedMember.name,
-                cellName: `${draggedMember.name} 순`, // Auto-rename logic
-                members: newMembers,
+                leaderPhone: draggedMember.phone,
+                cellName: `${draggedMember.name} 순`, // Auto-naming
+                // Ensure leader is NOT in members list
+                members: newMembers.filter(m => m.memberId !== draggedMember.memberId),
               }
             } else {
-              // Member zone
+              // Dropped to member zone
               return {
                 ...cell,
-                members: newMembers
+                members: newMembers,
               }
             }
           }
           return cell
         })
+        
+        setUnassignedMembers(cleanUnassigned)
+        setCells(nextCells)
     }
 
-    setUnassignedMembers(nextUnassigned)
-    setCells(nextCells)
     setDraggedMember(null)
     setDraggedFromCellId(null)
   }
@@ -161,7 +187,12 @@ function SoonManagePage() {
       return cell
     }))
 
-    setUnassignedMembers(prev => [...prev, member])
+    setUnassignedMembers(prev => {
+       if (prev.some(m => m.memberId === member.memberId)) {
+         return prev
+       }
+       return [...prev, member]
+    })
   }
 
   // 변경사항 저장 (일괄 배정 API 호출)
@@ -175,11 +206,6 @@ function SoonManagePage() {
       const existingCells = cells.filter(cell => cell.cellId > 0)
       
       const createdCellsMap = new Map<number, number>() // tempId -> realId
-
-      // Step 0: 삭제된 셀 처리
-      if (deletedCellIds.length > 0) {
-        await Promise.all(deletedCellIds.map(id => deleteCell(id)))
-      }
 
       // Step 1: 신규 셀 생성 (순차적)
       for (const cell of newCells) {
@@ -196,33 +222,32 @@ function SoonManagePage() {
         }
       }
       
-      // Step 1.5: 기존 셀 업데이트 (리더/이름 변경 반영)
+      // Step 1.5: 기존 셀 업데이트 (이름/연도 변경 반영)
       await Promise.all(
         existingCells.map(cell => 
           updateCell(cell.cellId, {
             cellName: cell.cellName,
-            leaderMemberId: cell.leaderMemberId
+            year: cell.year
           })
         )
       )
 
-      // Step 2: 멤버 배정 API 호출 (전체 동기화)
-      const assignments = [
-        ...existingCells.map(cell => ({
-          cellId: cell.cellId,
-          memberIds: cell.members.map(m => m.memberId)
-        })),
-        ...newCells.map(cell => ({
-          cellId: createdCellsMap.get(cell.cellId)!,
-          memberIds: cell.members.map(m => m.memberId)
-        }))
+      // Step 2: 멤버 배정 API 호출 (전체 일괄 전송)
+      const allCellsToSync = [
+        ...existingCells,
+        ...newCells.map(cell => ({ ...cell, cellId: createdCellsMap.get(cell.cellId)! }))
       ]
 
-      await Promise.all(
-        assignments.map(({ cellId, memberIds }) => 
-          assignMembersToCell(cellId, memberIds)
-        )
-      )
+      // DTO 생성: 현재 화면(State)에 있는 모든 셀의 정보를 일괄 업데이트 포맷으로 변환
+      const batchDto = {
+        cellUpdates: allCellsToSync.map(cell => ({
+          cellId: cell.cellId,
+          leaderId: cell.leaderMemberId,
+          memberIds: cell.members.map(m => m.memberId)
+        }))
+      }
+
+      await updateCellMembersBatch(batchDto)
 
       alert('순 배정이 저장되었습니다.')
       setShowAssignmentModal(false)
@@ -242,6 +267,7 @@ function SoonManagePage() {
       cellId: tempId,
       cellName: '새 순', // 초기값
       year: selectedYear,
+      active: false,
       leaderMemberId: null,
       leaderName: null,
       leaderPhone: null,
@@ -252,8 +278,8 @@ function SoonManagePage() {
     setCells(prev => [...prev, newCell])
   }
 
-  // 순 삭제 (로컬 상태만 변경)
-  const handleDeleteSoon = (cellId: number) => {
+  // 순 삭제 (API 즉시 호출 및 로컬 반영)
+  const handleDeleteSoon = async (cellId: number) => {
     // 1. 셀 찾기
     const targetCell = cells.find(c => c.cellId === cellId)
     if (!targetCell) return
@@ -266,7 +292,23 @@ function SoonManagePage() {
 
     if (!window.confirm('정말로 이 순을 삭제하시겠습니까? 배정된 순원들은 미배정 상태가 됩니다.')) return
 
-    // 2. 멤버들을 미배정으로 이동 (리더 포함)
+    // 2. API 호출 (기존 셀인 경우)
+    if (cellId > 0) {
+      try {
+        setIsLoading(true)
+        await deleteCell(cellId)
+        alert('순이 삭제되었습니다.')
+      } catch (error) {
+        console.error('순 삭제 실패:', error)
+        alert('순 삭제에 실패했습니다.')
+        setIsLoading(false)
+        return
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    // 3. 멤버들을 미배정으로 이동 (리더 포함)
     const membersToRelease = [...targetCell.members]
     
     // 리더가 있고 멤버 목록에 없다면 추가
@@ -290,13 +332,8 @@ function SoonManagePage() {
       return [...prev, ...newMembers]
     })
 
-    // 3. 셀 목록에서 제거
+    // 4. 셀 목록에서 제거
     setCells(prev => prev.filter(c => c.cellId !== cellId))
-
-    // 4. 삭제된 ID 추적 (기존 셀인 경우만)
-    if (cellId > 0) {
-      setDeletedCellIds(prev => [...prev, cellId])
-    }
   }
 
   // 순 수정 모달 열기
@@ -308,6 +345,23 @@ function SoonManagePage() {
   const handleCloseEditModal = () => {
     setShowEditModal(false)
     setEditingCellId(null)
+  }
+
+  // 시즌 활성화
+  const handleActivateSeason = async () => {
+    if (!window.confirm(`${selectedYear}년도 순을 활성화하시겠습니까? 이전 연도 기록은 종료됩니다.`)) return
+    
+    try {
+        setIsLoading(true)
+        await activateSeason(selectedYear)
+        alert('시즌이 활성화되었습니다.')
+        fetchData()
+    } catch (error) {
+        console.error('시즌 활성화 실패:', error)
+        alert('시즌 활성화에 실패했습니다.')
+    } finally {
+        setIsLoading(false)
+    }
   }
 
   // 미배정 멤버 검색 필터링
@@ -352,6 +406,14 @@ function SoonManagePage() {
           </div>
         </div>
         <div className="flex gap-2">
+          {(!cells.length || !cells[0].active) && (
+            <button
+              onClick={handleActivateSeason}
+              className="rounded-full bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            >
+              순 활성화
+            </button>
+          )}
           <select
             value={selectedYear}
             onChange={(e) => setSelectedYear(Number(e.target.value))}
@@ -602,7 +664,7 @@ function SoonManagePage() {
                                             .filter(m => m.memberId !== cell.leaderMemberId)
                                             .map((member) => (
                                             <div
-                                                key={member.memberId}
+                                                key={`cell-${cell.cellId}-${member.memberId}`}
                                                 draggable
                                                 onDragStart={() => handleDragStart(member, cell.cellId)}
                                                 className="group flex items-center justify-between rounded border border-white bg-white px-2 py-1.5 text-xs shadow-sm cursor-move hover:border-emerald-200 hover:shadow-md transition-all"

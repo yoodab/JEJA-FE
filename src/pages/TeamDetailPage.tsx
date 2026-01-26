@@ -337,7 +337,8 @@ function TeamDetailPage() {
   useEffect(() => {
     const fetchMembers = async () => {
       try {
-        const data = await getMembers()
+        const response = await getMembers({ page: 0, size: 1000 })
+        const data = response.content
         setAllMembers(data)
       } catch (error) {
         console.error('멤버 목록 로드 실패:', error)

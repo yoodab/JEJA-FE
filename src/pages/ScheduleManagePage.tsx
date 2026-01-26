@@ -1,158 +1,94 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import type { 
+  Schedule, 
+  ScheduleType, 
+  SharingScope, 
+  RecurrenceRule, 
+  UpdateType,
+  WorshipCategory,
+  CreateScheduleRequest,
+  UpdateScheduleRequest
+} from '../types/schedule'
+import { scheduleService } from '../services/scheduleService'
+import UserHeader from '../components/UserHeader'
 
-interface Schedule {
-  id: string
+// UI용 폼 데이터 인터페이스
+interface ScheduleFormData {
   title: string
-  date: string
-  time: string
-  type: '예배' | '행사' | '모임' | '기타'
+  startDate: string // YYYY-MM-DD
+  endDate: string   // YYYY-MM-DD
+  startTime: string // HH:mm
+  endTime: string // HH:mm
+  type: ScheduleType
   location: string
-  description: string
-  isRepeating?: boolean
-  repeatType?: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'
-  repeatEndDate?: string
-  createAlbum?: boolean
-  shareScope?: 'loggedIn' | 'guest' | 'private'
+  content: string
+  recurrenceRule: RecurrenceRule
+  recurrenceEndDate: string // YYYY-MM-DD
+  sharingScope: SharingScope
+  worshipCategoryId?: number
+  createAlbum: boolean
 }
 
-interface AttendanceInfo {
-  totalCount: number
-  presentCount: number
-  absentCount: number
-  attendanceList: {
-    memberId: string
-    name: string
-    status: 'PRESENT' | 'ABSENT'
-    attendanceTime?: string
-  }[]
+const initialFormData: ScheduleFormData = {
+  title: '',
+  startDate: '',
+  endDate: '',
+  startTime: '',
+  endTime: '',
+  type: 'MEETING',
+  location: '',
+  content: '',
+  recurrenceRule: 'NONE',
+  recurrenceEndDate: '',
+  sharingScope: 'LOGGED_IN_USERS',
+  worshipCategoryId: undefined,
+  createAlbum: false,
 }
 
-interface AlbumInfo {
-  id: string
-  title: string
-  date: string
-  thumbnail: string
-  photoCount: number
+const typeColors: Record<ScheduleType, string> = {
+  WORSHIP: 'bg-blue-100 text-blue-700',
+  EVENT: 'bg-purple-100 text-purple-700',
+  MEETING: 'bg-emerald-100 text-emerald-700',
 }
 
-// 임시 데이터
-const initialSchedules: Schedule[] = [
-  {
-    id: '1',
-    title: '주일예배',
-    date: '2024-12-15',
-    time: '11:00',
-    type: '예배',
-    location: '본당',
-    description: '청년부 주일예배',
-    shareScope: 'loggedIn',
-  },
-  {
-    id: '2',
-    title: '순모임',
-    date: '2024-12-16',
-    time: '19:00',
-    type: '모임',
-    location: '각 순별 장소',
-    description: '주간 순모임',
-    shareScope: 'loggedIn',
-  },
-  {
-    id: '3',
-    title: '연말 특별예배',
-    date: '2024-12-31',
-    time: '22:00',
-    type: '예배',
-    location: '본당',
-    description: '2024년 마지막 예배',
-    shareScope: 'guest',
-  },
-  {
-    id: '4',
-    title: '청년부 수련회',
-    date: '2025-01-05',
-    time: '09:00',
-    type: '행사',
-    location: '수양관',
-    description: '신년 수련회',
-    shareScope: 'private',
-  },
-]
-
-// 일정별 출석 정보 임시 데이터
-const mockAttendanceData: Record<string, AttendanceInfo> = {
-  '1': {
-    totalCount: 50,
-    presentCount: 45,
-    absentCount: 5,
-    attendanceList: [
-      { memberId: '1', name: '김청년', status: 'PRESENT', attendanceTime: '2024-12-15T11:05:00' },
-      { memberId: '2', name: '이청년', status: 'PRESENT', attendanceTime: '2024-12-15T11:02:00' },
-      { memberId: '3', name: '박청년', status: 'PRESENT', attendanceTime: '2024-12-15T11:10:00' },
-      { memberId: '4', name: '최청년', status: 'ABSENT' },
-      { memberId: '5', name: '정청년', status: 'PRESENT', attendanceTime: '2024-12-15T11:00:00' },
-    ],
-  },
-  '4': {
-    totalCount: 40,
-    presentCount: 38,
-    absentCount: 2,
-    attendanceList: [
-      { memberId: '1', name: '김청년', status: 'PRESENT', attendanceTime: '2025-01-05T09:00:00' },
-      { memberId: '2', name: '이청년', status: 'PRESENT', attendanceTime: '2025-01-05T08:55:00' },
-      { memberId: '3', name: '박청년', status: 'PRESENT', attendanceTime: '2025-01-05T09:10:00' },
-    ],
-  },
-}
-
-// 일정별 앨범 정보 임시 데이터
-const mockAlbumData: Record<string, AlbumInfo[]> = {
-  '1': [
-    {
-      id: '1',
-      title: '2024년 12월 주일예배',
-      date: '2024-12-15',
-      thumbnail: 'https://via.placeholder.com/200x150?text=주일예배',
-      photoCount: 15,
-    },
-  ],
-  '4': [
-    {
-      id: '6',
-      title: '청년부 수련회 2025',
-      date: '2025-01-05',
-      thumbnail: 'https://via.placeholder.com/200x150?text=수련회',
-      photoCount: 50,
-    },
-  ],
+const typeLabels: Record<ScheduleType, string> = {
+  WORSHIP: '예배',
+  EVENT: '행사',
+  MEETING: '모임',
 }
 
 function ScheduleManagePage() {
   const navigate = useNavigate()
-  const [schedules, setSchedules] = useState<Schedule[]>(initialSchedules)
+  
+  // Data States
+  const [schedules, setSchedules] = useState<Schedule[]>([])
+  const [worshipCategories, setWorshipCategories] = useState<WorshipCategory[]>([])
+  
+  // UI States
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0])
   const [showModal, setShowModal] = useState(false)
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null)
-  const [formData, setFormData] = useState<Omit<Schedule, 'id'>>({
-    title: '',
-    date: selectedDate,
-    time: '',
-    type: '모임',
-    location: '',
-    description: '',
-    isRepeating: false,
-    repeatType: 'none',
-    repeatEndDate: '',
-    createAlbum: false,
-    shareScope: 'loggedIn',
-  })
+  const [formData, setFormData] = useState<ScheduleFormData>(initialFormData)
+  
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null)
-  const [showDatePicker, setShowDatePicker] = useState(false)
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
-  const [showMenuForSchedule, setShowMenuForSchedule] = useState<string | null>(null)
+  
+  // 반복 일정 처리 모달 상태
+  const [showRecurrenceModal, setShowRecurrenceModal] = useState(false)
+  const [recurrenceAction, setRecurrenceAction] = useState<'UPDATE' | 'DELETE' | null>(null)
+  const [pendingActionData, setPendingActionData] = useState<{ id: number; data?: UpdateScheduleRequest; originalStartDate?: string } | null>(null)
+  
+  // 반복 일정 수정 시, 사용자가 선택한 범위(THIS_ONLY | FUTURE | ALL)를 저장하는 상태
+  const [selectedUpdateType, setSelectedUpdateType] = useState<UpdateType | null>(null)
+
+  // 삭제 확인 모달 상태
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false)
+  const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(null)
+
+  // Loading & Error
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const currentDate = new Date(selectedDate)
   const year = currentDate.getFullYear()
@@ -162,95 +98,53 @@ function ScheduleManagePage() {
   const firstDay = new Date(year, month, 1).getDay()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
-  // 항상 6주(42일)를 표시하기 위한 빈 셀 계산
-  const totalCells = 42 // 7일 * 6주
-  const emptyCellsAfter = totalCells - firstDay - daysInMonth
+  
+  // 이전 달의 마지막 날짜들
+  const emptyCellsBefore = firstDay
+  
+  // 다음 달의 시작 날짜들 (총 6주 = 42일 채우기 위함)
+  const totalCells = emptyCellsBefore + daysInMonth
+  // 35칸(5주)으로 충분한 경우와 42칸(6주)이 필요한 경우 분기
+  const totalSlots = totalCells <= 35 ? 35 : 42
+  const emptyCellsAfter = totalSlots - totalCells
 
-  const getSchedulesForDate = (date: string) => {
-    // 일정관리페이지에서는 모든 일정(비공개 포함)을 표시
-    return schedules.filter((s) => s.date === date)
+  // 반복 일정 여부 확인 헬퍼
+  const isRecurringSchedule = (schedule: Schedule | null) => {
+    if (!schedule) return false
+    return schedule.recurrenceRule && schedule.recurrenceRule !== 'NONE'
   }
 
-  const handleDateClick = (day: number) => {
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    setSelectedDate(dateStr)
-    setFormData((prev) => ({ ...prev, date: dateStr }))
-  }
+  // 초기 데이터 로드
+  useEffect(() => {
+    fetchWorshipCategories()
+  }, [])
 
-  const handleCreateSchedule = () => {
-    setEditingSchedule(null)
-    setFormData({
-      title: '',
-      date: selectedDate,
-      time: '',
-      type: '모임',
-      location: '',
-      description: '',
-      isRepeating: false,
-      repeatType: 'none',
-      repeatEndDate: '',
-      createAlbum: false,
-      shareScope: 'loggedIn',
-    })
-    setShowModal(true)
-  }
+  // 월 변경 시 일정 로드
+  useEffect(() => {
+    fetchSchedules(year, month + 1)
+  }, [year, month])
 
-  const handleEditSchedule = (schedule: Schedule) => {
-    setEditingSchedule(schedule)
-    setFormData({
-      title: schedule.title,
-      date: schedule.date,
-      time: schedule.time,
-      type: schedule.type,
-      location: schedule.location,
-      description: schedule.description,
-      isRepeating: schedule.isRepeating || false,
-      repeatType: schedule.repeatType || 'none',
-      repeatEndDate: schedule.repeatEndDate || '',
-      createAlbum: schedule.createAlbum || false,
-      shareScope: schedule.shareScope || 'loggedIn',
-    })
-    setShowModal(true)
-  }
-
-  const handleViewSchedule = (schedule: Schedule) => {
-    setSelectedSchedule(schedule)
-    setShowDetailModal(true)
-    setShowMenuForSchedule(null)
-  }
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr)
-    const weekdays = ['일', '월', '화', '수', '목', '금', '토']
-    const year = date.getFullYear()
-    const month = date.getMonth() + 1
-    const day = date.getDate()
-    const weekday = weekdays[date.getDay()]
-    return `${year}년 ${month}월 ${day}일 (${weekday})`
-  }
-
-  const handleDeleteSchedule = (id: string) => {
-    if (confirm('일정을 삭제하시겠습니까?')) {
-      setSchedules(schedules.filter((s) => s.id !== id))
+  const fetchWorshipCategories = async () => {
+    try {
+      const categories = await scheduleService.getWorshipCategories()
+      console.log('Worship Categories loaded:', categories)
+      setWorshipCategories(categories)
+    } catch (err) {
+      console.error('Failed to fetch worship categories:', err)
     }
   }
 
-  const handleSaveSchedule = () => {
-    if (!formData.title || !formData.date || !formData.time) {
-      alert('제목, 날짜, 시간을 모두 입력해주세요.')
-      return
+  const fetchSchedules = async (y: number, m: number) => {
+    setLoading(true)
+    try {
+      const data = await scheduleService.getSchedules(y, m)
+      setSchedules(data)
+    } catch (err) {
+      setError('일정을 불러오는데 실패했습니다.')
+      console.error(err)
+    } finally {
+      setLoading(false)
     }
-
-    if (editingSchedule) {
-      setSchedules(schedules.map((s) => (s.id === editingSchedule.id ? { ...editingSchedule, ...formData } : s)))
-    } else {
-      const newSchedule: Schedule = {
-        id: Date.now().toString(),
-        ...formData,
-      }
-      setSchedules([...schedules, newSchedule])
-    }
-    setShowModal(false)
   }
 
   const changeMonth = (delta: number) => {
@@ -261,53 +155,264 @@ function ScheduleManagePage() {
     setSelectedDate(dateStr)
   }
 
-  const handleYearMonthSelect = () => {
-    const dateStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`
+  const handleDateClick = (day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
     setSelectedDate(dateStr)
-    setShowDatePicker(false)
+    setFormData((prev) => ({ ...prev, startDate: dateStr, endDate: dateStr }))
   }
 
-  const typeColors: Record<Schedule['type'], string> = {
-    예배: 'bg-blue-100 text-blue-700',
-    행사: 'bg-purple-100 text-purple-700',
-    모임: 'bg-emerald-100 text-emerald-700',
-    기타: 'bg-slate-100 text-slate-700',
+  const getSchedulesForDate = (dateStr: string) => {
+    return schedules.filter((s) => {
+      const sDate = s.startDate.split('T')[0]
+      const eDate = s.endDate.split('T')[0]
+      return dateStr >= sDate && dateStr <= eDate
+    })
   }
 
-  // 외부 클릭 시 메뉴 닫기
-  useEffect(() => {
-    const handleClickOutside = () => {
-      if (showMenuForSchedule) {
-        setShowMenuForSchedule(null)
+  const handleCreateSchedule = () => {
+    setEditingSchedule(null)
+    setSelectedUpdateType(null) // 초기화
+    setFormData({
+      ...initialFormData,
+      startDate: selectedDate,
+      endDate: selectedDate,
+      startTime: '10:00',
+      endTime: '11:00',
+    })
+    setShowModal(true)
+  }
+
+  const handleEditSchedule = (schedule: Schedule) => {
+    setEditingSchedule(schedule)
+    setSelectedUpdateType(null) // 초기화
+    
+    // Parse start/end date time
+    const start = new Date(schedule.startDate)
+    const end = new Date(schedule.endDate)
+    
+    setFormData({
+      title: schedule.title,
+      startDate: schedule.startDate.split('T')[0],
+      endDate: schedule.endDate.split('T')[0],
+      startTime: start.toTimeString().slice(0, 5),
+      endTime: end.toTimeString().slice(0, 5),
+      type: schedule.type,
+      location: schedule.location || '',
+      content: schedule.content || '',
+      recurrenceRule: schedule.recurrenceRule,
+      recurrenceEndDate: schedule.recurrenceEndDate || '',
+      sharingScope: schedule.sharingScope,
+      worshipCategoryId: schedule.worshipCategoryId,
+      createAlbum: false,
+    })
+
+    // 반복 일정이라면 "먼저" 범위를 선택하게 함
+    if (isRecurringSchedule(schedule)) {
+      setRecurrenceAction('UPDATE')
+      setPendingActionData({ 
+        id: schedule.scheduleId, 
+        originalStartDate: schedule.startDate.split('T')[0]
+        // data는 아직 없음 (수정 전)
+      })
+      setShowRecurrenceModal(true)
+    } else {
+      setShowModal(true)
+    }
+  }
+
+  const handleViewSchedule = async (schedule: Schedule) => {
+    // 먼저 기존 정보로 모달 띄우기 (UX 반응성)
+    setSelectedSchedule(schedule)
+    setShowDetailModal(true)
+    
+    try {
+      // 상세 정보 조회 (앨범 ID, 출석 명단 등)
+      const detail = await scheduleService.getScheduleDetail(schedule.scheduleId)
+      setSelectedSchedule(detail)
+    } catch (err) {
+      console.error('Failed to fetch schedule detail:', err)
+      // 실패해도 기존 정보는 보여줌
+    }
+  }
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr)
+    const weekdays = ['일', '월', '화', '수', '목', '금', '토']
+    const year = date.getFullYear()
+    const m = date.getMonth() + 1
+    const d = date.getDate()
+    const weekday = weekdays[date.getDay()]
+    return `${year}년 ${m}월 ${d}일 (${weekday})`
+  }
+
+  // 일정 저장 (생성/수정)
+  const handleSaveSchedule = async () => {
+    if (!formData.title || !formData.startDate || !formData.endDate || !formData.startTime || !formData.endTime) {
+      alert('제목, 날짜, 시간을 모두 입력해주세요.')
+      return
+    }
+
+    const startDate = `${formData.startDate}T${formData.startTime}:00`
+    const endDate = `${formData.endDate}T${formData.endTime}:00`
+
+    // Basic request payload
+    const requestData: CreateScheduleRequest = {
+      title: formData.title,
+      content: formData.content,
+      startDate,
+      endDate,
+      type: formData.type,
+      location: formData.location,
+      sharingScope: formData.sharingScope,
+      worshipCategoryId: formData.type === 'WORSHIP' ? formData.worshipCategoryId : undefined,
+      recurrenceRule: formData.recurrenceRule,
+      recurrenceEndDate: formData.recurrenceRule !== 'NONE' ? formData.recurrenceEndDate : undefined,
+      createAlbum: formData.createAlbum,
+    }
+
+    try {
+      if (editingSchedule) {
+        // 수정 로직
+        const updateData: UpdateScheduleRequest = {
+          ...requestData,
+        }
+        
+        // 반복 일정인 경우 처리
+        if (isRecurringSchedule(editingSchedule)) {
+          // 이미 handleEditSchedule -> RecurrenceModal에서 선택된 범위가 있어야 함
+          if (selectedUpdateType) {
+            const finalUpdateData: UpdateScheduleRequest = {
+              ...updateData,
+              updateType: selectedUpdateType,
+              targetDate: editingSchedule.startDate.split('T')[0]
+            }
+            await scheduleService.updateSchedule(editingSchedule.scheduleId, finalUpdateData)
+          } else {
+             // 예외 상황: 범위 선택 없이 저장됨 (혹은 비반복 -> 반복 전환 시?)
+             // 기존 로직: 그냥 저장 (혹은 에러 처리)
+             console.warn('반복 일정 수정인데 범위가 선택되지 않았습니다. 기본 업데이트로 진행합니다.')
+             await scheduleService.updateSchedule(editingSchedule.scheduleId, updateData)
+          }
+        } else {
+          // 반복 일정이 아닌 경우 바로 수정
+          await scheduleService.updateSchedule(editingSchedule.scheduleId, updateData)
+        }
+      } else {
+        // 생성 로직
+        await scheduleService.createSchedule(requestData)
       }
+
+      // 성공 시
+      setShowModal(false)
+      fetchSchedules(year, month + 1)
+      setSelectedUpdateType(null)
+    } catch (err) {
+      console.error(err)
+      alert('일정 저장 중 오류가 발생했습니다.')
     }
-    if (showMenuForSchedule) {
-      document.addEventListener('click', handleClickOutside)
-      return () => document.removeEventListener('click', handleClickOutside)
+  }
+
+  // 일정 삭제 (삭제 확인 모달 띄우기)
+  const handleDeleteClick = (schedule: Schedule) => {
+    setScheduleToDelete(schedule)
+    setShowDeleteConfirmModal(true)
+  }
+
+  // 삭제 확인 후 실제 처리
+  const handleConfirmDelete = () => {
+    if (!scheduleToDelete) return
+    
+    const schedule = scheduleToDelete
+    setShowDeleteConfirmModal(false)
+
+    if (isRecurringSchedule(schedule)) {
+      setRecurrenceAction('DELETE')
+      // 반복 일정 삭제 시에도 targetDate는 해당 일정의 시작 날짜
+      const originalStartDate = schedule.startDate.split('T')[0]
+      setPendingActionData({ 
+        id: schedule.scheduleId,
+        originalStartDate: originalStartDate
+      })
+      setShowRecurrenceModal(true)
+    } else {
+      // 일반 삭제
+      scheduleService.deleteSchedule(schedule.scheduleId)
+        .then(() => {
+          setShowDetailModal(false)
+          fetchSchedules(year, month + 1)
+        })
+        .catch((err) => {
+          console.error(err)
+          alert('삭제 실패')
+        })
     }
-  }, [showMenuForSchedule])
+    // scheduleToDelete 초기화는 비동기 처리 완료 후 혹은 모달 닫힐 때 적절히 수행
+    // 여기서는 로직 분기 후 바로 초기화해도 무방 (Recurrence 모달 등에서 별도 state 사용)
+    setScheduleToDelete(null)
+  }
+
+  // 반복 일정 처리 모달 확인 핸들러
+  const handleRecurrenceConfirm = async (updateType: UpdateType) => {
+    if (!pendingActionData) return
+
+    try {
+      // 수정/삭제하려는 일정의 기준 날짜 (YYYY-MM-DD)
+      const targetDate = pendingActionData.originalStartDate
+
+      if (recurrenceAction === 'UPDATE') {
+        // 데이터가 없으면 "수정 전 범위 선택" 단계임
+        if (!pendingActionData.data) {
+           setSelectedUpdateType(updateType)
+           setShowRecurrenceModal(false)
+           setShowModal(true)
+           return
+        }
+        
+        // (구) 저장 시점 확인 로직 - 현재 흐름상 도달하지 않아야 함
+        const updateData: UpdateScheduleRequest = {
+          ...pendingActionData.data!,
+          updateType,
+          targetDate
+        }
+        await scheduleService.updateSchedule(pendingActionData.id, updateData)
+      } else if (recurrenceAction === 'DELETE') {
+        await scheduleService.deleteSchedule(pendingActionData.id, updateType, targetDate)
+      }
+
+      setShowRecurrenceModal(false)
+      setShowModal(false)
+      setShowDetailModal(false)
+      setPendingActionData(null)
+      setRecurrenceAction(null)
+      setSelectedUpdateType(null)
+      
+      // 목록 갱신
+      fetchSchedules(year, month + 1)
+    } catch (err) {
+      console.error(err)
+      alert('요청 처리 중 오류가 발생했습니다.')
+    }
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-6">
+        <UserHeader />
+
         {/* 헤더 */}
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <header className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/dashboard')}
-              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-            >
-              ← 돌아가기
+            <button onClick={() => navigate(-1)} className="text-slate-500 hover:text-slate-700">
+              ←
             </button>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-100 text-xl">
-                📅
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-slate-900">일정 관리</h1>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                  관리자용
+                </span>
               </div>
-              <div>
-                <p className="text-base font-bold text-slate-900">일정 관리</p>
-                <p className="text-xs text-slate-500">예배 및 행사 일정</p>
-              </div>
+              <p className="text-sm text-slate-500">예배 및 행사 일정을 관리합니다.</p>
             </div>
           </div>
           <button
@@ -332,17 +437,9 @@ function ScheduleManagePage() {
                 >
                   ←
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedYear(year)
-                    setSelectedMonth(month + 1)
-                    setShowDatePicker(true)
-                  }}
-                  className="text-lg font-bold text-slate-900 hover:text-blue-600"
-                >
+                <h2 className="text-lg font-bold text-slate-900">
                   {year}년 {month + 1}월
-                </button>
+                </h2>
                 <button
                   type="button"
                   onClick={() => changeMonth(1)}
@@ -353,9 +450,12 @@ function ScheduleManagePage() {
               </div>
 
               {/* 요일 헤더 */}
-              <div className="mb-2 grid grid-cols-7 gap-1">
-                {['일', '월', '화', '수', '목', '금', '토'].map((day) => (
-                  <div key={day} className="p-2 text-center text-xs font-semibold text-slate-500">
+              <div className="mb-2 grid grid-cols-7 text-center">
+                {['일', '월', '화', '수', '목', '금', '토'].map((day, i) => (
+                  <div
+                    key={day}
+                    className={`text-xs font-semibold ${i === 0 ? 'text-rose-600' : 'text-slate-500'}`}
+                  >
                     {day}
                   </div>
                 ))}
@@ -363,12 +463,17 @@ function ScheduleManagePage() {
 
               {/* 날짜 그리드 */}
               <div className="grid grid-cols-7 gap-1">
-                {/* 첫 주 빈 셀 */}
-                {Array.from({ length: firstDay }).map((_, i) => (
-                  <div key={`empty-before-${i}`} className="aspect-square" />
+                {/* 지난 달 빈 셀 */}
+                {Array.from({ length: emptyCellsBefore }).map((_, i) => (
+                  <div key={`empty-before-${i}`} className="aspect-square bg-slate-50/50" />
                 ))}
-                {/* 실제 날짜 셀 */}
-                {days.map((day) => {
+
+                {/* 이번 달 날짜 */}
+                {days.map((day, index) => {
+                  // 전체 그리드 내에서의 인덱스 (빈 셀 포함)
+                  const gridIndex = emptyCellsBefore + index
+                  const isSunday = gridIndex % 7 === 0
+                  
                   const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
                   const daySchedules = getSchedulesForDate(dateStr)
                   const isSelected = dateStr === selectedDate
@@ -381,104 +486,79 @@ function ScheduleManagePage() {
                       onClick={() => handleDateClick(day)}
                       className={`aspect-square rounded-lg border p-1 text-left text-xs transition hover:bg-slate-50 ${
                         isSelected ? 'border-blue-500 bg-blue-50' : 'border-slate-200'
-                      } ${isToday ? 'font-bold text-blue-600' : 'text-slate-700'}`}
+                      } ${isToday ? 'font-bold text-blue-600' : isSunday ? 'text-rose-600' : 'text-slate-700'}`}
                     >
                       <div className="mb-1">{day}</div>
-                      <div className="space-y-0.5">
-                        {daySchedules.slice(0, 2).map((schedule) => (
+                      <div className="space-y-0.5 overflow-hidden">
+                        {daySchedules.slice(0, 3).map((schedule) => (
                           <div
-                            key={schedule.id}
+                            key={schedule.scheduleId}
                             className={`truncate rounded px-1 py-0.5 text-[10px] ${typeColors[schedule.type]}`}
                           >
                             {schedule.title}
                           </div>
                         ))}
-                        {daySchedules.length > 2 && (
-                          <div className="text-[10px] text-slate-400">+{daySchedules.length - 2}</div>
+                        {daySchedules.length > 3 && (
+                          <div className="text-[10px] text-slate-400">+{daySchedules.length - 3}</div>
                         )}
                       </div>
                     </button>
                   )
                 })}
-                {/* 마지막 주 빈 셀 (항상 6주가 되도록) */}
+                
+                {/* 다음 달 빈 셀 */}
                 {Array.from({ length: emptyCellsAfter }).map((_, i) => (
-                  <div key={`empty-after-${i}`} className="aspect-square" />
+                  <div key={`empty-after-${i}`} className="aspect-square bg-slate-50/50" />
                 ))}
               </div>
             </div>
           </div>
 
           {/* 선택된 날짜의 일정 목록 */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm h-fit">
             <h3 className="mb-4 text-sm font-semibold text-slate-900">
               {selectedDate} 일정
             </h3>
-            <div className="space-y-2">
-              {getSchedulesForDate(selectedDate).length === 0 ? (
-                <p className="text-xs text-slate-400">등록된 일정이 없습니다.</p>
+            <div className="space-y-2 max-h-[600px] overflow-y-auto">
+              {loading ? (
+                <p className="text-center text-xs text-slate-400 py-4">로딩 중...</p>
+              ) : error ? (
+                <p className="text-center text-xs text-red-500 py-4">{error}</p>
+              ) : getSchedulesForDate(selectedDate).length === 0 ? (
+                <p className="text-center text-xs text-slate-400 py-4">등록된 일정이 없습니다.</p>
               ) : (
                 getSchedulesForDate(selectedDate).map((schedule) => (
                   <div
-                    key={schedule.id}
-                    className="group relative rounded-lg border border-slate-200 p-3 hover:bg-slate-50 cursor-pointer"
+                    key={schedule.scheduleId}
+                    className="group relative rounded-lg border border-slate-200 p-3 hover:bg-slate-50 cursor-pointer transition"
                     onClick={() => handleViewSchedule(schedule)}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="mb-1 flex items-center gap-2">
                           <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${typeColors[schedule.type]}`}>
-                            {schedule.type}
+                            {typeLabels[schedule.type]}
                           </span>
                           <span className="text-xs font-semibold text-slate-900">{schedule.title}</span>
-                          {schedule.shareScope === 'private' && (
-                            <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-slate-200 text-slate-600">
-                              비공개
+                          {/* 예배 카테고리 표시 */}
+                          {schedule.worshipCategoryName && (
+                            <span className="text-[10px] text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">
+                              {schedule.worshipCategoryName}
+                            </span>
+                          )}
+                          {isRecurringSchedule(schedule) && (
+                            <span className="text-[10px] text-slate-500 border border-slate-200 rounded px-1">
+                              반복
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-slate-600">{schedule.time}</p>
+                        <p className="text-xs text-slate-600">
+                          {new Date(schedule.startDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} ~ 
+                          {new Date(schedule.endDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </p>
                         <p className="text-xs text-slate-500">{schedule.location}</p>
-                        {schedule.description && (
-                          <p className="mt-1 text-xs text-slate-400">{schedule.description}</p>
-                        )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setShowMenuForSchedule(showMenuForSchedule === schedule.id ? null : schedule.id)
-                        }}
-                        className="rounded px-2 py-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                      >
-                        ⋮
-                      </button>
                     </div>
-                    {showMenuForSchedule === schedule.id && (
-                      <div className="absolute right-2 top-10 z-10 rounded-lg border border-slate-200 bg-white shadow-lg">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setShowMenuForSchedule(null)
-                            handleEditSchedule(schedule)
-                          }}
-                          className="block w-full rounded-t-lg px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                        >
-                          수정
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setShowMenuForSchedule(null)
-                            handleDeleteSchedule(schedule.id)
-                          }}
-                          className="block w-full rounded-b-lg px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
-                        >
-                          삭제
-                        </button>
-                      </div>
-                    )}
                   </div>
                 ))
               )}
@@ -489,7 +569,7 @@ function ScheduleManagePage() {
         {/* 일정 추가/수정 모달 */}
         {showModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto">
               <h3 className="mb-4 text-lg font-semibold text-slate-900">
                 {editingSchedule ? '일정 수정' : '일정 추가'}
               </h3>
@@ -504,39 +584,111 @@ function ScheduleManagePage() {
                     placeholder="일정 제목"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-700">날짜</label>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">시작 날짜</label>
                     <input
                       type="date"
-                      value={formData.date}
-                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                      value={formData.startDate}
+                      onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-700">시간</label>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">종료 날짜</label>
                     <input
-                      type="time"
-                      value={formData.time}
-                      onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                      type="date"
+                      value={formData.endDate}
+                      onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     />
                   </div>
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-700">유형</label>
-                  <select
-                    value={formData.type}
-                    onChange={(e) => setFormData({ ...formData, type: e.target.value as Schedule['type'] })}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  >
-                    <option value="예배">예배</option>
-                    <option value="행사">행사</option>
-                    <option value="모임">모임</option>
-                    <option value="기타">기타</option>
-                  </select>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">시작 시간</label>
+                    <input
+                      type="time"
+                      value={formData.startTime}
+                      onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">종료 시간</label>
+                    <input
+                      type="time"
+                      value={formData.endTime}
+                      onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </div>
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">유형</label>
+                    <select
+                      value={formData.type}
+                      onChange={(e) => setFormData({ ...formData, type: e.target.value as ScheduleType })}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    >
+                      <option value="WORSHIP">예배</option>
+                      <option value="EVENT">행사</option>
+                      <option value="MEETING">모임</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">공개 범위</label>
+                    <select
+                      value={formData.sharingScope}
+                      onChange={(e) => setFormData({ ...formData, sharingScope: e.target.value as SharingScope })}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    >
+                      <option value="PUBLIC">전체 공개</option>
+                      <option value="LOGGED_IN_USERS">로그인 회원</option>
+                      <option value="PRIVATE">비공개</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 예배 카테고리 선택 (유형이 예배일 때만) */}
+                {formData.type === 'WORSHIP' && (
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">예배 카테고리</label>
+                    <select
+                      value={formData.worshipCategoryId?.toString() || ""}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setFormData((prev) => ({ 
+                          ...prev, 
+                          worshipCategoryId: value === "" ? undefined : Number(value) 
+                        }))
+                      }}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    >
+                      <option value="">선택하세요</option>
+                      {worshipCategories.map((cat) => {
+                        // 데이터 안전성 검사 및 id 필드 호환성 처리
+                        const categoryId = cat.worshipCategoryId ?? (cat as any).id;
+
+                        if (!cat || categoryId === undefined || categoryId === null) {
+                          console.warn('Invalid category item:', cat);
+                          return null;
+                        }
+                        
+                        return (
+                          <option key={categoryId} value={categoryId.toString()}>
+                            {cat.name}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </div>
+                )}
+
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-700">장소</label>
                   <input
@@ -544,97 +696,84 @@ function ScheduleManagePage() {
                     value={formData.location}
                     onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                    placeholder="장소"
+                    placeholder="예: 본당, 소예배실"
                   />
                 </div>
+
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-700">설명</label>
                   <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    value={formData.content}
+                    onChange={(e) => setFormData({ ...formData, content: e.target.value })}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     rows={3}
-                    placeholder="일정 설명"
+                    placeholder="일정 상세 설명"
                   />
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-700">일정 반복</label>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={formData.isRepeating || false}
-                        onChange={(e) => setFormData({ ...formData, isRepeating: e.target.checked, repeatType: e.target.checked ? 'weekly' : 'none' })}
-                        className="rounded border-slate-300"
-                      />
-                      <span className="text-sm text-slate-700">반복 일정으로 설정</span>
-                    </label>
-                    {formData.isRepeating && (
-                      <div className="ml-6 space-y-2">
-                        <select
-                          value={formData.repeatType || 'none'}
-                          onChange={(e) => setFormData({ ...formData, repeatType: e.target.value as Schedule['repeatType'] })}
-                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                        >
-                          <option value="none">반복 없음</option>
-                          <option value="daily">매일</option>
-                          <option value="weekly">매주</option>
-                          <option value="monthly">매월</option>
-                          <option value="yearly">매년</option>
-                        </select>
-                        <div>
-                          <label className="mb-1 block text-xs text-slate-600">반복 종료일</label>
-                          <input
-                            type="date"
-                            value={formData.repeatEndDate || ''}
-                            onChange={(e) => setFormData({ ...formData, repeatEndDate: e.target.value })}
-                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                          />
-                        </div>
-                      </div>
-                    )}
+
+                {/* 반복 설정 */}
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="mb-3">
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">반복</label>
+                    <select
+                      value={formData.recurrenceRule}
+                      onChange={(e) => setFormData({ ...formData, recurrenceRule: e.target.value as RecurrenceRule })}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                      disabled={!!editingSchedule} // 수정 시에는 반복 규칙 변경 제한
+                    >
+                      <option value="NONE">반복 없음</option>
+                      <option value="DAILY">매일</option>
+                      <option value="WEEKLY">매주</option>
+                      <option value="MONTHLY">매월</option>
+                      <option value="YEARLY">매년</option>
+                    </select>
                   </div>
+                  {formData.recurrenceRule !== 'NONE' && (
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-700">반복 종료일</label>
+                      <input
+                        type="date"
+                        value={formData.recurrenceEndDate}
+                        onChange={(e) => setFormData({ ...formData, recurrenceEndDate: e.target.value })}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        disabled={!!editingSchedule}
+                      />
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-700">앨범 생성</label>
-                  <label className="flex items-center gap-2">
+
+                {/* 앨범 생성 옵션 (신규 생성 시에만 표시) */}
+                {!editingSchedule && (
+                  <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3">
                     <input
                       type="checkbox"
-                      checked={formData.createAlbum || false}
+                      id="createAlbum"
+                      checked={formData.createAlbum}
                       onChange={(e) => setFormData({ ...formData, createAlbum: e.target.checked })}
-                      className="rounded border-slate-300"
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                     />
-                    <span className="text-sm text-slate-700">이 일정에 대한 앨범 자동 생성</span>
-                  </label>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-700">공유 범위</label>
-                  <select
-                    value={formData.shareScope || 'loggedIn'}
-                    onChange={(e) => setFormData({ ...formData, shareScope: e.target.value as Schedule['shareScope'] })}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    <label htmlFor="createAlbum" className="text-sm font-medium text-slate-700">
+                      이 일정의 앨범도 함께 생성하기
+                    </label>
+                  </div>
+                )}
+
+                <div className="mt-6 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                   >
-                    <option value="loggedIn">로그인한 사용자만</option>
-                    <option value="guest">로그인하지 않은 사용자도</option>
-                    <option value="private">비공개 (일정관리페이지에서만 표시)</option>
-                  </select>
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveSchedule}
+                    className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    저장
+                  </button>
                 </div>
-              </div>
-              <div className="mt-6 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  취소
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveSchedule}
-                  className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                >
-                  저장
-                </button>
               </div>
             </div>
           </div>
@@ -654,16 +793,23 @@ function ScheduleManagePage() {
                   ✕
                 </button>
               </div>
+              
               <div className="space-y-6">
-                {/* 일정 기본 정보 */}
+                {/* 기본 정보 */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                  <div className="space-y-6">
+                  <div className="flex items-start justify-between">
                     <div>
-                      <div className="mb-3 flex items-center gap-3">
+                      <div className="mb-2 flex items-center gap-2">
                         <span className={`rounded-full px-3 py-1 text-sm font-semibold ${typeColors[selectedSchedule.type]}`}>
-                          {selectedSchedule.type}
+                          {typeLabels[selectedSchedule.type]}
                         </span>
-                        {selectedSchedule.shareScope === 'private' && (
+                        {/* 예배 카테고리 표시 */}
+                        {selectedSchedule.worshipCategoryName && (
+                          <span className="text-xs font-semibold text-slate-600 bg-slate-100 rounded px-2 py-0.5">
+                            {selectedSchedule.worshipCategoryName}
+                          </span>
+                        )}
+                        {selectedSchedule.sharingScope === 'PRIVATE' && (
                           <span className="rounded-full px-2 py-1 text-xs font-semibold bg-slate-200 text-slate-600">
                             비공개
                           </span>
@@ -671,232 +817,222 @@ function ScheduleManagePage() {
                       </div>
                       <h2 className="text-2xl font-bold text-slate-900">{selectedSchedule.title}</h2>
                     </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">날짜</p>
-                        <p className="mt-2 text-lg font-semibold text-slate-900">{formatDate(selectedSchedule.date)}</p>
-                      </div>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">시간</p>
-                        <p className="mt-2 text-lg font-semibold text-slate-900">{selectedSchedule.time}</p>
-                      </div>
+                    
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setShowDetailModal(false)
+                          handleEditSchedule(selectedSchedule)
+                        }}
+                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                      >
+                        수정
+                      </button>
+                      <button
+                        onClick={() => handleDeleteClick(selectedSchedule)}
+                        className="rounded-lg bg-rose-50 px-3 py-1.5 text-sm font-semibold text-rose-600 hover:bg-rose-100"
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">일시</p>
+                      <p className="mt-1 text-base font-semibold text-slate-900">
+                        {formatDate(selectedSchedule.startDate)}
+                      </p>
+                      <p className="text-sm text-slate-600">
+                        {new Date(selectedSchedule.startDate).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} ~ 
+                        {new Date(selectedSchedule.endDate).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                      </p>
                     </div>
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">장소</p>
-                      <p className="mt-2 text-lg font-semibold text-slate-900">{selectedSchedule.location}</p>
-                    </div>
-                    {selectedSchedule.description && (
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">설명</p>
-                        <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-700">
-                          {selectedSchedule.description}
-                        </p>
-                      </div>
-                    )}
-                    {selectedSchedule.isRepeating && (
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">반복 설정</p>
-                        <p className="mt-2 text-sm text-slate-700">
-                          {selectedSchedule.repeatType === 'daily' && '매일'}
-                          {selectedSchedule.repeatType === 'weekly' && '매주'}
-                          {selectedSchedule.repeatType === 'monthly' && '매월'}
-                          {selectedSchedule.repeatType === 'yearly' && '매년'}
-                          {selectedSchedule.repeatEndDate && ` (종료일: ${selectedSchedule.repeatEndDate})`}
-                        </p>
-                      </div>
-                    )}
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">앨범 생성</p>
-                        <p className="mt-2 text-sm font-semibold text-slate-900">
-                          {selectedSchedule.createAlbum ? '예' : '아니오'}
-                        </p>
-                      </div>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">공유 범위</p>
-                        <p className="mt-2 text-sm font-semibold text-slate-900">
-                          {selectedSchedule.shareScope === 'loggedIn' && '로그인한 사용자만'}
-                          {selectedSchedule.shareScope === 'guest' && '로그인하지 않은 사용자도'}
-                          {selectedSchedule.shareScope === 'private' && '비공개'}
-                        </p>
-                      </div>
+                      <p className="mt-2 text-base font-semibold text-slate-900">{selectedSchedule.location || '장소 미정'}</p>
                     </div>
                   </div>
+                  
+                  {selectedSchedule.content && (
+                    <div className="mt-4 rounded-lg border border-slate-200 p-4">
+                      <p className="text-sm text-slate-700 whitespace-pre-wrap">{selectedSchedule.content}</p>
+                    </div>
+                  )}
                 </div>
 
-                {/* 출석 정보 */}
-                {mockAttendanceData[selectedSchedule.id] && (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                    <div className="mb-4 flex items-center justify-between">
-                      <h2 className="text-xl font-bold text-slate-900">출석 정보</h2>
-                      <div className="flex gap-4 text-sm">
-                        <div className="flex items-center gap-2">
-                          <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">
-                            출석 {mockAttendanceData[selectedSchedule.id].presentCount}명
-                          </span>
-                          <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
-                            결석 {mockAttendanceData[selectedSchedule.id].absentCount}명
-                          </span>
-                        </div>
+                {/* 앨범 및 출석 정보 */}
+                <div className="grid gap-6 sm:grid-cols-2">
+                   {/* 앨범 연동 */}
+                   <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col items-center justify-center text-center">
+                      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+                        📷
                       </div>
-                    </div>
-                    <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-sm text-slate-600">
-                        총 <span className="font-semibold text-slate-900">{mockAttendanceData[selectedSchedule.id].totalCount}명</span> 중{' '}
-                        <span className="font-semibold text-blue-600">{mockAttendanceData[selectedSchedule.id].presentCount}명</span> 출석
-                      </p>
-                    </div>
-                    {mockAttendanceData[selectedSchedule.id].attendanceList.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-sm font-semibold text-slate-700">출석자 목록</p>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {mockAttendanceData[selectedSchedule.id].attendanceList.map((record) => (
-                            <div
-                              key={record.memberId}
-                              className={`rounded-lg border p-3 ${
-                                record.status === 'PRESENT'
-                                  ? 'border-blue-200 bg-blue-50'
-                                  : 'border-slate-200 bg-slate-50'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium text-slate-900">{record.name}</span>
-                                <span
-                                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                                    record.status === 'PRESENT'
-                                      ? 'bg-blue-100 text-blue-700'
-                                      : 'bg-slate-100 text-slate-600'
-                                  }`}
-                                >
-                                  {record.status === 'PRESENT' ? '출석' : '결석'}
-                                </span>
-                              </div>
-                              {record.attendanceTime && (
-                                <p className="mt-1 text-xs text-slate-500">
-                                  {new Date(record.attendanceTime).toLocaleTimeString('ko-KR', {
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })}
-                                </p>
-                              )}
-                            </div>
+                      <h4 className="mb-2 text-sm font-bold text-slate-900">앨범</h4>
+                      {selectedSchedule.linkedAlbumId ? (
+                        <div className="w-full">
+                          <p className="mb-3 text-xs text-slate-500">연동된 앨범이 있습니다.</p>
+                          <button
+                            onClick={() => navigate(`/albums/${selectedSchedule.linkedAlbumId}`)}
+                            className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition"
+                          >
+                            앨범 보러가기 →
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400">연동된 앨범이 없습니다.</p>
+                      )}
+                   </div>
+
+                   {/* 출석 명단 */}
+                   <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                      <div className="mb-4 flex items-center justify-between">
+                         <div className="flex items-center gap-2">
+                           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                             ✅
+                           </div>
+                           <h4 className="text-sm font-bold text-slate-900">출석 명단</h4>
+                         </div>
+                         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                           {selectedSchedule.attendees?.length || 0}명
+                         </span>
+                      </div>
+                      
+                      {selectedSchedule.attendees && selectedSchedule.attendees.length > 0 ? (
+                        <ul className="max-h-40 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                          {selectedSchedule.attendees.map(attendee => (
+                            <li key={attendee.memberId} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                              <span className="text-sm font-medium text-slate-700">{attendee.name}</span>
+                              <span className="text-xs text-slate-400">{attendee.attendanceTime}</span>
+                            </li>
                           ))}
+                        </ul>
+                      ) : (
+                        <div className="flex h-32 flex-col items-center justify-center text-center">
+                          <p className="text-xs text-slate-400">아직 출석한 인원이 없습니다.</p>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* 연결된 앨범 */}
-                {mockAlbumData[selectedSchedule.id] && mockAlbumData[selectedSchedule.id].length > 0 && (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                    <h2 className="mb-4 text-xl font-bold text-slate-900">연결된 앨범</h2>
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                      {mockAlbumData[selectedSchedule.id].map((album) => (
-                        <button
-                          key={album.id}
-                          onClick={() => navigate(`/youth-album/${album.id}`)}
-                          className="group rounded-xl border border-slate-200 bg-white text-left shadow-sm transition hover:border-blue-300 hover:shadow-md"
-                        >
-                          <div className="aspect-video w-full overflow-hidden rounded-t-xl bg-slate-100">
-                            <img
-                              src={album.thumbnail}
-                              alt={album.title}
-                              className="h-full w-full object-cover transition group-hover:scale-105"
-                            />
-                          </div>
-                          <div className="p-4">
-                            <h3 className="mb-1 text-sm font-semibold text-slate-900 group-hover:text-blue-600">
-                              {album.title}
-                            </h3>
-                            <p className="text-xs text-slate-500">{album.date}</p>
-                            <p className="mt-2 text-xs text-slate-400">사진 {album.photoCount}장</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {!mockAttendanceData[selectedSchedule.id] && (!mockAlbumData[selectedSchedule.id] || mockAlbumData[selectedSchedule.id].length === 0) && (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                    <p className="text-center text-sm text-slate-500">
-                      이 일정에 연결된 출석 정보나 앨범이 없습니다.
-                    </p>
-                  </div>
-                )}
+                      )}
+                   </div>
+                </div>
               </div>
-              <div className="mt-6 flex gap-2">
+            </div>
+          </div>
+        )}
+
+        {/* 삭제 확인 모달 */}
+        {showDeleteConfirmModal && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+                  🗑️
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">일정 삭제</h3>
+                  <p className="text-xs text-slate-500">정말로 삭제하시겠습니까?</p>
+                </div>
+              </div>
+              
+              <p className="mb-6 text-sm text-slate-600">
+                삭제된 일정은 복구할 수 없습니다.
+              </p>
+              
+              <div className="flex gap-3">
                 <button
-                  type="button"
                   onClick={() => {
-                    setShowDetailModal(false)
-                    handleEditSchedule(selectedSchedule)
+                    setShowDeleteConfirmModal(false)
+                    setScheduleToDelete(null)
                   }}
-                  className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                >
-                  수정
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowDetailModal(false)}
                   className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
-                  닫기
+                  취소
+                </button>
+                <button
+                  onClick={handleConfirmDelete}
+                  className="flex-1 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+                >
+                  삭제
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* 년월 선택 모달 */}
-        {showDatePicker && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
-              <h3 className="mb-4 text-lg font-semibold text-slate-900">년월 선택</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-700">년도</label>
-                  <input
-                    type="number"
-                    value={selectedYear}
-                    onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                    min={2000}
-                    max={2100}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
+        {/* 반복 일정 처리 범위 선택 모달 */}
+        {showRecurrenceModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl border-t-4 border-amber-500">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                  ⚠️
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-700">월</label>
-                  <select
-                    value={selectedMonth}
-                    onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  >
-                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                      <option key={m} value={m}>
-                        {m}월
-                      </option>
-                    ))}
-                  </select>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    {recurrenceAction === 'UPDATE' ? '반복 일정 수정' : '반복 일정 삭제'}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    이 일정은 반복되는 일정입니다.
+                  </p>
                 </div>
               </div>
-              <div className="mt-6 flex gap-2">
+              
+              <p className="mb-6 text-sm text-slate-600">
+                변경 사항을 어떻게 적용하시겠습니까?<br/>
+                <span className="text-xs text-slate-400">선택한 날짜: {pendingActionData?.originalStartDate}</span>
+              </p>
+              
+              <div className="flex flex-col gap-2">
                 <button
-                  type="button"
-                  onClick={() => setShowDatePicker(false)}
-                  className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  onClick={() => handleRecurrenceConfirm('THIS_ONLY')}
+                  className="group rounded-lg border border-slate-200 p-3 text-left transition hover:border-blue-500 hover:bg-blue-50"
                 >
-                  취소
+                  <span className="block text-sm font-semibold text-slate-700 group-hover:text-blue-700">
+                    {recurrenceAction === 'UPDATE' ? '이번만 수정 ' : '이번만 삭제 '}
+                  </span>
+                  <span className="block text-xs text-slate-500 group-hover:text-blue-600">
+                    {recurrenceAction === 'UPDATE' 
+                      ? '클릭한 날짜의 일정만 변경' 
+                      : '클릭한 날짜의 일정만 삭제'}
+                  </span>
                 </button>
                 <button
-                  type="button"
-                  onClick={handleYearMonthSelect}
-                  className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  onClick={() => handleRecurrenceConfirm('FUTURE')}
+                  className="group rounded-lg border border-slate-200 p-3 text-left transition hover:border-blue-500 hover:bg-blue-50"
                 >
-                  확인
+                  <span className="block text-sm font-semibold text-slate-700 group-hover:text-blue-700">
+                    {recurrenceAction === 'UPDATE' ? '이후 모든 일정' : '이후 모든 일정 삭제'}
+                  </span>
+                  <span className="block text-xs text-slate-500 group-hover:text-blue-600">
+                    {recurrenceAction === 'UPDATE'
+                      ? '클릭한 날짜부터 향후 일정 모두 변경'
+                      : '클릭한 날짜부터 향후 일정 모두 삭제'}
+                  </span>
+                </button>
+                <button
+                  onClick={() => handleRecurrenceConfirm('ALL')}
+                  className="group rounded-lg border border-slate-200 p-3 text-left transition hover:border-blue-500 hover:bg-blue-50"
+                >
+                  <span className="block text-sm font-semibold text-slate-700 group-hover:text-blue-700">
+                    {recurrenceAction === 'UPDATE' ? '전체 수정' : '전체 삭제'}
+                  </span>
+                  <span className="block text-xs text-slate-500 group-hover:text-blue-600">
+                    {recurrenceAction === 'UPDATE'
+                      ? '과거 포함 모든 반복 내용 변경'
+                      : '과거 포함 모든 반복 내용 삭제'}
+                  </span>
                 </button>
               </div>
+              
+              <button
+                onClick={() => {
+                  setShowRecurrenceModal(false)
+                  setRecurrenceAction(null)
+                  setPendingActionData(null)
+                }}
+                className="mt-4 w-full rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+              >
+                취소
+              </button>
             </div>
           </div>
         )}
@@ -906,12 +1042,3 @@ function ScheduleManagePage() {
 }
 
 export default ScheduleManagePage
-
-
-
-
-
-
-
-
-

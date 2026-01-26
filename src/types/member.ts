@@ -9,6 +9,7 @@ export interface Member {
   birthDate: string
   memberStatus: MemberStatus | string
   memberImageUrl: string | null
+  soonName?: string
   // roles: string[]  // Removed from DTO as per instructions, keeping optional if backend still sends it but ignored
   roles?: string[]
   hasAccount: boolean
