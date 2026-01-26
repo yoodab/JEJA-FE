@@ -11,7 +11,7 @@ import type {
   UpdateScheduleRequest
 } from '../types/schedule'
 import { scheduleService } from '../services/scheduleService'
-import UserHeader from '../components/UserHeader'
+import { getAlbumDetail, getFileUrl, type AlbumDetail } from '../services/albumService'
 
 // UI용 폼 데이터 인터페이스
 interface ScheduleFormData {
@@ -73,6 +73,20 @@ function ScheduleManagePage() {
   
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null)
+  const [linkedAlbum, setLinkedAlbum] = useState<AlbumDetail | null>(null)
+
+  useEffect(() => {
+    if (selectedSchedule?.linkedAlbumId) {
+      getAlbumDetail(selectedSchedule.linkedAlbumId)
+        .then(setLinkedAlbum)
+        .catch((err) => {
+          console.error('Failed to load linked album:', err)
+          setLinkedAlbum(null)
+        })
+    } else {
+      setLinkedAlbum(null)
+    }
+  }, [selectedSchedule])
   
   // 반복 일정 처리 모달 상태
   const [showRecurrenceModal, setShowRecurrenceModal] = useState(false)
@@ -85,6 +99,15 @@ function ScheduleManagePage() {
   // 삭제 확인 모달 상태
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false)
   const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(null)
+
+  // 필터 상태
+  const [selectedFilters, setSelectedFilters] = useState<ScheduleType[]>(['WORSHIP', 'EVENT', 'MEETING'])
+
+  const toggleFilter = (type: ScheduleType) => {
+    setSelectedFilters((prev) =>
+      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
+    )
+  }
 
   // Loading & Error
   const [loading, setLoading] = useState(false)
@@ -165,7 +188,9 @@ function ScheduleManagePage() {
     return schedules.filter((s) => {
       const sDate = s.startDate.split('T')[0]
       const eDate = s.endDate.split('T')[0]
-      return dateStr >= sDate && dateStr <= eDate
+      const matchesDate = dateStr >= sDate && dateStr <= eDate
+      const matchesType = selectedFilters.includes(s.type)
+      return matchesDate && matchesType
     })
   }
 
@@ -397,31 +422,48 @@ function ScheduleManagePage() {
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-6">
-        <UserHeader />
-
         {/* 헤더 */}
-        <header className="flex items-center justify-between">
+        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate(-1)} className="text-slate-500 hover:text-slate-700">
-              ←
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard')}
+              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+            >
+              ← 돌아가기
             </button>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold text-slate-900">일정 관리</h1>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                  관리자용
-                </span>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-xl shadow-sm">
+                🗓️
               </div>
-              <p className="text-sm text-slate-500">예배 및 행사 일정을 관리합니다.</p>
+              <div>
+                <p className="text-base font-bold text-slate-900">일정 관리</p>
+                <p className="text-xs text-slate-500">예배 및 행사 일정 관리</p>
+              </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleCreateSchedule}
-            className="rounded-full bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
-          >
-            + 일정 추가
-          </button>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
+              {(['WORSHIP', 'EVENT', 'MEETING'] as ScheduleType[]).map((type) => (
+                <label key={type} className="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={selectedFilters.includes(type)}
+                    onChange={() => toggleFilter(type)}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-slate-600">{typeLabels[type]}</span>
+                </label>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={handleCreateSchedule}
+              className="rounded-full bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            >
+              + 일정 추가
+            </button>
+          </div>
         </header>
 
         <div className="grid gap-6 lg:grid-cols-3">
@@ -540,12 +582,12 @@ function ScheduleManagePage() {
                             {typeLabels[schedule.type]}
                           </span>
                           <span className="text-xs font-semibold text-slate-900">{schedule.title}</span>
-                          {/* 예배 카테고리 표시 */}
-                          {schedule.worshipCategoryName && (
+                          {/* 예배 카테고리 표시 (숨김 처리) */}
+                          {/* {schedule.worshipCategoryName && (
                             <span className="text-[10px] text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">
                               {schedule.worshipCategoryName}
                             </span>
-                          )}
+                          )} */}
                           {isRecurringSchedule(schedule) && (
                             <span className="text-[10px] text-slate-500 border border-slate-200 rounded px-1">
                               반복
@@ -803,12 +845,12 @@ function ScheduleManagePage() {
                         <span className={`rounded-full px-3 py-1 text-sm font-semibold ${typeColors[selectedSchedule.type]}`}>
                           {typeLabels[selectedSchedule.type]}
                         </span>
-                        {/* 예배 카테고리 표시 */}
-                        {selectedSchedule.worshipCategoryName && (
+                        {/* 예배 카테고리 표시 (숨김 처리) */}
+                        {/* {selectedSchedule.worshipCategoryName && (
                           <span className="text-xs font-semibold text-slate-600 bg-slate-100 rounded px-2 py-0.5">
                             {selectedSchedule.worshipCategoryName}
                           </span>
-                        )}
+                        )} */}
                         {selectedSchedule.sharingScope === 'PRIVATE' && (
                           <span className="rounded-full px-2 py-1 text-xs font-semibold bg-slate-200 text-slate-600">
                             비공개
@@ -864,23 +906,48 @@ function ScheduleManagePage() {
                 {/* 앨범 및 출석 정보 */}
                 <div className="grid gap-6 sm:grid-cols-2">
                    {/* 앨범 연동 */}
-                   <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col items-center justify-center text-center">
-                      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
-                        📷
+                   <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                      <div className="mb-4 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+                            📷
+                          </div>
+                          <h4 className="text-sm font-bold text-slate-900">앨범</h4>
+                        </div>
                       </div>
-                      <h4 className="mb-2 text-sm font-bold text-slate-900">앨범</h4>
+
                       {selectedSchedule.linkedAlbumId ? (
                         <div className="w-full">
-                          <p className="mb-3 text-xs text-slate-500">연동된 앨범이 있습니다.</p>
+                          {linkedAlbum && linkedAlbum.photos && linkedAlbum.photos.length > 0 ? (
+                            <div className="grid grid-cols-3 gap-1 mb-3">
+                              {linkedAlbum.photos.slice(0, 3).map((photo) => (
+                                <div 
+                                  key={photo.photoId}
+                                  className="aspect-square cursor-pointer overflow-hidden rounded-md bg-slate-100"
+                                  onClick={() => navigate(`/youth-album/${linkedAlbum.id}`)}
+                                >
+                                  <img 
+                                    src={getFileUrl(photo.imageUrl)} 
+                                    alt="앨범 사진" 
+                                    className="h-full w-full object-cover transition hover:scale-105"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mb-3 text-xs text-slate-500">연동된 앨범이 있습니다.</p>
+                          )}
                           <button
-                            onClick={() => navigate(`/albums/${selectedSchedule.linkedAlbumId}`)}
+                            onClick={() => navigate(`/youth-album/${selectedSchedule.linkedAlbumId}`)}
                             className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition"
                           >
                             앨범 보러가기 →
                           </button>
                         </div>
                       ) : (
-                        <p className="text-xs text-slate-400">연동된 앨범이 없습니다.</p>
+                        <div className="flex flex-col items-center justify-center py-4">
+                           <p className="text-xs text-slate-400">연동된 앨범이 없습니다.</p>
+                        </div>
                       )}
                    </div>
 
