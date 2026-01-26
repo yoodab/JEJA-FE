@@ -87,19 +87,31 @@ function MemberListPage() {
 
   return (
     <section className="space-y-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">청년부 인원 관리</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            청년부 인원 현황을 확인하고 관리하세요. (총 {totalElements}명)
-          </p>
+      <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard')}
+            className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+          >
+            ← 돌아가기
+          </button>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-xl">
+              👥
+            </div>
+            <div>
+              <p className="text-base font-bold text-slate-900">청년부 인원 관리</p>
+              <p className="text-xs text-slate-500">청년부 인원 현황 (총 {totalElements}명)</p>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2">
           <button
             type="button"
             onClick={handleExcelUploadClick}
             disabled={isUploading}
-            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-full bg-green-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isUploading ? '업로드 중...' : '엑셀 업로드'}
           </button>
@@ -113,7 +125,7 @@ function MemberListPage() {
           <button
             type="button"
             onClick={() => navigate('/manage/members')}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            className="rounded-full bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
           >
             신규 등록
           </button>
