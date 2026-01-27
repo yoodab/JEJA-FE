@@ -72,6 +72,7 @@ function AttendanceManagePage() {
 
   const [isNewcomerModalOpen, setIsNewcomerModalOpen] = useState(false)
   const [newNewcomerName, setNewNewcomerName] = useState('')
+  const [newNewcomerGender, setNewNewcomerGender] = useState<'MALE' | 'FEMALE'>('MALE')
   const [isNewcomerSaving, setIsNewcomerSaving] = useState(false)
 
   const [dateRangeStart, setDateRangeStart] = useState<string>(() => {
@@ -667,7 +668,7 @@ function AttendanceManagePage() {
       const name = newNewcomerName.trim()
       await registerNewcomer({
         name,
-        gender: 'NONE',
+        gender: newNewcomerGender,
         birthDate: '1900-01-01',
         phone: '',
       })
@@ -675,7 +676,7 @@ function AttendanceManagePage() {
         name,
         phone: '',
         birthDate: '1900-01-01',
-        gender: 'NONE',
+        gender: newNewcomerGender,
         memberStatus: 'NEWCOMER',
         memberImageUrl: undefined,
         roles: [],
@@ -693,6 +694,7 @@ function AttendanceManagePage() {
         return next
       })
       setNewNewcomerName('')
+      setNewNewcomerGender('MALE')
       setIsNewcomerModalOpen(false)
     } catch (error) {
       console.error(error)
@@ -1974,8 +1976,41 @@ function AttendanceManagePage() {
                     placeholder="새신자 이름을 입력하세요"
                   />
                 </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    성별
+                  </label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="gender"
+                        value="MALE"
+                        checked={newNewcomerGender === 'MALE'}
+                        onChange={(e) =>
+                          setNewNewcomerGender(e.target.value as 'MALE')
+                        }
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-slate-700">남성</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="gender"
+                        value="FEMALE"
+                        checked={newNewcomerGender === 'FEMALE'}
+                        onChange={(e) =>
+                          setNewNewcomerGender(e.target.value as 'FEMALE')
+                        }
+                        className="h-4 w-4 text-rose-600 focus:ring-rose-500"
+                      />
+                      <span className="text-sm text-slate-700">여성</span>
+                    </label>
+                  </div>
+                </div>
                 <p className="text-xs text-slate-500">
-                  성별, 생년월일, 연락처 등은 추후 멤버 관리 화면에서 수정할 수 있습니다.
+                  생년월일, 연락처 등은 추후 멤버 관리 화면에서 수정할 수 있습니다.
                 </p>
               </div>
               <div className="mt-6 flex justify-end gap-2">
