@@ -4,7 +4,7 @@ export type RecurrenceRule = 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 export type UpdateType = 'THIS_ONLY' | 'FUTURE' | 'ALL';
 
 export interface WorshipCategory {
-  worshipCategoryId: number;
+  code: string;
   name: string;
 }
 
@@ -13,6 +13,7 @@ export interface ScheduleAttendee {
   name: string;
   attended: boolean;
   attendanceTime: string;
+  phoneNumber?: string; // 전화번호 필드 추가
 }
 
 export interface Schedule {
@@ -24,7 +25,7 @@ export interface Schedule {
   type: ScheduleType;
   location?: string;
   sharingScope: SharingScope;
-  worshipCategoryId?: number;
+  worshipCategory?: string;
   worshipName?: string;
   worshipCategoryName?: string;
   recurrenceRule: RecurrenceRule;
@@ -41,7 +42,7 @@ export interface CreateScheduleRequest {
   type: ScheduleType;
   location?: string;
   sharingScope: SharingScope;
-  worshipCategoryId?: number;
+  worshipCategory?: string;
   recurrenceRule: RecurrenceRule;
   recurrenceEndDate?: string;
   createAlbum?: boolean;

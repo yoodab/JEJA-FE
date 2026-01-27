@@ -10,7 +10,9 @@ import type {
   CreateScheduleRequest,
   UpdateScheduleRequest
 } from '../types/schedule'
+import type { Member } from '../types/member'
 import { scheduleService } from '../services/scheduleService'
+import { getMembers } from '../services/memberService'
 import { getAlbumDetail, getFileUrl, type AlbumDetail } from '../services/albumService'
 
 // UI용 폼 데이터 인터페이스
@@ -26,7 +28,7 @@ interface ScheduleFormData {
   recurrenceRule: RecurrenceRule
   recurrenceEndDate: string // YYYY-MM-DD
   sharingScope: SharingScope
-  worshipCategoryId?: number
+  worshipCategory?: string
   createAlbum: boolean
 }
 
@@ -42,7 +44,7 @@ const initialFormData: ScheduleFormData = {
   recurrenceRule: 'NONE',
   recurrenceEndDate: '',
   sharingScope: 'LOGGED_IN_USERS',
-  worshipCategoryId: undefined,
+  worshipCategory: undefined,
   createAlbum: false,
 }
 
@@ -101,13 +103,21 @@ function ScheduleManagePage() {
   const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(null)
 
   // 필터 상태
-  const [selectedFilters, setSelectedFilters] = useState<ScheduleType[]>(['WORSHIP', 'EVENT', 'MEETING'])
+  const [selectedFilters, setSelectedFilters] = useState<ScheduleType[]>([])
 
   const toggleFilter = (type: ScheduleType) => {
     setSelectedFilters((prev) =>
       prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
     )
   }
+
+  // 명단 관리 모달 상태
+  const [showMemberManageModal, setShowMemberManageModal] = useState(false)
+  const [memberManageMode, setMemberManageMode] = useState<'ADD' | 'REMOVE' | null>(null)
+  const [availableMembers, setAvailableMembers] = useState<Member[]>([])
+  const [selectedMemberIdsForManage, setSelectedMemberIdsForManage] = useState<number[]>([])
+  const [memberSearchKeyword, setMemberSearchKeyword] = useState('')
+  const [memberListLoading, setMemberListLoading] = useState(false)
 
   // Loading & Error
   const [loading, setLoading] = useState(false)
@@ -189,7 +199,8 @@ function ScheduleManagePage() {
       const sDate = s.startDate.split('T')[0]
       const eDate = s.endDate.split('T')[0]
       const matchesDate = dateStr >= sDate && dateStr <= eDate
-      const matchesType = selectedFilters.includes(s.type)
+      const matchesType =
+        selectedFilters.length === 0 || selectedFilters.includes(s.type)
       return matchesDate && matchesType
     })
   }
@@ -227,7 +238,7 @@ function ScheduleManagePage() {
       recurrenceRule: schedule.recurrenceRule,
       recurrenceEndDate: schedule.recurrenceEndDate || '',
       sharingScope: schedule.sharingScope,
-      worshipCategoryId: schedule.worshipCategoryId,
+      worshipCategory: schedule.worshipCategory,
       createAlbum: false,
     })
 
@@ -289,7 +300,7 @@ function ScheduleManagePage() {
       type: formData.type,
       location: formData.location,
       sharingScope: formData.sharingScope,
-      worshipCategoryId: formData.type === 'WORSHIP' ? formData.worshipCategoryId : undefined,
+      worshipCategory: formData.type === 'WORSHIP' ? formData.worshipCategory : undefined,
       recurrenceRule: formData.recurrenceRule,
       recurrenceEndDate: formData.recurrenceRule !== 'NONE' ? formData.recurrenceEndDate : undefined,
       createAlbum: formData.createAlbum,
@@ -419,6 +430,141 @@ function ScheduleManagePage() {
     }
   }
 
+  // --- 명단 관리 핸들러 ---
+
+  // 추가 가능한 멤버 목록 조회
+  const fetchAvailableMembers = async (keyword?: string, mode?: 'ADD' | 'REMOVE') => {
+    if (!selectedSchedule) return
+    
+    const targetMode = mode || memberManageMode
+    setMemberListLoading(true)
+    
+    try {
+      if (targetMode === 'REMOVE') {
+        // 삭제 모드: 현재 참석자 중에서 검색
+        let attendees = selectedSchedule.attendees || []
+        if (keyword) {
+          attendees = attendees.filter(a => a.name.includes(keyword))
+        }
+        
+        // ScheduleAttendee -> Member 변환
+        const mappedMembers: Member[] = attendees.map(a => ({
+          memberId: a.memberId,
+          name: a.name,
+          phone: a.phoneNumber || '',
+          roles: ['MEMBER'],
+          gender: 'MALE',
+          birthDate: '',
+          memberStatus: 'ACTIVE',
+          memberImageUrl: null,
+          hasAccount: false,
+          age: 0
+        }))
+        setAvailableMembers(mappedMembers)
+      } else {
+        // 추가 모드: 전체 멤버 중 미참석자 검색
+        // 1. 전체 멤버 조회 (검색어 적용)
+        const response = await getMembers({ 
+          page: 0, 
+          size: 1000, 
+          sort: 'name,asc',
+          keyword: keyword,
+          status: 'ACTIVE'
+        })
+        
+        const allMembers = response.content
+        
+        // 2. 이미 등록된 멤버 제외
+        const currentAttendeeIds = selectedSchedule.attendees?.map(a => a.memberId) || []
+        const filtered = allMembers.filter(m => !currentAttendeeIds.includes(m.memberId))
+        
+        setAvailableMembers(filtered)
+      }
+    } catch (err) {
+      console.error('Failed to fetch members:', err)
+      alert('멤버 목록을 불러오는데 실패했습니다.')
+    } finally {
+      setMemberListLoading(false)
+    }
+  }
+
+  // 명단 추가 모달 열기
+  const handleOpenMemberAdd = () => {
+    if (!selectedSchedule) return
+    
+    setMemberSearchKeyword('')
+    setMemberManageMode('ADD')
+    setSelectedMemberIdsForManage([])
+    setShowMemberManageModal(true)
+    fetchAvailableMembers('', 'ADD')
+  }
+
+  // 명단 삭제 모달 열기
+  const handleOpenMemberRemove = () => {
+    if (!selectedSchedule) return
+    
+    setMemberSearchKeyword('')
+    setMemberManageMode('REMOVE')
+    setSelectedMemberIdsForManage([])
+    setShowMemberManageModal(true)
+    fetchAvailableMembers('', 'REMOVE')
+  }
+
+  // 멤버 검색 핸들러
+  const handleSearchMembers = (e: React.FormEvent) => {
+    e.preventDefault()
+    fetchAvailableMembers(memberSearchKeyword)
+  }
+
+  // 멤버 선택 토글
+  const toggleMemberSelection = (memberId: number) => {
+    if (memberManageMode === 'REMOVE') {
+      // 이미 출석한 멤버인지 확인 (attendees에서 찾음)
+      const attendee = selectedSchedule?.attendees?.find(a => a.memberId === memberId)
+      if (attendee?.attended) {
+        alert('이미 출석 체크된 인원은 제외할 수 없습니다.')
+        return
+      }
+    }
+
+    setSelectedMemberIdsForManage(prev => 
+      prev.includes(memberId) 
+        ? prev.filter(id => id !== memberId)
+        : [...prev, memberId]
+    )
+  }
+
+  // 명단 저장 (추가/삭제)
+  const handleSaveMemberManage = async () => {
+    if (!selectedSchedule || !memberManageMode) return
+
+    try {
+      const selectedIds = selectedMemberIdsForManage
+      
+      if (selectedIds.length === 0) {
+        setShowMemberManageModal(false)
+        return
+      }
+
+      if (memberManageMode === 'ADD') {
+        await scheduleService.registerScheduleMembers(selectedSchedule.scheduleId, selectedIds)
+        alert('명단이 추가되었습니다.')
+      } else {
+        await scheduleService.removeScheduleAttendees(selectedSchedule.scheduleId, selectedIds)
+        alert('명단이 삭제되었습니다.')
+      }
+      
+      // 성공 후 데이터 갱신
+      const detail = await scheduleService.getScheduleDetail(selectedSchedule.scheduleId)
+      setSelectedSchedule(detail)
+      
+      setShowMemberManageModal(false)
+    } catch (err: any) {
+      console.error(err)
+      alert(err.message || '요청 처리에 실패했습니다.')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -442,19 +588,39 @@ function ScheduleManagePage() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
-              {(['WORSHIP', 'EVENT', 'MEETING'] as ScheduleType[]).map((type) => (
-                <label key={type} className="flex items-center gap-1.5 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={selectedFilters.includes(type)}
-                    onChange={() => toggleFilter(type)}
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm font-medium text-slate-600">{typeLabels[type]}</span>
-                </label>
-              ))}
+        </header>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <span className="text-sm font-semibold text-slate-700">일정 분류</span>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedFilters([])}
+                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                    selectedFilters.length === 0
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-white text-slate-600 shadow-sm hover:bg-slate-50 ring-1 ring-slate-200'
+                  }`}
+                >
+                  전체
+                </button>
+                {(['WORSHIP', 'EVENT', 'MEETING'] as ScheduleType[]).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => toggleFilter(type)}
+                    className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                      selectedFilters.includes(type)
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-white text-slate-600 shadow-sm hover:bg-slate-50 ring-1 ring-slate-200'
+                    }`}
+                  >
+                    {typeLabels[type]}
+                  </button>
+                ))}
+              </div>
             </div>
             <button
               type="button"
@@ -464,7 +630,7 @@ function ScheduleManagePage() {
               + 일정 추가
             </button>
           </div>
-        </header>
+        </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
           {/* 캘린더 */}
@@ -701,32 +867,22 @@ function ScheduleManagePage() {
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-slate-700">예배 카테고리</label>
                     <select
-                      value={formData.worshipCategoryId?.toString() || ""}
+                      value={formData.worshipCategory || ""}
                       onChange={(e) => {
                         const value = e.target.value
                         setFormData((prev) => ({ 
                           ...prev, 
-                          worshipCategoryId: value === "" ? undefined : Number(value) 
+                          worshipCategory: value === "" ? undefined : value
                         }))
                       }}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     >
                       <option value="">선택하세요</option>
-                      {worshipCategories.map((cat) => {
-                        // 데이터 안전성 검사 및 id 필드 호환성 처리
-                        const categoryId = cat.worshipCategoryId ?? (cat as any).id;
-
-                        if (!cat || categoryId === undefined || categoryId === null) {
-                          console.warn('Invalid category item:', cat);
-                          return null;
-                        }
-                        
-                        return (
-                          <option key={categoryId} value={categoryId.toString()}>
-                            {cat.name}
-                          </option>
-                        )
-                      })}
+                      {worshipCategories.map((cat) => (
+                        <option key={cat.code} value={cat.code}>
+                          {cat.name}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 )}
@@ -824,8 +980,8 @@ function ScheduleManagePage() {
         {/* 일정 상세보기 모달 */}
         {showDetailModal && selectedSchedule && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto">
-              <div className="mb-4 flex items-center justify-between">
+            <div className="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] flex flex-col">
+              <div className="mb-4 flex items-center justify-between flex-shrink-0">
                 <h3 className="text-lg font-semibold text-slate-900">일정 상세보기</h3>
                 <button
                   type="button"
@@ -836,7 +992,7 @@ function ScheduleManagePage() {
                 </button>
               </div>
               
-              <div className="space-y-6">
+              <div className="flex-1 overflow-y-auto space-y-6 pr-2 custom-scrollbar">
                 {/* 기본 정보 */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                   <div className="flex items-start justify-between">
@@ -906,7 +1062,7 @@ function ScheduleManagePage() {
                 {/* 앨범 및 출석 정보 */}
                 <div className="grid gap-6 sm:grid-cols-2">
                    {/* 앨범 연동 */}
-                   <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                   <div className="flex flex-col h-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                       <div className="mb-4 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
@@ -917,10 +1073,10 @@ function ScheduleManagePage() {
                       </div>
 
                       {selectedSchedule.linkedAlbumId ? (
-                        <div className="w-full">
+                        <div className="flex flex-col w-full">
                           {linkedAlbum && linkedAlbum.photos && linkedAlbum.photos.length > 0 ? (
                             <div className="grid grid-cols-3 gap-1 mb-3">
-                              {linkedAlbum.photos.slice(0, 3).map((photo) => (
+                              {linkedAlbum.photos.slice(0, 6).map((photo) => (
                                 <div 
                                   key={photo.photoId}
                                   className="aspect-square cursor-pointer overflow-hidden rounded-md bg-slate-100"
@@ -939,46 +1095,88 @@ function ScheduleManagePage() {
                           )}
                           <button
                             onClick={() => navigate(`/youth-album/${selectedSchedule.linkedAlbumId}`)}
-                            className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition"
+                            className="mt-auto w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition"
                           >
                             앨범 보러가기 →
                           </button>
                         </div>
                       ) : (
-                        <div className="flex flex-col items-center justify-center py-4">
+                        <div className="flex flex-col h-32 items-center justify-center py-4">
                            <p className="text-xs text-slate-400">연동된 앨범이 없습니다.</p>
                         </div>
                       )}
                    </div>
 
                    {/* 출석 명단 */}
-                   <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                   <div className="flex flex-col h-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                       <div className="mb-4 flex items-center justify-between">
                          <div className="flex items-center gap-2">
-                           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
                              ✅
                            </div>
-                           <h4 className="text-sm font-bold text-slate-900">출석 명단</h4>
+                           <h4 className="text-sm font-bold text-slate-900">
+                             {selectedSchedule.type === 'WORSHIP' ? '출석 인원' : '출석 현황'}
+                           </h4>
                          </div>
                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                           {selectedSchedule.attendees?.length || 0}명
+                           {selectedSchedule.type === 'WORSHIP' 
+                             ? `${selectedSchedule.attendees?.length || 0}명`
+                             : `${selectedSchedule.attendees?.filter(a => a.attended).length || 0} / ${selectedSchedule.attendees?.length || 0}명`
+                           }
                          </span>
                       </div>
                       
-                      {selectedSchedule.attendees && selectedSchedule.attendees.length > 0 ? (
-                        <ul className="max-h-40 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                          {selectedSchedule.attendees.map(attendee => (
-                            <li key={attendee.memberId} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-                              <span className="text-sm font-medium text-slate-700">{attendee.name}</span>
-                              <span className="text-xs text-slate-400">{attendee.attendanceTime}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <div className="flex h-32 flex-col items-center justify-center text-center">
-                          <p className="text-xs text-slate-400">아직 출석한 인원이 없습니다.</p>
-                        </div>
-                      )}
+                      <div className="flex flex-col w-full flex-1">
+                        {selectedSchedule.attendees && selectedSchedule.attendees.length > 0 ? (
+                          <ul className="max-h-60 overflow-y-auto grid grid-cols-2 gap-2 pr-1 custom-scrollbar mb-3">
+                            {selectedSchedule.attendees.map(attendee => (
+                              <li 
+                                key={attendee.memberId} 
+                                className={`flex items-center justify-center rounded-lg px-2 py-1.5 ${
+                                  attendee.attended ? 'bg-blue-50 border border-blue-100' : 'bg-slate-50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-sm font-medium ${attendee.attended ? 'text-blue-700' : 'text-slate-700'}`}>
+                                    {attendee.name}
+                                  </span>
+                                  {attendee.attended && <span>✅</span>}
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className="flex h-32 flex-col items-center justify-center text-center mb-3">
+                            <p className="text-xs text-slate-400">등록된 명단이 없습니다.</p>
+                          </div>
+                        )}
+
+                        {/* WORSHIP이 아닐 때만 명단 추가/삭제 버튼 노출 */}
+                        {selectedSchedule.type !== 'WORSHIP' && (
+                          <div className="mt-auto mb-3 flex gap-2">
+                            <button
+                              onClick={handleOpenMemberAdd}
+                              className="flex-1 rounded-lg border border-dashed border-slate-300 p-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:text-blue-600 hover:border-blue-300 transition"
+                            >
+                              + 명단 추가
+                            </button>
+                            <button
+                              onClick={handleOpenMemberRemove}
+                              className="flex-1 rounded-lg border border-dashed border-slate-300 p-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:text-red-600 hover:border-red-300 transition"
+                            >
+                              - 명단 삭제
+                            </button>
+                          </div>
+                        )}
+  
+                        {/* 출석표 보러가기 버튼 */}
+                        <button
+                          onClick={() => navigate(`/manage/attendance?scheduleId=${selectedSchedule.scheduleId}&date=${selectedSchedule.startDate.split('T')[0]}`)}
+                          className={`w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 transition ${selectedSchedule.type === 'WORSHIP' ? 'mt-auto' : ''}`}
+                        >
+                          출석표 보러가기 →
+                        </button>
+                      </div>
                    </div>
                 </div>
               </div>
@@ -1100,6 +1298,118 @@ function ScheduleManagePage() {
               >
                 취소
               </button>
+            </div>
+          </div>
+        )}
+        {/* 명단 관리 모달 */}
+        {showMemberManageModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl max-h-[80vh] flex flex-col">
+              <h3 className="mb-4 text-lg font-bold text-slate-900">
+                {memberManageMode === 'ADD' ? '명단 추가' : '명단 삭제'}
+              </h3>
+              
+              {/* 검색 */}
+              <form onSubmit={handleSearchMembers} className="mb-4 flex gap-2">
+                <input
+                  type="text"
+                  value={memberSearchKeyword}
+                  onChange={(e) => setMemberSearchKeyword(e.target.value)}
+                  placeholder="이름으로 검색..."
+                  className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+                <button
+                  type="submit"
+                  className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200"
+                >
+                  검색
+                </button>
+              </form>
+
+              {/* 목록 */}
+              <div className="flex-1 overflow-y-auto border rounded-lg border-slate-200 p-2 mb-4">
+                {memberListLoading ? (
+                  <div className="py-8 text-center text-xs text-slate-400">로딩 중...</div>
+                ) : availableMembers.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    멤버가 없습니다.
+                  </div>
+                ) : (
+                  <ul className="space-y-1">
+                    {availableMembers.map((member) => {
+                       const isSelected = selectedMemberIdsForManage.includes(member.memberId)
+                       const isRemoveMode = memberManageMode === 'REMOVE'
+                       
+                       // 출석 여부 확인 (삭제 모드일 때만 체크)
+                       const attendee = selectedSchedule?.attendees?.find(a => a.memberId === member.memberId)
+                       const isAttended = isRemoveMode && attendee?.attended
+
+                       const activeColorClass = isRemoveMode ? 'bg-red-50' : 'bg-blue-50'
+                       const activeBorderClass = isRemoveMode ? 'border-red-500 bg-red-500' : 'border-blue-500 bg-blue-500'
+                       
+                       return (
+                         <li
+                           key={member.memberId}
+                           className={`flex items-center gap-3 rounded-lg px-3 py-2 transition ${
+                             isAttended 
+                               ? 'cursor-not-allowed bg-slate-100 opacity-60' 
+                               : `cursor-pointer hover:bg-slate-50 ${isSelected ? activeColorClass : ''}`
+                           }`}
+                           onClick={() => !isAttended && toggleMemberSelection(member.memberId)}
+                         >
+                           <div className={`flex h-5 w-5 items-center justify-center rounded border ${
+                              isAttended
+                                ? 'border-slate-200 bg-slate-100'
+                                : isSelected 
+                                  ? `${activeBorderClass} text-white` 
+                                  : 'border-slate-300 bg-white'
+                           }`}>
+                             {isSelected && !isAttended && (
+                               <span className="text-xs">✓</span>
+                             )}
+                             {isAttended && (
+                               <span className="text-xs">🔒</span>
+                             )}
+                           </div>
+                           <div>
+                             <div className="flex items-center gap-2">
+                               <p className={`text-sm font-medium ${isAttended ? 'text-slate-500' : 'text-slate-900'}`}>
+                                 {member.name}
+                               </p>
+                               {isAttended && (
+                                 <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+                                   출석완료
+                                 </span>
+                               )}
+                             </div>
+                             <p className="text-xs text-slate-500">{member.phone}</p>
+                           </div>
+                         </li>
+                       )
+                     })}
+                  </ul>
+                )}
+              </div>
+
+              {/* 하단 버튼 */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowMemberManageModal(false)}
+                  className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleSaveMemberManage}
+                  className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold text-white transition ${
+                    memberManageMode === 'ADD' 
+                      ? 'bg-blue-600 hover:bg-blue-700' 
+                      : 'bg-red-600 hover:bg-red-700'
+                  }`}
+                >
+                  {memberManageMode === 'ADD' ? '추가' : '삭제'}
+                </button>
+              </div>
             </div>
           </div>
         )}
