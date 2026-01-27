@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Member } from '../types/member'
 import { getMembers } from '../services/memberService'
+import { formatPhoneNumber } from '../utils/format'
 
 function BirthdayManagePage() {
   const navigate = useNavigate()
@@ -146,7 +147,7 @@ function BirthdayManagePage() {
                         <tr key={member.memberId} className="hover:bg-slate-50">
                           <td className="px-4 py-3 text-sm font-medium text-slate-900">{member.name}</td>
                           <td className="px-4 py-3 text-sm text-slate-600">{formatDate(member.birthDate)}</td>
-                          <td className="px-4 py-3 text-sm text-slate-600">{member.phone}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{formatPhoneNumber(member.phone)}</td>
                         </tr>
                       ))}
                     </tbody>
