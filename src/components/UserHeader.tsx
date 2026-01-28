@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   clearAuth,
@@ -7,6 +7,8 @@ import {
   isManager as checkIsManager,
   MANAGER_ROLES,
 } from "../utils/auth";
+import { getClubs } from "../services/clubService";
+import type { Club } from "../types/club";
 
 type UserHeaderProps = {
   isLoggedIn?: boolean;
@@ -34,34 +36,6 @@ const boardTypes = [
   },
 ];
 
-// 팀 정보 (실제로는 API에서 가져올 데이터)
-const teamTypes = [
-  {
-    id: 1,
-    name: "예배팀",
-  },
-  {
-    id: 2,
-    name: "찬양팀",
-  },
-  {
-    id: 3,
-    name: "새신자팀",
-  },
-  {
-    id: 4,
-    name: "방송팀",
-  },
-  {
-    id: 5,
-    name: "컨텐츠팀",
-  },
-  {
-    id: 6,
-    name: "디자인팀",
-  },
-];
-
 function UserHeader({
   isLoggedIn: propLoggedIn,
   userRole: propUserRole,
@@ -72,6 +46,54 @@ function UserHeader({
   const [localRole, setLocalRole] = useState<string | null>(null);
   const [isBoardMenuOpen, setIsBoardMenuOpen] = useState(false);
   const [isTeamMenuOpen, setIsTeamMenuOpen] = useState(false);
+  const [teams, setTeams] = useState<Club[]>([]);
+
+  const teamMenuTimer = useRef<NodeJS.Timeout | null>(null);
+  const boardMenuTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const openTeamMenu = () => {
+    if (teamMenuTimer.current) {
+      clearTimeout(teamMenuTimer.current);
+      teamMenuTimer.current = null;
+    }
+    // 게시판 메뉴가 열려있다면 즉시 닫기
+    if (isBoardMenuOpen) {
+      if (boardMenuTimer.current) {
+        clearTimeout(boardMenuTimer.current);
+        boardMenuTimer.current = null;
+      }
+      setIsBoardMenuOpen(false);
+    }
+    setIsTeamMenuOpen(true);
+  };
+
+  const closeTeamMenu = () => {
+    teamMenuTimer.current = setTimeout(() => {
+      setIsTeamMenuOpen(false);
+    }, 300);
+  };
+
+  const openBoardMenu = () => {
+    if (boardMenuTimer.current) {
+      clearTimeout(boardMenuTimer.current);
+      boardMenuTimer.current = null;
+    }
+    // 팀 메뉴가 열려있다면 즉시 닫기
+    if (isTeamMenuOpen) {
+      if (teamMenuTimer.current) {
+        clearTimeout(teamMenuTimer.current);
+        teamMenuTimer.current = null;
+      }
+      setIsTeamMenuOpen(false);
+    }
+    setIsBoardMenuOpen(true);
+  };
+
+  const closeBoardMenu = () => {
+    boardMenuTimer.current = setTimeout(() => {
+      setIsBoardMenuOpen(false);
+    }, 300);
+  };
 
   // 내부 상태 초기화 및 storage 변경 감지
   useEffect(() => {
@@ -83,6 +105,22 @@ function UserHeader({
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
   }, []);
+
+  // 팀 목록 불러오기
+  useEffect(() => {
+    const fetchTeams = async () => {
+      try {
+        const data = await getClubs();
+        setTeams(data);
+      } catch (error) {
+        console.error("팀 목록 로드 실패:", error);
+      }
+    };
+
+    if (propLoggedIn || localLoggedIn) {
+      fetchTeams();
+    }
+  }, [propLoggedIn, localLoggedIn]);
 
   // 상위에서 전달된 상태가 있으면 우선 사용
   const isLoggedIn = propLoggedIn ?? localLoggedIn;
@@ -140,14 +178,18 @@ function UserHeader({
           <>
             <div
               className="relative"
-              onMouseEnter={() => setIsTeamMenuOpen(true)}
-              onMouseLeave={() => setIsTeamMenuOpen(false)}
+              onMouseEnter={openTeamMenu}
+              onMouseLeave={closeTeamMenu}
             >
               <button className="rounded-full px-3 py-1 hover:bg-slate-100">
                 팀
               </button>
               {isTeamMenuOpen && (
-                <div className="absolute left-0 top-full mt-1 min-w-[160px] rounded-lg border border-slate-200 bg-white shadow-lg z-50">
+                <div 
+                  className="absolute left-0 top-full mt-1 min-w-[160px] rounded-lg border border-slate-200 bg-white shadow-lg z-50"
+                  onMouseEnter={openTeamMenu}
+                  onMouseLeave={closeTeamMenu}
+                >
                   <button
                     onClick={() => {
                       navigate("/club");
@@ -157,7 +199,7 @@ function UserHeader({
                   >
                     팀 목록
                   </button>
-                  {teamTypes.map((team) => (
+                  {teams.map((team) => (
                     <button
                       key={team.id}
                       onClick={() => {
@@ -174,14 +216,18 @@ function UserHeader({
             </div>
             <div
               className="relative"
-              onMouseEnter={() => setIsBoardMenuOpen(true)}
-              onMouseLeave={() => setIsBoardMenuOpen(false)}
+              onMouseEnter={openBoardMenu}
+              onMouseLeave={closeBoardMenu}
             >
               <button className="rounded-full px-3 py-1 hover:bg-slate-100">
                 게시판
               </button>
               {isBoardMenuOpen && (
-                <div className="absolute left-0 top-full mt-1 min-w-[160px] rounded-lg border border-slate-200 bg-white shadow-lg z-50">
+                <div 
+                  className="absolute left-0 top-full mt-1 min-w-[160px] rounded-lg border border-slate-200 bg-white shadow-lg z-50"
+                  onMouseEnter={openBoardMenu}
+                  onMouseLeave={closeBoardMenu}
+                >
                   {boardTypes.map((board) => (
                     <button
                       key={board.id}
