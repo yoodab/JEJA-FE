@@ -85,14 +85,14 @@ function GroupFormationPage() {
   }, [selectedDate, searchParams])
 
   // --- Load Members & Attendance ---
-  const loadData = useCallback(async (scheduleId: number) => {
+  const loadData = useCallback(async (scheduleId: number, dateStr: string) => {
     setDataLoading(true)
     try {
       // 1. Load All Members
       // 2. Load Attendance Sheet for selection
       const [membersPage, sheet] = await Promise.all([
         getMembers({ page: 0, size: 2000, sort: 'name,asc' }),
-        getAttendanceSheet(scheduleId).catch(() => null)
+        getAttendanceSheet(scheduleId, dateStr).catch(() => null)
       ])
 
       setAllMembers(membersPage.content)
@@ -121,8 +121,8 @@ function GroupFormationPage() {
       setAllMembers([])
       return
     }
-    loadData(selectedScheduleId)
-  }, [selectedScheduleId, loadData])
+    loadData(selectedScheduleId, selectedDate)
+  }, [selectedScheduleId, selectedDate, loadData])
 
 
   // --- Helper: Map for fast lookup ---
