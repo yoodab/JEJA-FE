@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import type { Member } from '../../types/member'
 import { formatPhoneNumber } from '../../utils/format'
 import { formatGender, formatRoles, formatMemberStatus } from '../../types/member'
+import ImagePreviewModal from '../ImagePreviewModal'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
 
@@ -14,6 +15,7 @@ interface MemberDetailModalProps {
 
 export default function MemberDetailModal({ member, onClose, onEdit, onDelete }: MemberDetailModalProps) {
   const [showMenu, setShowMenu] = useState(false)
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
 
   const handleEdit = () => {
     onEdit(member)
@@ -75,7 +77,8 @@ export default function MemberDetailModal({ member, onClose, onEdit, onDelete }:
               <img 
                 src={`${API_BASE_URL}${member.memberImageUrl}`} 
                 alt={member.name} 
-                className="h-full w-full object-cover" 
+                className="h-full w-full object-cover cursor-zoom-in hover:opacity-80 transition-opacity" 
+                onClick={() => setPreviewImage(`${API_BASE_URL}${member.memberImageUrl}`)}
               />
             ) : (
               <svg className="h-12 w-12 text-slate-400" fill="currentColor" viewBox="0 0 24 24">
@@ -122,6 +125,13 @@ export default function MemberDetailModal({ member, onClose, onEdit, onDelete }:
             </button>
         </div>
       </div>
+      
+      {previewImage && (
+        <ImagePreviewModal
+          imageUrl={previewImage}
+          onClose={() => setPreviewImage(null)}
+        />
+      )}
     </div>
   )
 }
