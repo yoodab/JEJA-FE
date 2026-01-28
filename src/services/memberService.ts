@@ -89,14 +89,15 @@ export async function uploadMembersFromExcel(file: File): Promise<void> {
 // 이미지 업로드 - POST /api/files/upload?folder=member
 export async function uploadMemberImage(file: File): Promise<string> {
   const formData = new FormData()
-  formData.append('file', file)
+  formData.append('files', file)
 
-  const response = await api.post<{ status: string, data: { url: string } }>('/api/files/upload?folder=member', formData, {
+  const response = await api.post<{ status: string, data: { url: string }[] }>('/api/files/upload', formData, {
+    params: { folder: 'member' },
     headers: {
       'Content-Type': 'multipart/form-data',
     },
   })
   
-  return response.data.data.url
+  return response.data.data[0].url
 }
 

@@ -6,6 +6,7 @@ import type { CreateMemberRequest, UpdateMemberRequest } from '../services/membe
 import { formatRoles, formatMemberStatus, getMemberStatusColor } from '../types/member'
 import MemberDetailModal from '../components/member/MemberDetailModal'
 import MemberEditModal from '../components/member/MemberEditModal'
+import ImagePreviewModal from '../components/ImagePreviewModal'
 import { formatPhoneNumber } from '../utils/format'
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
 function MemberManagePage() {
@@ -45,6 +46,9 @@ function MemberManagePage() {
   
   // Kebab Menu State
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null)
+
+  // Image Preview State
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
 
   // Load Stats on Mount
   useEffect(() => {
@@ -327,7 +331,11 @@ function MemberManagePage() {
                               <img
                                 src={`${API_BASE_URL}${member.memberImageUrl}`}
                                 alt={member.name}
-                                className="h-full w-full object-cover"
+                                className="h-full w-full object-cover cursor-zoom-in hover:opacity-80 transition-opacity"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setPreviewImage(`${API_BASE_URL}${member.memberImageUrl}`)
+                                }}
                               />
                             ) : (
                               <svg className="h-6 w-6 text-slate-400" fill="currentColor" viewBox="0 0 24 24">
@@ -467,6 +475,13 @@ function MemberManagePage() {
           member={editModalData.member}
           onClose={() => setEditModalData({ open: false, member: null })}
           onSave={handleSaveMember}
+        />
+      )}
+
+      {previewImage && (
+        <ImagePreviewModal
+          imageUrl={previewImage}
+          onClose={() => setPreviewImage(null)}
         />
       )}
     </div>
