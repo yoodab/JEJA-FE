@@ -1,16 +1,13 @@
 import { useState, useEffect } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
 import { getUserRole, isLoggedIn as checkLoggedIn, isManager } from '../utils/auth'
 import { getMembers } from '../services/memberService'
 import type { Member } from '../types/member'
-
-interface ClubMember {
-  id: number
-  name: string
-  role?: string
-}
+import { getClub, addClubMember, removeClubMember, updateClub } from '../services/clubService'
+import type { Club, ClubMember } from '../types/club'
+import { getMyInfo } from '../services/userService'
 
 interface ClubActivity {
   id: number
@@ -50,195 +47,11 @@ interface TeamInfo {
   activities: ClubActivity[]
 }
 
-// 팀별 데이터 (실제로는 API에서 가져올 데이터)
-const teamData: Record<number, TeamInfo> = {
-  1: {
-    clubId: 1,
-    clubName: '예배팀',
-    leader: '김예배',
-    leaderId: 1,
-    meetingTime: '매주 토요일 오후 2시',
-    meetingPlace: '교회 본당',
-    description: '주일예배와 각종 예배를 섬기는 팀입니다. 예배 준비와 진행을 담당하며, 하나님께 영광을 돌리는 예배를 만들어갑니다.',
-    members: [
-      { id: 1, name: '김예배', role: '팀장' },
-      { id: 2, name: '이예배', role: '부팀장' },
-      { id: 3, name: '박예배' },
-      { id: 4, name: '최예배' },
-      { id: 5, name: '정예배' },
-    ],
-    activities: [
-      {
-        id: 1,
-        date: '2025-12-14',
-        title: '12월 예배 준비 회의',
-        description: '12월 예배 일정 및 준비 사항 논의',
-      },
-      {
-        id: 2,
-        date: '2025-12-07',
-        title: '예배 팀 모임',
-        description: '예배 섬김 나눔 및 기도',
-      },
-    ],
-  },
-  2: {
-    clubId: 2,
-    clubName: '찬양팀',
-    leader: '박찬양',
-    leaderId: 1,
-    meetingTime: '매주 금요일 오후 8시',
-    meetingPlace: '교회 3층 찬양실',
-    description: '함께 찬양하며 예배하는 팀입니다. 다양한 악기를 연주하고, 새로운 찬양을 배우며 함께 성장합니다.',
-    members: [
-      { id: 1, name: '박찬양', role: '팀장' },
-      { id: 2, name: '이음악', role: '부팀장' },
-      { id: 3, name: '김기타' },
-      { id: 4, name: '최드럼' },
-      { id: 5, name: '정베이스' },
-      { id: 6, name: '한키보드' },
-      { id: 7, name: '송보컬' },
-    ],
-    activities: [
-      {
-        id: 1,
-        date: '2025-12-13',
-        title: '12월 정기 모임',
-        description: '새로운 찬양곡 연습 및 합주 연습',
-      },
-      {
-        id: 2,
-        date: '2025-12-06',
-        title: '찬양 연습',
-        description: '주일예배 찬양 준비 및 연습',
-      },
-    ],
-  },
-  3: {
-    clubId: 3,
-    clubName: '새신자팀',
-    leader: '이새신자',
-    leaderId: 1,
-    meetingTime: '매주 수요일 오후 7시',
-    meetingPlace: '교회 2층 교육실',
-    description: '새신자들을 돌보고 양육하는 팀입니다. 새신자들의 교회 적응을 돕고, 신앙 성장을 함께합니다.',
-    members: [
-      { id: 1, name: '이새신자', role: '팀장' },
-      { id: 2, name: '김양육', role: '부팀장' },
-      { id: 3, name: '박돌봄' },
-      { id: 4, name: '최관심' },
-    ],
-    activities: [
-      {
-        id: 1,
-        date: '2025-12-11',
-        title: '새신자 모임',
-        description: '새신자 환영 및 교회 생활 안내',
-      },
-      {
-        id: 2,
-        date: '2025-12-04',
-        title: '양육 프로그램',
-        description: '기초 신앙 교육',
-      },
-    ],
-  },
-  4: {
-    clubId: 4,
-    clubName: '방송팀',
-    leader: '최방송',
-    leaderId: 1,
-    meetingTime: '매주 목요일 오후 7시',
-    meetingPlace: '교회 방송실',
-    description: '예배와 행사의 방송을 담당하는 팀입니다. 카메라, 음향, 영상 제작을 통해 예배를 섬깁니다.',
-    members: [
-      { id: 1, name: '최방송', role: '팀장' },
-      { id: 2, name: '김카메라', role: '부팀장' },
-      { id: 3, name: '이음향' },
-      { id: 4, name: '박영상' },
-      { id: 5, name: '정편집' },
-    ],
-    activities: [
-      {
-        id: 1,
-        date: '2025-12-12',
-        title: '방송 장비 점검',
-        description: '주일예배 방송 준비 및 장비 점검',
-      },
-      {
-        id: 2,
-        date: '2025-12-05',
-        title: '방송 팀 모임',
-        description: '방송 기술 교육 및 나눔',
-      },
-    ],
-  },
-  5: {
-    clubId: 5,
-    clubName: '컨텐츠팀',
-    leader: '정컨텐츠',
-    leaderId: 1,
-    meetingTime: '매주 화요일 오후 7시',
-    meetingPlace: '교회 회의실',
-    description: '각종 콘텐츠 제작과 관리를 담당하는 팀입니다. SNS, 홈페이지, 각종 자료 제작을 담당합니다.',
-    members: [
-      { id: 1, name: '정컨텐츠', role: '팀장' },
-      { id: 2, name: '한제작', role: '부팀장' },
-      { id: 3, name: '송기획' },
-      { id: 4, name: '강작성' },
-    ],
-    activities: [
-      {
-        id: 1,
-        date: '2025-12-10',
-        title: '12월 콘텐츠 기획 회의',
-        description: '12월 SNS 및 홈페이지 콘텐츠 기획',
-      },
-      {
-        id: 2,
-        date: '2025-12-03',
-        title: '콘텐츠 제작',
-        description: '예배 안내 영상 제작',
-      },
-    ],
-  },
-  6: {
-    clubId: 6,
-    clubName: '디자인팀',
-    leader: '강디자인',
-    leaderId: 1,
-    meetingTime: '매주 월요일 오후 7시',
-    meetingPlace: '교회 디자인실',
-    description: '각종 디자인 작업을 담당하는 팀입니다. 포스터, 배너, 각종 자료의 디자인을 담당합니다.',
-    members: [
-      { id: 1, name: '강디자인', role: '팀장' },
-      { id: 2, name: '윤그래픽', role: '부팀장' },
-      { id: 3, name: '임포스터' },
-      { id: 4, name: '조배너' },
-    ],
-    activities: [
-      {
-        id: 1,
-        date: '2025-12-09',
-        title: '12월 포스터 제작',
-        description: '12월 행사 포스터 디자인',
-      },
-      {
-        id: 2,
-        date: '2025-12-02',
-        title: '디자인 팀 모임',
-        description: '디자인 트렌드 공유 및 나눔',
-      },
-    ],
-  },
-}
+// 팀별 데이터 (실제로는 API에서 가져올 데이터) -> Now fetched from API
+// const teamData removed
 
 // 임시: 현재 사용자 정보 (실제로는 API에서 가져와야 함)
-const mockCurrentUser = {
-  id: 10,
-  name: '홍길동',
-  role: 'ROLE_ADMIN', // 또는 'ROLE_USER'
-}
+// const mockCurrentUser removed
 
 // 임시: 신청서 템플릿 (팀장이 수정 가능)
 const mockApplicationTemplate: ApplicationTemplate = {
@@ -283,7 +96,9 @@ type ApplicationStatus = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'
 function TeamDetailPage() {
   const { teamId } = useParams<{ teamId: string }>()
   const teamIdNum = teamId ? parseInt(teamId, 10) : null
-  const [team, setTeam] = useState<TeamInfo | null>(teamIdNum ? teamData[teamIdNum] : null)
+  const [team, setTeam] = useState<TeamInfo | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [currentUser, setCurrentUser] = useState<{id: number, name: string} | null>(null)
 
   const [activeTab, setActiveTab] = useState<TabType>('intro')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
@@ -310,28 +125,67 @@ function TeamDetailPage() {
   const [applicationSearchTerm, setApplicationSearchTerm] = useState('')
 
   useEffect(() => {
+    const fetchData = async () => {
+      if (!teamIdNum) return
+      
+      try {
+        setLoading(true)
+        // Fetch User Info
+        let userId = 0
+        let userName = ""
+        if (checkLoggedIn()) {
+           try {
+             const userInfo = await getMyInfo()
+             userId = userInfo.userId
+             userName = userInfo.name
+             setCurrentUser({ id: userId, name: userName })
+           } catch (e) {
+             console.error("Failed to fetch user info", e)
+           }
+        }
+
+        // Fetch Club Info
+        const clubData = await getClub(teamIdNum)
+        const teamInfo: TeamInfo = {
+          clubId: clubData.id,
+          clubName: clubData.name,
+          leader: clubData.leaderName || "",
+          leaderId: clubData.leaderId || 0,
+          meetingTime: clubData.meetingTime || "",
+          meetingPlace: clubData.meetingPlace || "",
+          description: clubData.description,
+          members: clubData.members || [],
+          activities: [], 
+        }
+        setTeam(teamInfo)
+
+        // Set roles based on fetched data
+        setIsTeamLeader(clubData.leaderId === userId)
+        const memberIds = clubData.members?.map(m => m.memberId) || []
+        setIsTeamMember(memberIds.includes(userId))
+        
+        // Init form
+        setTeamInfoForm({
+          clubName: clubData.name,
+          description: clubData.description,
+          meetingTime: clubData.meetingTime || "",
+          meetingPlace: clubData.meetingPlace || "",
+        })
+
+      } catch (error) {
+        console.error("Failed to fetch team data:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
     setIsLoggedIn(checkLoggedIn())
     const role = getUserRole()
     setUserRole(role)
     setIsAdmin(isManager())
     
-    if (team) {
-      // 팀장 여부 확인 (실제로는 API에서 확인)
-      setIsTeamLeader(team.leader === mockCurrentUser.name)
-      
-      // 팀원 여부 확인 (실제로는 API에서 확인)
-      const memberIds = team.members.map(m => m.id)
-      setIsTeamMember(memberIds.includes(mockCurrentUser.id))
-      
-      // 팀 정보 폼 초기화
-      setTeamInfoForm({
-        clubName: team.clubName,
-        description: team.description,
-        meetingTime: team.meetingTime,
-        meetingPlace: team.meetingPlace,
-      })
-    }
-  }, [team])
+    fetchData()
+  }, [teamIdNum])
 
   // 전체 멤버 목록 로드 (팀원 추가용)
   useEffect(() => {
