@@ -8,6 +8,9 @@ import {
   getUserRole,
   isLoggedIn as checkLoggedIn,
 } from "../utils/auth";
+import { getMyInfo, getMyAttendanceStats, type MyInfoResponse, type MyAttendanceStatsResponse } from "../services/userService";
+import { getMyClubs } from "../services/clubService";
+import type { Club } from "../types/club";
 
 // 게시판 정보
 const boardTypes = [
@@ -147,6 +150,10 @@ function UserDashboardPage() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
+  
+  const [myInfo, setMyInfo] = useState<MyInfoResponse | null>(null);
+  const [attendanceStats, setAttendanceStats] = useState<MyAttendanceStatsResponse | null>(null);
+  const [myTeams, setMyTeams] = useState<Club[]>([]);
 
   const nextSlide = () => {
     setActiveIndex((prev) => (prev + 1) % heroImages.length);
@@ -256,8 +263,8 @@ function UserDashboardPage() {
                 내가 속한 팀 정보를 확인하세요.
               </p>
               <div className="mt-3 space-y-2">
-                {mockMyTeams.length > 0 ? (
-                  mockMyTeams.map((team) => (
+                {myTeams.length > 0 ? (
+                  myTeams.map((team) => (
                     <button
                       key={team.id}
                       type="button"
@@ -325,7 +332,7 @@ function UserDashboardPage() {
                     이름
                   </span>
                   <span className="text-sm font-semibold text-slate-900">
-                    {mockMyInfo.name}
+                    {myInfo?.name || "-"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
@@ -333,7 +340,7 @@ function UserDashboardPage() {
                     역할
                   </span>
                   <span className="text-xs font-semibold text-slate-700">
-                    {mockMyInfo.role}
+                    {myInfo?.role || "-"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-2">
@@ -341,7 +348,7 @@ function UserDashboardPage() {
                     이번 달 출석
                   </span>
                   <span className="text-sm font-bold text-green-600">
-                    {mockMyInfo.thisMonthAttendance}회
+                    {attendanceStats?.thisMonthCount ?? 0}회
                   </span>
                 </div>
               </div>
