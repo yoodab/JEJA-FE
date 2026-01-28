@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   getAttendanceSheet,
@@ -98,12 +98,16 @@ function AttendanceManagePage() {
   const [statAttendanceList, setStatAttendanceList] = useState<AttendanceRecordDto[]>([])
   const [statListLoading, setStatListLoading] = useState(false)
 
-  const handleStatPointClick = async (scheduleId: number, scheduleName: string) => {
+  const handleStatPointClick = async (
+    scheduleId: number,
+    scheduleName: string,
+    dateStr: string,
+  ) => {
     setStatSelectedSchedule({ id: scheduleId, name: scheduleName })
     setIsStatListOpen(true)
     setStatListLoading(true)
     try {
-      const sheet = await getAttendanceSheet(scheduleId)
+      const sheet = await getAttendanceSheet(scheduleId, dateStr)
       const sorted = sheet.records
         .filter((r) => r.attended)
         .sort((a, b) => a.name.localeCompare(b.name))
@@ -219,7 +223,7 @@ function AttendanceManagePage() {
       try {
         const year = new Date(dateStr).getFullYear()
         const [sheet, cellsData, unassignedData] = await Promise.all([
-          getAttendanceSheet(scheduleId),
+          getAttendanceSheet(scheduleId, dateStr),
           getCells(year),
           getUnassignedMembers(year),
         ])
@@ -557,6 +561,7 @@ function AttendanceManagePage() {
     setSaveMessage(null)
     try {
       await checkInByAdmin(selectedScheduleId, {
+        targetDate: selectedDate,
         attendedMemberIds: Array.from(attendedMemberIds),
       })
       setSaveMessage({
@@ -821,12 +826,14 @@ function AttendanceManagePage() {
         await scheduleService.registerScheduleMembers(
           selectedScheduleId,
           selectedIds,
+          selectedDate,
         )
         alert('명단이 추가되었습니다.')
       } else {
         await scheduleService.removeScheduleAttendees(
           selectedScheduleId,
           selectedIds,
+          selectedDate,
         )
         alert('명단에서 삭제되었습니다.')
       }
@@ -1520,9 +1527,9 @@ function AttendanceManagePage() {
                   {!periodLoading && !periodError && dailyStats.length > 0 && (
                     <div className="relative h-80 w-full overflow-x-auto">
                       <svg
-                        className="h-full min-w-full"
-                        viewBox={`0 0 ${Math.max(dailyStats.length * 100, 800)} 350`}
-                        preserveAspectRatio="none"
+                        style={{ width: `${Math.max(dailyStats.length * 100, 800)}px` }}
+                        className="h-full"
+                        viewBox={`0 0 ${Math.max(dailyStats.length * 100, 800)} 320`}
                       >
                         <defs>
                           <pattern
@@ -1558,9 +1565,12 @@ function AttendanceManagePage() {
                           const steps = 5
                           const stepValue = Math.ceil(maxDailyCount / steps)
                           const labels = []
+                          const chartBottom = 280
+                          const chartHeight = 240
+                          
                           for (let i = 0; i <= steps; i += 1) {
                             const value = stepValue * i
-                            const y = 300 - (value / maxDailyCount) * 250
+                            const y = chartBottom - (value / (stepValue * steps)) * chartHeight
                             labels.push(
                               <g key={i}>
                                 <line
@@ -1594,9 +1604,17 @@ function AttendanceManagePage() {
                           }
                           const points: string[] = []
                           const circles: JSX.Element[] = []
+                          const chartBottom = 280
+                          const chartHeight = 240
+                          // maxDailyCount가 0일 수 없으므로(위에서 체크) 안전하지만, 
+                          // steps 계산과 일치시키기 위해 stepValue * steps를 max로 사용하는 것이 그래프 눈금과 일치함
+                          const steps = 5
+                          const stepValue = Math.ceil(maxDailyCount / steps)
+                          const maxScale = stepValue * steps
+
                           dailyStats.forEach((stat, index) => {
                             const x = 50 + index * 100
-                            const y = 300 - (stat.count / maxDailyCount) * 250
+                            const y = chartBottom - (stat.count / maxScale) * chartHeight
                             points.push(`${x},${y}`)
                             circles.push(
                               <g
@@ -1606,6 +1624,7 @@ function AttendanceManagePage() {
                                   handleStatPointClick(
                                     stat.scheduleId,
                                     stat.scheduleName || '',
+                                    stat.date,
                                   )
                                 }
                                 className="cursor-pointer"
@@ -1650,7 +1669,7 @@ function AttendanceManagePage() {
                               <path
                                 d={`${pathData} L ${
                                   50 + (dailyStats.length - 1) * 100
-                                },300 L 50,300 Z`}
+                                },${chartBottom} L 50,${chartBottom} Z`}
                                 fill="url(#attendance-gradient)"
                                 opacity="0.2"
                               />
@@ -1677,14 +1696,15 @@ function AttendanceManagePage() {
                                 handleStatPointClick(
                                   stat.scheduleId,
                                   stat.scheduleName || '',
+                                  stat.date,
                                 )
                               }
                               className="cursor-pointer hover:opacity-75"
                             >
                               <text
                                 x={x}
-                                y="325"
-                                fontSize="11"
+                                y="295"
+                                fontSize="12"
                                 fontWeight="bold"
                                 fill="#334155"
                                 textAnchor="middle"
@@ -1696,7 +1716,7 @@ function AttendanceManagePage() {
                               </text>
                               <text
                                 x={x}
-                                y="340"
+                                y="312"
                                 fontSize="11"
                                 fontWeight="500"
                                 fill="#64748b"

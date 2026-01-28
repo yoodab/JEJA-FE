@@ -129,9 +129,11 @@ export async function getSchedules(): Promise<ScheduleResponseDto[]> {
 
 export async function getAttendanceSheet(
   scheduleId: number,
+  date: string,
 ): Promise<AttendanceSheetResponseDto> {
   const response = await api.get<ApiResponseForm<AttendanceSheetResponseDto>>(
     `/api/admin/schedules/${scheduleId}/attendance-sheet`,
+    { params: { date } },
   )
   return response.data.data
 }
