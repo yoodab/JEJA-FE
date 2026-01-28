@@ -73,14 +73,14 @@ export const scheduleService = {
   },
 
   // 명단 등록 (Register)
-  registerScheduleMembers: async (scheduleId: number, memberIds: number[]): Promise<void> => {
-    const response = await api.post<ApiResponse<void>>(`/api/admin/schedules/${scheduleId}/register`, { memberIds });
+  registerScheduleMembers: async (scheduleId: number, memberIds: number[], targetDate: string): Promise<void> => {
+    const response = await api.post<ApiResponse<void>>(`/api/admin/schedules/${scheduleId}/register`, { memberIds, targetDate });
     return handleResponse(response);
   },
 
   // 명단 제외 (Remove)
-  removeScheduleAttendees: async (scheduleId: number, memberIds: number[]): Promise<void> => {
-    const response = await api.post<ApiResponse<void>>(`/api/admin/schedules/${scheduleId}/attendees/remove`, { memberIds });
+  removeScheduleAttendees: async (scheduleId: number, memberIds: number[], targetDate: string): Promise<void> => {
+    const response = await api.post<ApiResponse<void>>(`/api/admin/schedules/${scheduleId}/attendees/remove`, { memberIds, targetDate });
     return handleResponse(response);
   }
 };

@@ -547,10 +547,10 @@ function ScheduleManagePage() {
       }
 
       if (memberManageMode === 'ADD') {
-        await scheduleService.registerScheduleMembers(selectedSchedule.scheduleId, selectedIds)
+        await scheduleService.registerScheduleMembers(selectedSchedule.scheduleId, selectedIds, selectedDate)
         alert('명단이 추가되었습니다.')
       } else {
-        await scheduleService.removeScheduleAttendees(selectedSchedule.scheduleId, selectedIds)
+        await scheduleService.removeScheduleAttendees(selectedSchedule.scheduleId, selectedIds, selectedDate)
         alert('명단이 삭제되었습니다.')
       }
       
