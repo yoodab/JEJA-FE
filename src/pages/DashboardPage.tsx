@@ -17,7 +17,7 @@ const managementMenus = [
   },
   {
     title: '이번달 생일자',
-    desc: '이번 달 생일자, 축하 진행, 선물/케이크 체크.',
+    desc: '이번 달 생일자 확인',
     accent: 'bg-purple-50 text-purple-700',
     icon: '🎂',
     iconBg: 'bg-purple-100',
@@ -70,6 +70,14 @@ const managementMenus = [
     icon: '💰',
     iconBg: 'bg-amber-100',
     route: '/manage/finance',
+  },
+  {
+    title: '식권 관리',
+    desc: '식권 추가/사용 및 재고 현황 관리.',
+    accent: 'bg-green-50 text-green-700',
+    icon: '🎫',
+    iconBg: 'bg-green-100',
+    route: '/manage/meal-tickets',
   },
   {
     title: '일정 관리',

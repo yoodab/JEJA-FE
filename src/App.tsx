@@ -22,6 +22,7 @@ import SoonManagePage from "./pages/SoonManagePage";
 import MemberManagePage from "./pages/MemberManagePage";
 import ReportManagePage from "./pages/ReportManagePage";
 import FinanceManagePage from "./pages/FinanceManagePage";
+import MealManagePage from "./pages/MealManagePage";
 import ScheduleListPage from "./pages/ScheduleListPage";
 import ScheduleDetailPage from "./pages/ScheduleDetailPage";
 import GuestAttendancePage from "./pages/GuestAttendancePage";
@@ -69,6 +70,7 @@ function App() {
         <Route path="/manage/members" element={<MemberManagePage />} />
         <Route path="/manage/reports" element={<ReportManagePage />} />
         <Route path="/manage/finance" element={<FinanceManagePage />} />
+        <Route path="/manage/meal-tickets" element={<MealManagePage />} />
         <Route path="/manage/teams" element={<TeamManagePage />} />
         <Route
           path="/manage/group-formation"
