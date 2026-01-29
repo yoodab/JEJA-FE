@@ -1,64 +1,69 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getMembers } from '../services/memberService'
+import { getMeals, addMealStock, useMealTicket, updateMeal, deleteMeal, type MealHistoryItem } from '../services/mealService'
 import type { Member } from '../types/member'
-
-interface MealTicket {
-  id: string
-  date: string
-  userId: string
-  userName: string
-  place: string
-  count: number
-}
-
-interface MealTicketIssuance {
-  id: string
-  date: string
-  newcomerId: string
-  newcomerName: string
-  type: '중식' | '석식' | '커피'
-  issuer: string
-}
-
-interface MealTicketStock {
-  id: string
-  date: string
-  amount: number
-  note: string
-}
 
 function MealManagePage() {
   const navigate = useNavigate()
   const [teamMembers, setTeamMembers] = useState<Member[]>([])
   
-  // 식권 관련 State
-  const [mealTickets, setMealTickets] = useState<MealTicket[]>([])
+  // Data from Server
+  const [currentStock, setCurrentStock] = useState(0)
+  const [history, setHistory] = useState<MealHistoryItem[]>([])
+  const [searchQuery, setSearchQuery] = useState('') // Added state for search
+
+  // Forms
   const [mealForm, setMealForm] = useState({
     userId: '',
     place: '',
     count: 1
   })
   
-  // 식권 모달 State
-  const [showStockModal, setShowStockModal] = useState(false)
-  const [showUsageModal, setShowUsageModal] = useState(false)
-
-  // 식권 발급 관련 State (이전 데이터 호환성을 위해 유지)
-  const [mealIssuances, setMealIssuances] = useState<MealTicketIssuance[]>([])
-  const [mealStocks, setMealStocks] = useState<MealTicketStock[]>([])
   const [stockForm, setStockForm] = useState({
     amount: 10,
     note: ''
   })
+  
+  // Modals
+  const [showStockModal, setShowStockModal] = useState(false)
+  const [showUsageModal, setShowUsageModal] = useState(false)
+  const [showUpdateModal, setShowUpdateModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
 
-  // 팀원 목록 로드
+  // Update/Delete State
+  const [activeMenuId, setActiveMenuId] = useState<number | null>(null)
+  const [listMenuPos, setListMenuPos] = useState<{ top: number; right: number; bottom: number } | null>(null)
+  const [openMenuUp, setOpenMenuUp] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<MealHistoryItem | null>(null)
+  const [updateForm, setUpdateForm] = useState({
+    date: '',
+    targetName: '',
+    note: '',
+    amount: 0
+  })
+
+  // Load Data
+  const loadData = async () => {
+    try {
+      const data = await getMeals()
+      console.log('API Response Data:', data) // 디버깅용 로그
+      setCurrentStock(data.currentStock || 0)
+      setHistory(data.history || [])
+    } catch (error) {
+      console.error('식권 데이터 로드 실패:', error)
+      setHistory([])
+    }
+  }
+
+  // Initial Load
   useEffect(() => {
+    loadData()
+    
     const fetchTeamMembers = async () => {
       try {
         const response = await getMembers({ page: 0, size: 1000 })
-        const allMembers = response.content
-        setTeamMembers(allMembers)
+        setTeamMembers(response.content)
       } catch (error) {
         console.error('팀원 목록 로드 실패:', error)
       }
@@ -66,8 +71,8 @@ function MealManagePage() {
     fetchTeamMembers()
   }, [])
 
-  // 식권 관련 함수
-  const handleAddMealTicket = () => {
+  // Handlers
+  const handleAddMealTicket = async () => {
     if (!mealForm.userId || !mealForm.place) {
       alert('대상자와 사용처를 모두 입력해주세요.')
       return
@@ -76,64 +81,142 @@ function MealManagePage() {
     const user = teamMembers.find(m => m.memberId.toString() === mealForm.userId)
     if (!user) return
 
-    const newTicket: MealTicket = {
-      id: Date.now().toString(),
-      date: new Date().toISOString().split('T')[0],
-      userId: user.memberId.toString(),
-      userName: user.name,
-      place: mealForm.place,
-      count: mealForm.count
+    try {
+      await useMealTicket({
+        userName: user.name,
+        place: mealForm.place,
+        count: mealForm.count
+      })
+      
+      await loadData()
+      setMealForm({ userId: '', place: '', count: 1 })
+      setShowUsageModal(false)
+    } catch (error) {
+      console.error('식권 사용 등록 실패:', error)
+      alert('식권 사용 등록 중 오류가 발생했습니다.')
     }
-
-    setMealTickets([newTicket, ...mealTickets])
-    setMealForm({ userId: '', place: '', count: 1 })
-    setShowUsageModal(false)
   }
 
-  const handleAddStock = () => {
+  const handleAddStock = async () => {
     if (stockForm.amount <= 0) {
       alert('추가할 수량을 올바르게 입력해주세요.')
       return
     }
 
-    const newStock: MealTicketStock = {
-      id: Date.now().toString(),
-      date: new Date().toISOString().split('T')[0],
-      amount: stockForm.amount,
-      note: stockForm.note
-    }
+    try {
+      await addMealStock({
+        amount: stockForm.amount,
+        note: stockForm.note
+      })
 
-    setMealStocks([newStock, ...mealStocks])
-    setStockForm({ amount: 10, note: '' })
-    setShowStockModal(false)
+      await loadData()
+      setStockForm({ amount: 10, note: '' })
+      setShowStockModal(false)
+    } catch (error) {
+      console.error('재고 추가 실패:', error)
+      alert('재고 추가 중 오류가 발생했습니다.')
+    }
   }
 
-  // 식권 재고 계산
-  const totalStock = mealStocks.reduce((sum, stock) => sum + stock.amount, 0)
-  const totalUsed = mealTickets.reduce((sum, ticket) => sum + ticket.count, 0)
-  const totalIssued = mealIssuances.length // 발급 건당 1장으로 가정
-  const currentStock = totalStock - totalUsed - totalIssued
+  // Update/Delete Handlers
+  const handleMenuClick = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    setListMenuPos({ top: rect.top, right: rect.right, bottom: rect.bottom })
+    setOpenMenuUp(rect.bottom + 120 > window.innerHeight)
+    setActiveMenuId(activeMenuId === id ? null : id)
+  }
 
-  // 통합 거래 내역 정렬
-  const allTransactions = [
-    ...mealStocks.map(s => ({ ...s, category: 'stock', dateStr: s.date })),
-    ...mealTickets.map(t => ({ ...t, category: 'usage', dateStr: t.date })),
-    ...mealIssuances.map(i => ({ ...i, category: 'issuance', dateStr: i.date }))
-  ]
-  .filter(item => {
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setActiveMenuId(null)
+    window.addEventListener('click', handleClickOutside)
+    return () => window.removeEventListener('click', handleClickOutside)
+  }, [])
+
+  const handleEditClick = (item: MealHistoryItem) => {
+    setSelectedItem(item)
+    setUpdateForm({
+      date: item.date,
+      targetName: item.targetName || '',
+      note: item.note || '',
+      amount: Math.abs(item.amount)
+    })
+    setShowUpdateModal(true)
+    setActiveMenuId(null)
+  }
+
+  const handleDeleteClick = (item: MealHistoryItem) => {
+    setSelectedItem(item)
+    setShowDeleteModal(true)
+    setActiveMenuId(null)
+  }
+
+  const handleUpdateSubmit = async () => {
+    if (!selectedItem) return
+    if (updateForm.amount <= 0) {
+      alert('수량은 0보다 커야 합니다.')
+      return
+    }
+
+    try {
+      await updateMeal(selectedItem.id, {
+        date: updateForm.date,
+        targetName: updateForm.targetName,
+        note: updateForm.note,
+        amount: updateForm.amount
+      })
+      
+      await loadData()
+      setShowUpdateModal(false)
+      setSelectedItem(null)
+    } catch (error) {
+      console.error('내역 수정 실패:', error)
+      alert('내역 수정 중 오류가 발생했습니다.')
+    }
+  }
+
+  const handleDeleteSubmit = async () => {
+    if (!selectedItem) return
+
+    try {
+      await deleteMeal(selectedItem.id)
+      await loadData()
+      setShowDeleteModal(false)
+      setSelectedItem(null)
+    } catch (error) {
+      console.error('내역 삭제 실패:', error)
+      alert('내역 삭제 중 오류가 발생했습니다.')
+    }
+  }
+
+  // Calculate totals for display (Client-side calculation for stats cards)
+  const totalStock = (history || [])
+    .filter(item => item.category === 'STOCK')
+    .reduce((sum, item) => sum + item.amount, 0)
+    
+  const totalUsed = (history || [])
+    .filter(item => item.category === 'USE')
+    .reduce((sum, item) => sum + Math.abs(item.amount), 0)
+
+  // Filter logic
+  const filteredHistory = (history || []).filter(item => {
     if (!searchQuery) return true
     const query = searchQuery.toLowerCase()
-    
-    // 대상자 이름으로 검색
-    const targetName = item.category === 'stock' 
-      ? '' 
-      : item.category === 'issuance' 
-        ? item.newcomerName 
-        : item.userName
-        
-    return targetName.toLowerCase().includes(query)
+    return (item.targetName || '').toLowerCase().includes(query)
   })
-  .sort((a, b) => new Date(b.dateStr).getTime() - new Date(a.dateStr).getTime())
+
+  // Calculate Balance for each item (Reverse calculation from currentStock)
+  // Assuming history is sorted by date descending (newest first)
+  let runningBalance = currentStock
+  const historyWithBalance = filteredHistory.map((item, index) => {
+    const balance = runningBalance
+    // Prepare balance for the next item (previous in time)
+    // If current item added stock (positive amount), previous balance was smaller: balance - amount
+    // If current item used stock (negative amount), previous balance was larger: balance - amount (minus negative is plus)
+    runningBalance = runningBalance - item.amount
+    return { ...item, balance }
+  })
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
@@ -157,6 +240,7 @@ function MealManagePage() {
               </div>
             </div>
           </div>
+          {/* Optional: Add search input if desired, but sticking to existing design for now unless requested */}
         </header>
 
         <div className="space-y-6">
@@ -174,7 +258,7 @@ function MealManagePage() {
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
               <p className="text-xs font-semibold text-slate-500">총 사용 수량</p>
-              <p className="text-2xl font-bold text-slate-700">{totalUsed + totalIssued}장</p>
+              <p className="text-2xl font-bold text-slate-700">{totalUsed}장</p>
             </div>
           </div>
 
@@ -206,57 +290,63 @@ function MealManagePage() {
                     <th className="px-6 py-3 text-left font-semibold text-slate-700">구분</th>
                     <th className="px-6 py-3 text-left font-semibold text-slate-700">대상/담당</th>
                     <th className="px-6 py-3 text-left font-semibold text-slate-700">상세내용</th>
-                    <th className="px-6 py-3 text-right font-semibold text-slate-700">수량/변동</th>
+                    <th className="px-6 py-3 text-right font-semibold text-slate-700">추가</th>
+                    <th className="px-6 py-3 text-right font-semibold text-slate-700">사용</th>
+                    <th className="px-6 py-3 text-right font-semibold text-slate-700">총계</th>
+                    <th className="px-6 py-3 text-center font-semibold text-slate-700">관리</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {allTransactions.length === 0 ? (
+                  {historyWithBalance.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                      <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
                         내역이 없습니다.
                       </td>
                     </tr>
                   ) : (
-                    allTransactions.map((item: any) => (
-                      <tr key={`${item.category}-${item.id}`} className="hover:bg-slate-50">
-                        <td className="px-6 py-3 text-slate-600">{item.dateStr}</td>
+                    historyWithBalance.map((item) => (
+                      <tr key={item.id} className="hover:bg-slate-50">
+                        <td className="px-6 py-3 text-slate-600">{item.date}</td>
                         <td className="px-6 py-3">
-                          {item.category === 'stock' ? (
+                          {item.category === 'STOCK' ? (
                             <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
-                              입고
-                            </span>
-                          ) : item.category === 'issuance' ? (
-                            <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
-                              발급(새신자)
+                              추가
                             </span>
                           ) : (
                             <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
-                              사용(팀)
+                              사용
                             </span>
                           )}
                         </td>
                         <td className="px-6 py-3 font-medium text-slate-900">
-                          {item.category === 'stock' 
-                            ? '-' 
-                            : item.category === 'issuance' 
-                              ? item.newcomerName 
-                              : item.userName}
+                          {item.targetName}
                         </td>
                         <td className="px-6 py-3 text-slate-600">
-                          {item.category === 'stock' 
-                            ? item.note 
-                            : item.category === 'issuance' 
-                              ? `${item.type} (발급: ${item.issuer})` 
-                              : item.place}
+                          {item.note}
                         </td>
-                        <td className={`px-6 py-3 text-right font-medium ${
-                          item.category === 'stock' ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          {item.category === 'stock' 
-                            ? `+${item.amount}` 
-                            : item.category === 'issuance' 
-                              ? '-1' 
-                              : `-${item.count}`}
+                        {/* 추가 (입고) */}
+                        <td className="px-6 py-3 text-right font-medium text-green-600">
+                          {item.amount > 0 ? `+${item.amount}` : '-'}
+                        </td>
+                        {/* 사용 (지출) */}
+                        <td className="px-6 py-3 text-right font-medium text-red-600">
+                          {item.amount < 0 ? `${item.amount}` : '-'}
+                        </td>
+                        {/* 총계 (잔고) */}
+                        <td className="px-6 py-3 text-right font-bold text-slate-900">
+                          {item.balance}
+                        </td>
+                        {/* 관리 메뉴 */}
+                        <td className="px-6 py-3 text-center relative">
+                          <button
+                            type="button"
+                            onClick={(e) => handleMenuClick(item.id, e)}
+                            className="p-1 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                          >
+                            <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                            </svg>
+                          </button>
                         </td>
                       </tr>
                     ))
@@ -266,6 +356,44 @@ function MealManagePage() {
             </div>
           </div>
         </div>
+
+        {/* Dropdown Menu Portal */}
+        {activeMenuId && listMenuPos && (
+          <div
+            className="fixed z-[100] w-40 rounded-lg border border-slate-200 bg-white shadow-xl"
+            style={{
+              top: openMenuUp ? listMenuPos.top : listMenuPos.bottom,
+              left: listMenuPos.right,
+              transform: `translateX(-100%) ${openMenuUp ? 'translateY(-100%)' : ''}`
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                const item = history.find(h => h.id === activeMenuId)
+                if (item) handleEditClick(item)
+                setActiveMenuId(null)
+              }}
+              className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 rounded-t-lg"
+            >
+              <span></span> 수정
+            </button>
+            <div className="border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => {
+                  const item = history.find(h => h.id === activeMenuId)
+                  if (item) handleDeleteClick(item)
+                  setActiveMenuId(null)
+                }}
+                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-600 hover:bg-slate-50 rounded-b-lg"
+              >
+                <span></span> 삭제
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 식권 입고 모달 */}
         {showStockModal && (
@@ -385,6 +513,112 @@ function MealManagePage() {
                     사용하기
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 식권 내역 수정 모달 */}
+        {showUpdateModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
+              <h3 className="mb-4 text-lg font-semibold text-slate-900 flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100 text-orange-600 text-sm">
+                  ✏️
+                </span>
+                식권 내역 수정
+              </h3>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-4">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">날짜 (YYYY-MM-DD)</label>
+                    <input
+                      type="date"
+                      value={updateForm.date}
+                      onChange={(e) => setUpdateForm({ ...updateForm, date: e.target.value })}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">대상/담당</label>
+                    <input
+                      type="text"
+                      value={updateForm.targetName}
+                      onChange={(e) => setUpdateForm({ ...updateForm, targetName: e.target.value })}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">상세내용 (비고)</label>
+                    <input
+                      type="text"
+                      value={updateForm.note}
+                      onChange={(e) => setUpdateForm({ ...updateForm, note: e.target.value })}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">수량</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={updateForm.amount}
+                      onChange={(e) => setUpdateForm({ ...updateForm, amount: parseInt(e.target.value) || 0 })}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                    <p className="mt-1 text-xs text-slate-500">* 입고/사용 구분은 유지됩니다.</p>
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowUpdateModal(false)}
+                    className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleUpdateSubmit}
+                    className="flex-1 rounded-lg bg-orange-600 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-700 transition-colors"
+                  >
+                    수정하기
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 식권 내역 삭제 모달 */}
+        {showDeleteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
+              <h3 className="mb-4 text-lg font-semibold text-slate-900 flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100 text-red-600 text-sm">
+                  🗑️
+                </span>
+                내역 삭제
+              </h3>
+              <p className="mb-6 text-sm text-slate-600">
+                정말 이 내역을 삭제하시겠습니까?<br />
+                삭제된 내역은 복구할 수 없습니다.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteModal(false)}
+                  className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteSubmit}
+                  className="flex-1 rounded-lg bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-700 transition-colors"
+                >
+                  삭제하기
+                </button>
               </div>
             </div>
           </div>
