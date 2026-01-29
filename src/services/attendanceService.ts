@@ -40,7 +40,6 @@ export interface NewcomerCreateRequestDto {
   birthDate: string
   phone: string
   address?: string
-  managerMemberId?: number
 }
 
 export interface MemberCreateRequestDto {

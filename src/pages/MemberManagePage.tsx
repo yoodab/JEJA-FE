@@ -46,6 +46,8 @@ function MemberManagePage() {
   
   // Kebab Menu State
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number; bottom: number } | null>(null)
+  const [openMenuUp, setOpenMenuUp] = useState(false)
 
   // Image Preview State
   const [previewImage, setPreviewImage] = useState<string | null>(null)
@@ -353,10 +355,13 @@ function MemberManagePage() {
                             {formatMemberStatus(member.memberStatus as string)}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-right relative kebab-menu-container">
+                        <td className="px-4 py-3 text-right kebab-menu-container">
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
+                              const rect = e.currentTarget.getBoundingClientRect()
+                              setMenuPos({ top: rect.top, right: rect.right, bottom: rect.bottom })
+                              setOpenMenuUp(rect.bottom + 150 > window.innerHeight)
                               setActiveMenuId(activeMenuId === member.memberId ? null : member.memberId)
                             }}
                             className="p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200"
@@ -365,29 +370,6 @@ function MemberManagePage() {
                               <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
                             </svg>
                           </button>
-                          
-                          {activeMenuId === member.memberId && (
-                            <div className="absolute right-0 top-full mt-1 w-24 rounded-lg border border-slate-100 bg-white shadow-lg z-10 overflow-hidden">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleEdit(member)
-                                }}
-                                className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                              >
-                                수정
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleDelete(member.memberId)
-                                }}
-                                className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-                              >
-                                삭제
-                              </button>
-                            </div>
-                          )}
                         </td>
                       </tr>
                     ))
@@ -459,6 +441,37 @@ function MemberManagePage() {
         )}
 
       </div>
+
+      {/* Global Kebab Menu */}
+      {activeMenuId && menuPos && (
+        <div
+          className="fixed z-[100] w-24 rounded-lg border border-slate-100 bg-white shadow-lg overflow-hidden kebab-menu-container"
+          style={{
+            left: menuPos.right,
+            top: openMenuUp ? menuPos.top + 10 : menuPos.bottom - 10,
+            transform: `translateX(-100%) ${openMenuUp ? 'translateY(-100%)' : ''}`,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              const member = members.find((m) => m.memberId === activeMenuId)
+              if (member) handleEdit(member)
+            }}
+            className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+          >
+            수정
+          </button>
+          <button
+            onClick={() => {
+              handleDelete(activeMenuId)
+            }}
+            className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+          >
+            삭제
+          </button>
+        </div>
+      )}
 
       {/* Modals */}
       {detailMember && (

@@ -11,6 +11,7 @@ import {
   activateSeason,
   type Cell,
 } from '../services/cellService'
+import { formatPhoneNumber } from '../utils/format'
 import type { Member } from '../types/member'
 
 function SoonManagePage() {
@@ -574,7 +575,10 @@ function SoonManagePage() {
                       onDragStart={() => handleDragStart(member, null)}
                       className="cursor-move rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-blue-50 hover:border-blue-300 shadow-sm flex items-center justify-between"
                     >
-                      <span className="font-medium text-slate-900">{member.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-slate-900">{member.name}</span>
+                        <span className="text-xs text-slate-400">{formatPhoneNumber(member.phone)}</span>
+                      </div>
                       <span className="text-xs text-slate-500">{getBirthYear(member.birthDate)}년생</span>
                     </div>
                   ))}
@@ -638,7 +642,7 @@ function SoonManagePage() {
                                                     <span className="text-sm">👑</span>
                                                     <span className="font-bold">{cell.leaderName}</span>
                                                 </div>
-                                                <span className="text-[10px] text-emerald-600 font-medium">순장</span>
+                                                <span className="text-[10px] text-emerald-600 font-medium">{formatPhoneNumber(cell.leaderPhone || '')}</span>
                                             </div>
                                         ) : (
                                             <div className="text-xs text-slate-400 font-medium text-center">
@@ -669,7 +673,10 @@ function SoonManagePage() {
                                                 onDragStart={() => handleDragStart(member, cell.cellId)}
                                                 className="group flex items-center justify-between rounded border border-white bg-white px-2 py-1.5 text-xs shadow-sm cursor-move hover:border-emerald-200 hover:shadow-md transition-all"
                                             >
-                                                <span className="font-medium text-slate-700">{member.name}</span>
+                                                <div className="flex items-center gap-1">
+                                                  <span className="font-medium text-slate-700">{member.name}</span>
+                                                  <span className="text-[10px] text-slate-400">{formatPhoneNumber(member.phone)}</span>
+                                                </div>
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();

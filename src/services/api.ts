@@ -2,7 +2,7 @@ import axios, { AxiosError } from 'axios'
 import { clearAuth, getToken, setAuth } from '../utils/auth'
 
 // 환경 변수에서 API base URL 가져오기 (환경 변수 우선, 없으면 기본값)
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
 if (import.meta.env.DEV) {
   console.log("현재 API 주소:", API_BASE_URL, "환경변수:", import.meta.env.VITE_API_BASE_URL);
 }
