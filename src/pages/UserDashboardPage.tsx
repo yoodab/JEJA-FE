@@ -207,7 +207,8 @@ function UserDashboardPage() {
           onLogout={handleLoginLogout}
         />
 
-        {/* 상단 큰 사진 슬라이드 */}
+        <main className="space-y-6">
+          {/* 상단 큰 사진 슬라이드 */}
         {(slides.length > 0 && current) ? (
           <section className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-900/80 shadow-lg">
             <div 
@@ -617,6 +618,7 @@ function UserDashboardPage() {
             </div>
           </div>
         </section>
+        </main>
 
         <Footer />
       </div>
