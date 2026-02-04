@@ -170,7 +170,7 @@ function ScheduleManagePage() {
   const fetchSchedules = async (y: number, m: number) => {
     setLoading(true)
     try {
-      const data = await scheduleService.getSchedules(y, m)
+      const data = await scheduleService.getAdminSchedules(y, m)
       setSchedules(data)
     } catch (err) {
       setError('일정을 불러오는데 실패했습니다.')
@@ -559,9 +559,10 @@ function ScheduleManagePage() {
       setSelectedSchedule(detail)
       
       setShowMemberManageModal(false)
-    } catch (err: any) {
+    } catch (err) {
       console.error(err)
-      alert(err.message || '요청 처리에 실패했습니다.')
+      const message = err instanceof Error ? err.message : '요청 처리에 실패했습니다.'
+      alert(message)
     }
   }
 
@@ -576,7 +577,7 @@ function ScheduleManagePage() {
               onClick={() => navigate('/dashboard')}
               className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
             >
-              ← 돌아가기
+              ← <span className="hidden sm:inline">돌아가기</span>
             </button>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-xl shadow-sm">

@@ -31,6 +31,7 @@ export interface AttendanceSheetResponseDto {
 }
 
 export interface AdminAttendanceRequestDto {
+  targetDate: string
   attendedMemberIds: number[]
 }
 
@@ -107,6 +108,7 @@ export interface GetMemberStatsParams {
 export interface GuestAttendanceRequest {
   name: string
   date: string
+  scheduleId?: number
 }
 
 export interface GuestAttendanceData {
@@ -119,6 +121,14 @@ export interface GuestAttendanceResult {
   success: boolean
   message: string
   data?: GuestAttendanceData
+}
+
+export interface CheckInRequestDto {
+  name?: string
+  birthDate?: string
+  latitude?: number
+  longitude?: number
+  verificationCode?: string
 }
 
 export async function getSchedules(): Promise<ScheduleResponseDto[]> {
@@ -202,5 +212,54 @@ export async function checkGuestAttendance(
     message: message || '',
     data,
   }
+}
+
+export interface PublicNewcomerCreateRequestDto {
+  name: string
+  birthDate: string
+  gender: 'MALE' | 'FEMALE' | 'NONE'
+  phone: string
+  address?: string
+}
+
+export async function checkIn(
+  scheduleId: number,
+  request: CheckInRequestDto = {},
+): Promise<void> {
+  await api.post<ApiResponseForm<void>>(
+    `/api/schedule/${scheduleId}/check-in`,
+    request,
+  )
+}
+
+export async function registerPublicNewcomer(
+  request: PublicNewcomerCreateRequestDto,
+): Promise<number> {
+  const response = await api.post<ApiResponseForm<number>>(
+    '/api/newcomers/public',
+    request,
+  )
+  return response.data.data
+}
+
+export async function applyForSchedule(
+  scheduleId: number,
+  targetDate: string,
+): Promise<void> {
+  await api.post<ApiResponseForm<void>>(
+    `/api/schedules/${scheduleId}/participation`,
+    { targetDate },
+  )
+}
+
+export async function cancelParticipation(
+  scheduleId: number,
+  targetDate: string,
+): Promise<void> {
+  // DELETE request with body is supported in axios but requires 'data' field
+  await api.delete<ApiResponseForm<void>>(
+    `/api/schedules/${scheduleId}/participation`,
+    { data: { targetDate } },
+  )
 }
 

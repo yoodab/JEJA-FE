@@ -177,7 +177,7 @@ function AttendanceManagePage() {
         const date = new Date(selectedDate)
         const year = date.getFullYear()
         const month = date.getMonth() + 1
-        const data = await scheduleService.getSchedules(year, month)
+        const data = await scheduleService.getAdminSchedules(year, month)
         if (cancelled) return
         setAllSchedules(data)
         const filtered = data.filter(
@@ -212,7 +212,7 @@ function AttendanceManagePage() {
     return () => {
       cancelled = true
     }
-  }, [selectedDate])
+  }, [selectedDate, searchParams])
 
   const loadAttendanceAndMembers = useCallback(
     async (scheduleId: number, dateStr: string) => {
@@ -396,46 +396,6 @@ function AttendanceManagePage() {
     [attendedMemberIds],
   )
 
-  const allMembersMap = useMemo(() => {
-    const map = new Map<number, Member>()
-    cells.forEach((cell) => {
-      if (cell.leaderMemberId && cell.leaderName) {
-        if (!map.has(cell.leaderMemberId)) {
-          map.set(cell.leaderMemberId, {
-            memberId: cell.leaderMemberId,
-            name: cell.leaderName,
-            phone: cell.leaderPhone || '',
-            birthDate: '',
-            memberStatus: 'ACTIVE',
-            memberImageUrl: null,
-            soonName: cell.cellName,
-            roles: ['CELL_LEADER'],
-            hasAccount: false,
-            gender: 'NONE',
-            age: 0,
-          })
-        }
-      }
-      cell.members.forEach((member) => {
-        map.set(member.memberId, {
-          ...member,
-          soonName: cell.cellName,
-        })
-      })
-    })
-    unassignedMembers.forEach((member) => {
-      if (!map.has(member.memberId)) {
-        map.set(member.memberId, member)
-      }
-    })
-    return map
-  }, [cells, unassignedMembers])
-
-  const allMembers = useMemo(
-    () => Array.from(allMembersMap.values()),
-    [allMembersMap],
-  )
-
   const newcomerMembers = useMemo(
     () => newcomerList,
     [newcomerList],
@@ -466,21 +426,6 @@ function AttendanceManagePage() {
       visibleMemberIds.has(member.memberId),
     )
   }, [unassignedNonSpecialMembers, visibleMemberIds])
-
-  const newcomerAttendanceCount = useMemo(
-    () =>
-      visibleNewcomers.filter((member) => attendedMemberIds.has(member.memberId))
-        .length,
-    [visibleNewcomers, attendedMemberIds],
-  )
-
-  const unassignedAttendanceCount = useMemo(
-    () =>
-      visibleUnassignedMembers.filter((member) =>
-        attendedMemberIds.has(member.memberId),
-      ).length,
-    [visibleUnassignedMembers, attendedMemberIds],
-  )
 
   const cellColumns: CellColumn[] = useMemo(
     () =>
@@ -841,9 +786,10 @@ function AttendanceManagePage() {
       // 성공 후 데이터 갱신
       await loadAttendanceAndMembers(selectedScheduleId, selectedDate)
       setShowMemberManageModal(false)
-    } catch (err: any) {
+    } catch (err) {
       console.error(err)
-      alert(err.message || '요청 처리에 실패했습니다.')
+      const message = err instanceof Error ? err.message : '요청 처리에 실패했습니다.'
+      alert(message)
     }
   }
 
@@ -1603,7 +1549,7 @@ function AttendanceManagePage() {
                             return null
                           }
                           const points: string[] = []
-                          const circles: JSX.Element[] = []
+                          const circles: React.ReactNode[] = []
                           const chartBottom = 280
                           const chartHeight = 240
                           // maxDailyCount가 0일 수 없으므로(위에서 체크) 안전하지만, 

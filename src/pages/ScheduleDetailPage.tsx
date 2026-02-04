@@ -3,7 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
 import { scheduleService } from '../services/scheduleService'
+import { checkIn } from '../services/attendanceService'
 import { getAlbumDetail, getFileUrl, type AlbumDetail } from '../services/albumService'
+import { isLoggedIn as checkLoggedIn } from '../utils/auth'
 import type { Schedule } from '../types/schedule'
 
 // Helper to translate schedule type
@@ -31,6 +33,12 @@ function ScheduleDetailPage() {
   const [album, setAlbum] = useState<AlbumDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [isCheckingIn, setIsCheckingIn] = useState(false)
+
+  useEffect(() => {
+    setIsLoggedIn(checkLoggedIn())
+  }, [])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -62,6 +70,66 @@ function ScheduleDetailPage() {
 
     fetchData()
   }, [id])
+
+  const handleCheckIn = async () => {
+    if (!schedule) return
+    if (!isLoggedIn) {
+      alert('로그인이 필요합니다.')
+      navigate('/login')
+      return
+    }
+
+    if (!confirm('출석하시겠습니까?')) return
+
+    setIsCheckingIn(true)
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error("위치 정보를 지원하지 않는 브라우저입니다."))
+        }
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 60000
+        })
+      })
+
+      await checkIn(schedule.scheduleId, {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude
+      })
+
+      alert('출석이 완료되었습니다!')
+      // Refresh schedule to update attendee list
+      const updatedSchedule = await scheduleService.getScheduleDetail(schedule.scheduleId)
+      setSchedule(updatedSchedule)
+    } catch (error) {
+      console.error('출석 체크 실패:', error)
+      let errorMsg = '출석 체크 중 오류가 발생했습니다.'
+      const httpErr = error as { response?: { data?: { message?: string } } };
+      if (httpErr.response?.data?.message) {
+        errorMsg = httpErr.response.data.message
+      }
+      
+      if (error instanceof GeolocationPositionError) {
+        if (error.code === error.PERMISSION_DENIED) {
+           errorMsg = "위치 정보 권한이 차단되었습니다. 브라우저 설정에서 권한을 허용해주세요.";
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+           errorMsg = "위치 정보를 가져올 수 없습니다. GPS를 확인해주세요.";
+        } else if (error.code === error.TIMEOUT) {
+           errorMsg = "위치 확인 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.";
+        }
+      }
+
+      if ((error as { response?: { data?: { code?: string } } }).response?.data?.code === 'ATT14') {
+        errorMsg = '출석 가능 시간(20분 전후)이 아닙니다.'
+      }
+
+      alert(errorMsg)
+    } finally {
+      setIsCheckingIn(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -108,6 +176,10 @@ function ScheduleDetailPage() {
     minute: '2-digit'
   })
 
+  const now = new Date()
+  const diffMinutes = (now.getTime() - startDate.getTime()) / (1000 * 60)
+  const isAvailable = diffMinutes >= -20 && diffMinutes <= 20
+
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -119,12 +191,23 @@ function ScheduleDetailPage() {
             <h1 className="text-2xl font-bold text-slate-900">일정 상세보기</h1>
             <p className="mt-1 text-sm text-slate-600">청년부 일정 정보를 확인하세요.</p>
           </div>
-          <button
-            onClick={() => navigate('/schedules')}
-            className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-          >
-            ← 목록으로
-          </button>
+          <div className="flex items-center gap-2">
+            {isLoggedIn && isAvailable && (
+              <button
+                onClick={handleCheckIn}
+                disabled={isCheckingIn}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isCheckingIn ? '처리 중...' : '출석하기'}
+              </button>
+            )}
+            <button
+              onClick={() => navigate('/schedules')}
+              className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+            >
+              ← 목록으로
+            </button>
+          </div>
         </div>
 
         {/* 일정 상세 정보 */}
