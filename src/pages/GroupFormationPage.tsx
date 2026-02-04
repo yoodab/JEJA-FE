@@ -260,7 +260,7 @@ function GroupFormationPage() {
         <header className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate(-1)}
               className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-600 hover:bg-slate-100"
             >
               ←

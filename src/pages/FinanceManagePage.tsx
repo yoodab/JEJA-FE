@@ -1209,7 +1209,7 @@ function FinanceManagePage() {
               onClick={() => navigate('/dashboard')}
               className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
             >
-              ← <span className="hidden sm:inline">돌아가기</span>
+              ← 
             </button>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-xl">
@@ -2109,9 +2109,9 @@ function FinanceManagePage() {
                       >
                         기본 ({selectedEvent.targetAmount.toLocaleString()}원)
                       </button>
-                      {selectedEvent.priceOptions.map(opt => (
+                      {selectedEvent.priceOptions?.map(opt => (
                         <button
-                            key={opt.optionId}
+                            key={String(opt.optionId)}
                             onClick={() => setEditingDuesRecord({ 
                               ...editingDuesRecord, 
                               expectedAmount: opt.amount 

@@ -304,7 +304,7 @@ function TeamManagePage() {
               onClick={() => navigate('/dashboard')}
               className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
             >
-              ← 돌아가기
+              ←
             </button>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-xl">

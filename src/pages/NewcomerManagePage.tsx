@@ -30,8 +30,6 @@ import type { Member } from '../types/member'
 import { getCells, type Cell } from '../services/cellService'
 import { formatPhoneNumber } from '../utils/format'
 import * as XLSX from 'xlsx'
-import JSZip from 'jszip'
-import { saveAs } from 'file-saver'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 
@@ -909,6 +907,9 @@ function NewcomerManagePage() {
         selectedIds.map(id => getNewcomerById(id))
       )
 
+      const JSZip = (await import('jszip')).default
+      const { saveAs } = await import('file-saver')
+
       const includePhotos = selectedExportFields.includes('photo')
       const zip = new JSZip()
       const folder = zip.folder('photos')
@@ -929,20 +930,20 @@ function NewcomerManagePage() {
         }
 
         const rowData: Record<string, unknown> = {}
-        if (selectedExportFields.includes('name')) rowData['이름'] = n.name
-        if (selectedExportFields.includes('managerName')) rowData['담당MD'] = n.managerName
-        if (selectedExportFields.includes('status')) rowData['상태'] = NewcomerStatusMap[n.status] || n.status
+        if (selectedExportFields.includes('name')) rowData['이름'] = String(n.name || '')
+        if (selectedExportFields.includes('managerName')) rowData['담당MD'] = String(n.managerName || '')
+        if (selectedExportFields.includes('status')) rowData['상태'] = String(NewcomerStatusMap[n.status] || n.status || '')
         if (selectedExportFields.includes('isChurchRegistered')) rowData['교회등록여부'] = n.isChurchRegistered ? '등록' : '미등록'
-        if (selectedExportFields.includes('gender')) rowData['성별'] = n.gender === 'MALE' ? '남' : (n.gender === 'FEMALE' ? '여' : n.gender)
-        if (selectedExportFields.includes('birthDate')) rowData['생년월일'] = n.birthDate
+        if (selectedExportFields.includes('gender')) rowData['성별'] = n.gender === 'MALE' ? '남' : (n.gender === 'FEMALE' ? '여' : String(n.gender || ''))
+        if (selectedExportFields.includes('birthDate')) rowData['생년월일'] = String(n.birthDate || '')
         if (selectedExportFields.includes('phone')) rowData['연락처'] = formatPhoneNumber(n.phone)
-        if (selectedExportFields.includes('address')) rowData['거주지'] = n.address
-        if (selectedExportFields.includes('registrationDate')) rowData['등록일자'] = n.registrationDate
-        if (selectedExportFields.includes('cellName')) rowData['등반예정순'] = n.cellName || n.assignedSoon || ''
-        if (selectedExportFields.includes('firstStatus')) rowData['처음 현황'] = n.firstStatus || ''
-        if (selectedExportFields.includes('middleStatus')) rowData['중간 현황'] = n.middleStatus || ''
-        if (selectedExportFields.includes('recentStatus')) rowData['최근 현황'] = n.recentStatus || ''
-        if (selectedExportFields.includes('assignmentNote')) rowData['순배치 특이사항'] = n.assignmentNote || ''
+        if (selectedExportFields.includes('address')) rowData['거주지'] = String(n.address || '')
+        if (selectedExportFields.includes('registrationDate')) rowData['등록일자'] = String(n.registrationDate || '')
+        if (selectedExportFields.includes('cellName')) rowData['등반예정순'] = String(n.cellName || n.assignedSoon || '')
+        if (selectedExportFields.includes('firstStatus')) rowData['처음 현황'] = String(n.firstStatus || '')
+        if (selectedExportFields.includes('middleStatus')) rowData['중간 현황'] = String(n.middleStatus || '')
+        if (selectedExportFields.includes('recentStatus')) rowData['최근 현황'] = String(n.recentStatus || '')
+        if (selectedExportFields.includes('assignmentNote')) rowData['순배치 특이사항'] = String(n.assignmentNote || '')
         if (includePhotos) rowData['사진'] = imageFileName ? `photos/${imageFileName}` : ''
         
         return rowData
@@ -1191,10 +1192,10 @@ function NewcomerManagePage() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate(-1)}
               className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
             >
-              ← <span className="hidden sm:inline">돌아가기</span>
+              ← 
             </button>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-xl">

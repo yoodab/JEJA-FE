@@ -96,7 +96,7 @@ function TeamDetailPage() {
           description: clubData.description,
           members: clubData.members || [],
           activities: [],
-          type: ClubType.NEW_BELIEVER
+          type: clubData.type
         }
         setTeam(teamInfo)
 
@@ -386,7 +386,7 @@ function TeamDetailPage() {
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                   }`}
                 >
-                  신청서 관리
+                  신청서
                 </button>
                 <button
                   onClick={() => setActiveTab('manage')}
@@ -431,8 +431,8 @@ function TeamDetailPage() {
                 </div>
               </div>
 
-              {/* 팀 기능 바로가기 (특정 팀만 표시) */}
-              {(team.type === ClubType.NEW_BELIEVER || team.type === ClubType.CONTENT) && (
+              {/* 팀 기능 바로가기 (특정 팀만 표시) - 관리자 또는 팀원에게만 노출 */}
+              {(isAdmin || isTeamMember) && (team.type === ClubType.NEW_BELIEVER || team.type === ClubType.CONTENT) && (
                 <div className="mt-6 border-t border-slate-100 pt-4">
                   <h3 className="text-sm font-semibold text-slate-900 mb-3">팀 기능 바로가기</h3>
                   <div className="flex flex-wrap gap-3">
