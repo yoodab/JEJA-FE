@@ -4,6 +4,7 @@
  */
 
 const TOKEN_KEY = 'accessToken'
+const REFRESH_TOKEN_KEY = 'refreshToken'
 const USER_ROLE_KEY = 'userRole'
 const IS_LOGGED_IN_KEY = 'isLoggedIn'
 
@@ -33,6 +34,27 @@ export function getToken(): string | null {
 export function removeToken(): void {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem('token')
+}
+
+/**
+ * 리프레시 토큰 저장
+ */
+export function setRefreshToken(token: string): void {
+  localStorage.setItem(REFRESH_TOKEN_KEY, token)
+}
+
+/**
+ * 리프레시 토큰 조회
+ */
+export function getRefreshToken(): string | null {
+  return localStorage.getItem(REFRESH_TOKEN_KEY)
+}
+
+/**
+ * 리프레시 토큰 삭제
+ */
+export function removeRefreshToken(): void {
+  localStorage.removeItem(REFRESH_TOKEN_KEY)
 }
 
 /**
@@ -99,6 +121,7 @@ export function isManager(): boolean {
  */
 export function clearAuth(): void {
   removeToken()
+  removeRefreshToken()
   localStorage.removeItem(USER_ROLE_KEY)
   localStorage.removeItem(IS_LOGGED_IN_KEY)
 }
@@ -106,11 +129,14 @@ export function clearAuth(): void {
 /**
  * 인증 정보 일괄 설정
  */
-export function setAuth(token: string, role?: string): void {
+export function setAuth(token: string, role?: string, refreshToken?: string): void {
   setToken(token)
   setLoggedIn(true)
   if (role) {
     setUserRole(role)
+  }
+  if (refreshToken) {
+    setRefreshToken(refreshToken)
   }
 }
 

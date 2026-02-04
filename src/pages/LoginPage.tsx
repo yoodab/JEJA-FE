@@ -94,9 +94,9 @@ function LoginPage() {
         </form>
 
         <div className="mt-6 flex items-center justify-between text-xs text-slate-500">
-          <button type="button" className="hover:text-slate-700">
+          <Link to="/find-password" className="hover:text-slate-700">
             비밀번호를 잊으셨나요?
-          </button>
+          </Link>
           <Link to="/signup" className="font-semibold text-blue-600 hover:text-blue-700">
             회원가입
           </Link>

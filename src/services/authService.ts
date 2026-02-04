@@ -12,18 +12,35 @@ export interface LoginRequestDto {
 export interface LoginResponseData {
   name: string
   role: string  // ROLE_ADMIN, ROLE_USER, ROLE_PASTOR 등
+  accessToken: string
+  refreshToken: string
 }
 
 // 로그인 응답 타입 (공통 응답 포맷으로 감싸짐)
 type LoginResponseDto = ApiResponseForm<LoginResponseData>
 
+// 토큰 재발급 응답 DTO
+export interface TokenResponseData {
+  accessToken: string
+  refreshToken: string
+}
+
 // 회원가입 요청 DTO
 export interface SignupRequestDto {
   loginId: string
   password: string
+  email: string
   name: string
-  birthDate: string
   phone: string
+  birthDate: string
+  address: string
+}
+
+// 비밀번호 재설정 요청 DTO
+export interface ResetPasswordRequestDto {
+  email: string
+  authCode: string
+  newPassword: string
 }
 
 /**
@@ -47,18 +64,23 @@ export async function login(data: LoginRequestDto): Promise<LoginResponseData> {
       if (xhr.status === 200) {
         try {
           // 응답 헤더에서 Authorization 헤더 읽기 (Bearer 토큰)
-          let authHeader = xhr.getResponseHeader('Authorization') || xhr.getResponseHeader('authorization')
+          const authHeader = xhr.getResponseHeader('Authorization') || xhr.getResponseHeader('authorization')
           
           let token: string | null = null
           
-          // 헤더에서 토큰 추출 (Bearer 접두사 제거)
+          // 헤더에서 토큰 추출 (Bearer 접두사 제거) - 하위 호환성 유지
           if (authHeader) {
             token = authHeader.replace(/^Bearer\s+/i, '').trim()
           }
           
           // 응답 body 파싱 (ApiResponseForm 형태)
           const responseData = JSON.parse(xhr.responseText) as LoginResponseDto
-          
+
+          // Body에 accessToken이 있으면 우선 사용
+          if (responseData.data?.accessToken) {
+            token = responseData.data.accessToken
+          }
+
           // 토큰이 없으면 에러
           if (!token) {
             reject(new Error('토큰을 받아오지 못했습니다. 응답 헤더에 Authorization이 없습니다.'))
@@ -72,7 +94,7 @@ export async function login(data: LoginRequestDto): Promise<LoginResponseData> {
             return
           }
           
-          const { name, role } = responseData.data
+          const { name, role, refreshToken } = responseData.data
           
           // role 정규화 (ROLE_ 접두사가 없으면 추가)
           let normalizedRole = role
@@ -87,14 +109,15 @@ export async function login(data: LoginRequestDto): Promise<LoginResponseData> {
               originalRole: role,
               normalizedRole,
               hasToken: !!token,
+              hasRefreshToken: !!refreshToken
             })
           }
           
           // 토큰과 역할 저장
-          setAuth(token, normalizedRole)
+          setAuth(token, normalizedRole, refreshToken)
           
           // 응답 데이터 반환
-          resolve({ name, role: normalizedRole })
+          resolve({ name, role: normalizedRole, accessToken: token, refreshToken })
         } catch (error) {
           console.error('❌ 로그인 응답 처리 중 오류:', error)
           reject(error instanceof Error ? error : new Error('로그인 처리 중 오류가 발생했습니다.'))
@@ -121,31 +144,37 @@ export async function login(data: LoginRequestDto): Promise<LoginResponseData> {
 }
 
 /**
- * 회원가입 API
+ * 회원가입용 인증번호 전송
+ * POST /api/auth/signup/send-verification
+ */
+export async function sendSignupVerification(email: string): Promise<void> {
+  const response = await api.post<ApiResponseForm<void>>('/api/auth/signup/send-verification', { email })
+  if (response.data.result !== 'SUCCESS' && response.data.status !== 'success') {
+    throw new Error(response.data.message || '인증번호 전송 실패')
+  }
+}
+
+/**
+ * 회원가입용 인증번호 검증
+ * POST /api/auth/signup/verify
+ */
+export async function verifySignupCode(email: string, authCode: string): Promise<void> {
+  const response = await api.post<ApiResponseForm<void>>('/api/auth/signup/verify', { email, authCode })
+  if (response.data.result !== 'SUCCESS' && response.data.status !== 'success') {
+    throw new Error(response.data.message || '인증번호 검증 실패')
+  }
+}
+
+/**
+ * 최종 회원가입 API
  * POST /api/auth/signup
- * 
- * Request: { loginId, password, name, phone, birthDate }
- * Response: 공통 응답 포맷 (ApiResponseForm)
- * 
- * 백엔드 명세에 따라 필드명:
- * - loginId: 로그인 아이디
- * - password: 비밀번호
- * - name: 이름
- * - phone: 연락처 (예: "010-0000-0000")
- * - birthDate: 생년월일 (예: "YYYY-MM-DD")
  */
 export async function signup(data: SignupRequestDto): Promise<void> {
   try {
-    const response = await api.post<ApiResponseForm<void>>('/api/auth/signup', {
-      loginId: data.loginId,
-      password: data.password,
-      name: data.name,
-      phone: data.phone,
-      birthDate: data.birthDate,
-    })
+    const response = await api.post<ApiResponseForm<void>>('/api/auth/signup', data)
     
-    // ApiResponseForm 구조 확인
-    if (response.data.status !== 'success') {
+    // ApiResponseForm 구조 확인 (result 또는 status 확인)
+    if (response.data.result !== 'SUCCESS' && response.data.status !== 'success') {
       const errorMessage = response.data.message || '회원가입에 실패했습니다.'
       throw new Error(errorMessage)
     }
@@ -161,5 +190,65 @@ export async function signup(data: SignupRequestDto): Promise<void> {
       throw new Error(errorMessage)
     }
     throw error
+  }
+}
+
+/**
+ * 비밀번호 찾기용 인증번호 전송
+ * POST /api/auth/send-verification-code
+ */
+export async function sendPasswordResetVerification(loginId: string, email: string): Promise<void> {
+  const response = await api.post<ApiResponseForm<void>>('/api/auth/send-verification-code', { loginId, email })
+  if (response.data.result !== 'SUCCESS' && response.data.status !== 'success') {
+    throw new Error(response.data.message || '인증번호 전송 실패')
+  }
+}
+
+/**
+ * 비밀번호 찾기용 인증번호 확인 (UI용)
+ * POST /api/auth/verify-code
+ */
+export async function verifyPasswordResetCode(email: string, authCode: string): Promise<boolean> {
+  const response = await api.post<ApiResponseForm<boolean>>('/api/auth/verify-code', { email, authCode })
+  if (response.data.result !== 'SUCCESS' && response.data.status !== 'success') {
+    throw new Error(response.data.message || '인증번호 확인 실패')
+  }
+  return response.data.data
+}
+
+/**
+ * 토큰 재발급
+ * POST /api/auth/reissue
+ */
+export async function reissueToken(refreshToken: string): Promise<TokenResponseData> {
+  // api 인스턴스 대신 axios 직접 사용 (인터셉터 순환 참조 방지)
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+  
+  // axios import 필요하지만 여기선 fetch 사용
+  const response = await fetch(`${API_BASE_URL}/api/auth/reissue`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ refreshToken }),
+  })
+  
+  const data = await response.json()
+  
+  if (!response.ok || (data.result !== 'SUCCESS' && data.status !== 'success')) {
+    throw new Error(data.message || '토큰 재발급 실패')
+  }
+  
+  return data.data
+}
+
+/**
+ * 비밀번호 재설정 (최종)
+ * PATCH /api/auth/reset-password
+ */
+export async function resetPassword(data: ResetPasswordRequestDto): Promise<void> {
+  const response = await api.patch<ApiResponseForm<void>>('/api/auth/reset-password', data)
+  if (response.data.result !== 'SUCCESS' && response.data.status !== 'success') {
+    throw new Error(response.data.message || '비밀번호 재설정 실패')
   }
 }
