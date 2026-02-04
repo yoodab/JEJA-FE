@@ -1,62 +1,36 @@
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
-import { useState, useEffect } from 'react'
+ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  getPendingUsers,
-  approveUser,
-  rejectUser,
-  getApprovedUsers,
-  type PendingUserDto,
-  type ApprovedUserDto,
+  getUsers,
+  updateUserStatus,
+  type UserDto,
+  type UserStatus,
 } from '../services/adminService'
+import {
+  getSlidesAdmin,
+  createSlide,
+  deleteSlide,
+  getYoutubeConfigAdmin,
+  updateYoutubeConfig,
+  type Slide,
+  type SlideType,
+  type TextElement,
+  type YoutubeConfig,
+  type SlideRequestDto
+} from '../services/homepageService'
+import { uploadFiles, getFileUrl } from '../services/albumService'
 
-// 슬라이드 타입
-type SlideType = 'text' | 'image'
-
-// 텍스트 요소 인터페이스
-interface TextElement {
-  id: string
-  text: string
-  fontSize: number
-  color: string
-  x: number // x 좌표 (0-100, 퍼센트)
-  y: number // y 좌표 (0-100, 퍼센트)
-  fontWeight: 'normal' | 'bold' | 'semibold'
-  fontFamily: string
-}
-
-interface Slide {
-  id: number
-  type: SlideType
-  // 공통 필드
-  title?: string
-  subtitle?: string
-  // 텍스트 슬라이드 필드
-  backgroundColor?: string
-  textElements?: TextElement[] // 여러 텍스트 요소 배열
-  // 이미지 슬라이드 필드
-  url?: string
-  linkUrl?: string // 이미지 클릭 시 이동할 링크
-}
-
-// 유튜브 링크 타입
-interface YoutubeLinks {
-  liveUrl: string
-  playlistUrl: string
-}
-
-type TabType = 'pending' | 'approved' | 'slides' | 'youtube'
+type TabType = 'users' | 'slides' | 'youtube'
 
 function HomepageManagePage() {
-  const [activeTab, setActiveTab] = useState<TabType>('pending')
+  const [activeTab, setActiveTab] = useState<TabType>('users')
   
-  // 회원가입 신청 관리
-  const [pendingUsers, setPendingUsers] = useState<PendingUserDto[]>([])
-  const [isLoadingPending, setIsLoadingPending] = useState(false)
-  
-  // 승인된 사용자 관리
-  const [approvedUsers, setApprovedUsers] = useState<ApprovedUserDto[]>([])
-  const [isLoadingApproved, setIsLoadingApproved] = useState(false)
+  // 사용자 관리
+  const [users, setUsers] = useState<UserDto[]>([])
+  const [statusFilter, setStatusFilter] = useState<UserStatus | 'ALL'>('PENDING')
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false)
+  const [openMenuUserId, setOpenMenuUserId] = useState<number | null>(null)
   
   // 슬라이드 관리
   const [slides, setSlides] = useState<Slide[]>([])
@@ -69,123 +43,82 @@ function HomepageManagePage() {
   const [newSlideBackgroundColor, setNewSlideBackgroundColor] = useState('#1e293b')
   const [newSlideTextElements, setNewSlideTextElements] = useState<TextElement[]>([])
   const [draggingElementId, setDraggingElementId] = useState<string | null>(null)
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   
   // 유튜브 링크 관리
-  const [youtubeLinks, setYoutubeLinks] = useState<YoutubeLinks>({
+  const [youtubeLinks, setYoutubeLinks] = useState<YoutubeConfig>({
     liveUrl: 'https://www.youtube.com/channel/UCJekqH69c4VTieaH4N6ErsA/live',
     playlistUrl: 'https://www.youtube.com/embed/videoseries?list=PL-wQhvG4IAQRsNULw0nwgHKb-FOe-nFAu',
   })
   const [isLoadingYoutube, setIsLoadingYoutube] = useState(false)
 
-  // 승인 대기 사용자 목록 불러오기
-  useEffect(() => {
-    if (activeTab === 'pending') {
-      loadPendingUsers()
-    }
-  }, [activeTab])
+  // 메뉴 외부 클릭 감지용 ref
+  const menuRef = useRef<HTMLDivElement>(null)
 
-  // 승인된 사용자 목록 불러오기
+  // 메뉴 외부 클릭 시 닫기
   useEffect(() => {
-    if (activeTab === 'approved') {
-      loadApprovedUsers()
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpenMenuUserId(null)
+      }
     }
-  }, [activeTab])
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
+
+  // 사용자 목록 불러오기
+  const loadUsers = useCallback(async () => {
+    setIsLoadingUsers(true)
+    try {
+      const status = statusFilter === 'ALL' ? undefined : statusFilter
+      const data = await getUsers(status)
+      setUsers(data)
+    } catch (error) {
+      console.error('사용자 목록 불러오기 실패:', error)
+      alert('사용자 목록을 불러오는데 실패했습니다.')
+    } finally {
+      setIsLoadingUsers(false)
+    }
+  }, [statusFilter])
+
+  useEffect(() => {
+    if (activeTab === 'users') {
+      loadUsers()
+    }
+  }, [activeTab, loadUsers])
 
   // 슬라이드 목록 불러오기
-  useEffect(() => {
-    if (activeTab === 'slides') {
-      loadSlides()
-    }
-  }, [activeTab])
-
-  // 유튜브 링크 불러오기
-  useEffect(() => {
-    if (activeTab === 'youtube') {
-      loadYoutubeLinks()
-    }
-  }, [activeTab])
-
-  const loadPendingUsers = async () => {
-    setIsLoadingPending(true)
-    try {
-      const users = await getPendingUsers()
-      setPendingUsers(users)
-    } catch (error) {
-      console.error('승인 대기 사용자 목록 불러오기 실패:', error)
-      alert('승인 대기 사용자 목록을 불러오는데 실패했습니다.')
-    } finally {
-      setIsLoadingPending(false)
-    }
-  }
-
-  const loadApprovedUsers = async () => {
-    setIsLoadingApproved(true)
-    try {
-      const users = await getApprovedUsers()
-      setApprovedUsers(users)
-    } catch (error) {
-      console.error('승인된 사용자 목록 불러오기 실패:', error)
-      alert('승인된 사용자 목록을 불러오는데 실패했습니다.')
-    } finally {
-      setIsLoadingApproved(false)
-    }
-  }
-
-  const loadSlides = async () => {
+  const loadSlides = useCallback(async () => {
     setIsLoadingSlides(true)
     try {
-      // TODO: 실제 API 연동 시 구현
-      // const response = await api.get('/api/admin/homepage/slides')
-      // setSlides(response.data.data)
-      
-      // 임시: 로컬 스토리지에서 불러오기
-      const savedSlides = localStorage.getItem('homepageSlides')
-      if (savedSlides) {
-        setSlides(JSON.parse(savedSlides))
-      } else {
-        // 기본 슬라이드
-        setSlides([
-          { 
-            id: 1, 
-            type: 'text', 
-            backgroundColor: '#1e293b',
-            textElements: [
-              { id: '1-1', text: 'Welcome to JEJA Youth', fontSize: 32, color: '#ffffff', x: 50, y: 40, fontWeight: 'bold', fontFamily: 'Arial' },
-              { id: '1-2', text: '하나님이 세우시는 교회, 함께 예배하는 청년부', fontSize: 16, color: '#ffffff', x: 50, y: 60, fontWeight: 'normal', fontFamily: 'Arial' },
-            ]
-          },
-          { 
-            id: 2, 
-            type: 'text', 
-            backgroundColor: '#0f172a',
-            textElements: [
-              { id: '2-1', text: '주일예배 & 순모임', fontSize: 28, color: '#ffffff', x: 50, y: 40, fontWeight: 'bold', fontFamily: 'Arial' },
-              { id: '2-2', text: '말씀과 나눔으로 함께 성장해요', fontSize: 14, color: '#ffffff', x: 50, y: 60, fontWeight: 'normal', fontFamily: 'Arial' },
-            ]
-          },
-          { id: 3, type: 'image', url: 'https://via.placeholder.com/600x260?text=슬라이드+3', title: '함께 웃고 울며 기도하는 공동체', subtitle: '청년부 소식과 사진들을 확인해 보세요' },
-        ])
-      }
+      const data = await getSlidesAdmin()
+      setSlides(data)
     } catch (error) {
       console.error('슬라이드 목록 불러오기 실패:', error)
       alert('슬라이드 목록을 불러오는데 실패했습니다.')
     } finally {
       setIsLoadingSlides(false)
     }
-  }
+  }, [])
 
-  const loadYoutubeLinks = async () => {
+  useEffect(() => {
+    if (activeTab === 'slides') {
+      loadSlides()
+    }
+  }, [activeTab, loadSlides])
+
+  // 유튜브 링크 불러오기
+  const loadYoutubeLinks = useCallback(async () => {
     setIsLoadingYoutube(true)
     try {
-      // TODO: 실제 API 연동 시 구현
-      // const response = await api.get('/api/admin/homepage/youtube')
-      // setYoutubeLinks(response.data.data)
-      
-      // 임시: 로컬 스토리지에서 불러오기
-      const savedLinks = localStorage.getItem('youtubeLinks')
-      if (savedLinks) {
-        setYoutubeLinks(JSON.parse(savedLinks))
+      const data = await getYoutubeConfigAdmin()
+      if (data) {
+        setYoutubeLinks(data)
       }
     } catch (error) {
       console.error('유튜브 링크 불러오기 실패:', error)
@@ -193,35 +126,100 @@ function HomepageManagePage() {
     } finally {
       setIsLoadingYoutube(false)
     }
-  }
+  }, [])
 
-  const handleApprove = async (userId: number) => {
-    if (!confirm('이 사용자를 승인하시겠습니까?')) return
+  useEffect(() => {
+    if (activeTab === 'youtube') {
+      loadYoutubeLinks()
+    }
+  }, [activeTab, loadYoutubeLinks])
+
+  const handleUpdateStatus = async (userId: number, newStatus: UserStatus) => {
+    if (!confirm(`사용자 상태를 '${getStatusLabel(newStatus)}'(으)로 변경하시겠습니까?`)) return
 
     try {
-      await approveUser(userId)
-      alert('사용자가 승인되었습니다.')
-      loadPendingUsers()
-      // 승인된 사용자 목록도 새로고침
-      if (activeTab === 'approved') {
-        loadApprovedUsers()
-      }
+      await updateUserStatus(userId, newStatus)
+      alert('사용자 상태가 변경되었습니다.')
+      loadUsers()
+      setOpenMenuUserId(null)
     } catch (error) {
-      console.error('사용자 승인 실패:', error)
-      alert('사용자 승인에 실패했습니다.')
+      console.error('상태 변경 실패:', error)
+      alert('상태 변경에 실패했습니다.')
     }
   }
 
-  const handleReject = async (userId: number) => {
-    if (!confirm('이 사용자를 거절하시겠습니까?')) return
+  // 주요 색상 추출 함수
+  const extractDominantColor = (imageUrl: string, file?: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      // File 객체가 있으면 URL.createObjectURL 사용 (CORS 회피)
+      if (file) {
+        img.src = URL.createObjectURL(file)
+      } else {
+        img.crossOrigin = 'Anonymous'
+        img.src = imageUrl
+      }
+      
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve('#1e293b') // 기본값
+          return
+        }
+        
+        // 이미지를 1x1 픽셀로 리사이징하여 그리면 평균 색상이 됨
+        canvas.width = 1
+        canvas.height = 1
+        ctx.drawImage(img, 0, 0, 1, 1)
+        
+        const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
+        const color = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`
+        
+        // 메모리 해제
+        if (file) {
+          URL.revokeObjectURL(img.src)
+        }
+        
+        resolve(color)
+      }
+      
+      img.onerror = () => {
+        console.warn('이미지 로드 실패, 기본 색상 사용')
+        resolve('#1e293b') // 로드 실패 시 기본값
+      }
+    })
+  }
+
+  // 이미지 업로드 핸들러
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
 
     try {
-      await rejectUser(userId)
-      alert('사용자가 거절되었습니다.')
-      loadPendingUsers()
+      setIsUploading(true)
+      
+      // 1. 먼저 로컬 파일로 색상 추출 (CORS 문제 원천 차단)
+      const dominantColor = await extractDominantColor('', file)
+      setNewSlideBackgroundColor(dominantColor)
+
+      // 2. 파일 업로드
+      const uploadResults = await uploadFiles([file], 'homepage')
+      const uploadedUrl = uploadResults[0].url
+      
+      // 3. 전체 URL 생성 및 적용
+      const fullUrl = getFileUrl(uploadedUrl)
+      setNewSlideUrl(fullUrl)
+      
     } catch (error) {
-      console.error('사용자 거절 실패:', error)
-      alert('사용자 거절에 실패했습니다.')
+      console.error('이미지 업로드 실패:', error)
+      alert('이미지 업로드에 실패했습니다.')
+    } finally {
+      setIsUploading(false)
+      // input 초기화 (같은 파일 다시 선택 가능하도록)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
     }
   }
 
@@ -240,11 +238,17 @@ function HomepageManagePage() {
     setNewSlideTextElements([...newSlideTextElements, newElement])
   }
 
+  // 텍스트 요소 선택 (레이어 클릭 시)
+  const handleSelectTextElement = (elementId: string) => {
+    setSelectedElementId(elementId)
+  }
+
   // 텍스트 요소 드래그 시작
-  const handleTextDragStart = (e: React.MouseEvent, elementId: string, currentX: number, currentY: number) => {
-    e.preventDefault()
+  const handleTextDragStart = (e: React.MouseEvent | React.TouchEvent, elementId: string, currentX: number, currentY: number) => {
+    // e.preventDefault() // Touch event에서 preventDefault 호출 시 스크롤 등 기본 동작 막힘 주의
     e.stopPropagation()
     setDraggingElementId(elementId)
+    setSelectedElementId(elementId)
     
     const container = (e.currentTarget as HTMLElement).closest('.preview-container') as HTMLElement
     if (!container) return
@@ -254,9 +258,18 @@ function HomepageManagePage() {
     const elementX = (currentX / 100) * rect.width
     const elementY = (currentY / 100) * rect.height
     
+    let clientX, clientY
+    if ('touches' in e) {
+      clientX = e.touches[0].clientX
+      clientY = e.touches[0].clientY
+    } else {
+      clientX = (e as React.MouseEvent).clientX
+      clientY = (e as React.MouseEvent).clientY
+    }
+
     // 마우스 위치와 텍스트 중심점의 차이를 오프셋으로 저장
-    const mouseX = e.clientX - rect.left
-    const mouseY = e.clientY - rect.top
+    const mouseX = clientX - rect.left
+    const mouseY = clientY - rect.top
     
     setDragOffset({
       x: mouseX - elementX,
@@ -264,17 +277,17 @@ function HomepageManagePage() {
     })
   }
 
-  // 전역 마우스 이벤트로 드래그 처리
+  // 전역 마우스/터치 이벤트로 드래그 처리
   useEffect(() => {
     if (!draggingElementId) return
 
-    const handleGlobalMouseMove = (e: MouseEvent) => {
+    const handleGlobalMove = (clientX: number, clientY: number) => {
       const container = document.querySelector('.preview-container') as HTMLElement
       if (!container) return
       
       const rect = container.getBoundingClientRect()
-      const mouseX = e.clientX - rect.left
-      const mouseY = e.clientY - rect.top
+      const mouseX = clientX - rect.left
+      const mouseY = clientY - rect.top
       
       // 오프셋을 빼서 텍스트 중심점 위치 계산
       const elementX = mouseX - dragOffset.x
@@ -288,40 +301,103 @@ function HomepageManagePage() {
       const clampedX = Math.max(0, Math.min(100, x))
       const clampedY = Math.max(0, Math.min(100, y))
       
-      handleUpdateTextElement(draggingElementId, 'x', clampedX)
-      handleUpdateTextElement(draggingElementId, 'y', clampedY)
+      // 일괄 업데이트로 변경 (상태 덮어쓰기 방지)
+      setNewSlideTextElements(prevElements => 
+        prevElements.map(el => 
+          el.id === draggingElementId ? { ...el, x: clampedX, y: clampedY } : el
+        )
+      )
     }
 
-    const handleGlobalMouseUp = () => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      handleGlobalMove(e.clientX, e.clientY)
+    }
+
+    const handleGlobalTouchMove = (e: TouchEvent) => {
+      // 터치 스크롤 방지
+      if (e.cancelable) e.preventDefault()
+      handleGlobalMove(e.touches[0].clientX, e.touches[0].clientY)
+    }
+
+    const handleGlobalUp = () => {
       setDraggingElementId(null)
       setDragOffset({ x: 0, y: 0 })
     }
 
     document.addEventListener('mousemove', handleGlobalMouseMove)
-    document.addEventListener('mouseup', handleGlobalMouseUp)
+    document.addEventListener('mouseup', handleGlobalUp)
+    document.addEventListener('touchmove', handleGlobalTouchMove, { passive: false })
+    document.addEventListener('touchend', handleGlobalUp)
 
     return () => {
       document.removeEventListener('mousemove', handleGlobalMouseMove)
-      document.removeEventListener('mouseup', handleGlobalMouseUp)
+      document.removeEventListener('mouseup', handleGlobalUp)
+      document.removeEventListener('touchmove', handleGlobalTouchMove)
+      document.removeEventListener('touchend', handleGlobalUp)
     }
   }, [draggingElementId, dragOffset])
 
-
   // 텍스트 요소 수정
-  const handleUpdateTextElement = (id: string, field: keyof TextElement, value: string | number) => {
-    setNewSlideTextElements(
-      newSlideTextElements.map((el) =>
+  const handleUpdateTextElement = useCallback((id: string, field: keyof TextElement, value: string | number) => {
+    setNewSlideTextElements(prev =>
+      prev.map((el) =>
         el.id === id ? { ...el, [field]: value } : el
       )
     )
-  }
+  }, [])
+
+  // 키보드 방향키로 미세 조정
+  useEffect(() => {
+    if (!selectedElementId) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 입력 필드에 포커스가 있는 경우 제외
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return
+
+      const element = newSlideTextElements.find(el => el.id === selectedElementId)
+      if (!element) return
+
+      let newX = element.x
+      let newY = element.y
+      const step = e.shiftKey ? 5 : 1 // Shift 누르면 5% 이동, 아니면 1% 이동
+
+      switch (e.key) {
+        case 'ArrowLeft':
+          newX = Math.max(0, element.x - step)
+          e.preventDefault()
+          break
+        case 'ArrowRight':
+          newX = Math.min(100, element.x + step)
+          e.preventDefault()
+          break
+        case 'ArrowUp':
+          newY = Math.max(0, element.y - step)
+          e.preventDefault()
+          break
+        case 'ArrowDown':
+          newY = Math.min(100, element.y + step)
+          e.preventDefault()
+          break
+        default:
+          return
+      }
+
+      handleUpdateTextElement(selectedElementId, 'x', newX)
+      handleUpdateTextElement(selectedElementId, 'y', newY)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [selectedElementId, newSlideTextElements, handleUpdateTextElement])
 
   // 텍스트 요소 삭제
   const handleRemoveTextElement = (id: string) => {
     setNewSlideTextElements(newSlideTextElements.filter((el) => el.id !== id))
   }
 
-  const handleAddSlide = () => {
+  const handleAddSlide = async () => {
     if (newSlideType === 'image' && !newSlideUrl.trim()) {
       alert('이미지 URL을 입력해주세요.')
       return
@@ -335,71 +411,47 @@ function HomepageManagePage() {
       return
     }
 
-    const newSlide: Slide = {
-      id: Date.now(),
-      type: newSlideType,
+    try {
+      const slideData: SlideRequestDto = {
+        type: newSlideType,
+        url: newSlideType === 'image' ? newSlideUrl : undefined,
+        linkUrl: newSlideType === 'image' ? newSlideLinkUrl : undefined,
+        title: newSlideType === 'image' ? newSlideTitle : undefined,
+        subtitle: newSlideType === 'image' ? newSlideSubtitle : undefined,
+        backgroundColor: newSlideType === 'text' ? newSlideBackgroundColor : undefined,
+        textElements: newSlideType === 'text' ? newSlideTextElements : undefined,
+      }
+
+      await createSlide(slideData)
+      alert('슬라이드가 추가되었습니다.')
+      
+      // 목록 새로고침
+      loadSlides()
+      
+      // 폼 초기화
+      setNewSlideUrl('')
+      setNewSlideLinkUrl('')
+      setNewSlideTitle('')
+      setNewSlideSubtitle('')
+      setNewSlideBackgroundColor('#1e293b')
+      setNewSlideTextElements([])
+    } catch (error) {
+      console.error('슬라이드 추가 실패:', error)
+      alert('슬라이드 추가에 실패했습니다.')
     }
-
-    if (newSlideType === 'image') {
-      newSlide.url = newSlideUrl
-      newSlide.title = newSlideTitle || undefined
-      newSlide.subtitle = newSlideSubtitle || undefined
-      newSlide.linkUrl = newSlideLinkUrl || undefined
-    } else {
-      newSlide.backgroundColor = newSlideBackgroundColor
-      newSlide.textElements = newSlideTextElements
-    }
-
-    const updatedSlides = [...slides, newSlide]
-    setSlides(updatedSlides)
-    
-    // 로컬 스토리지에 저장 (임시)
-    localStorage.setItem('homepageSlides', JSON.stringify(updatedSlides))
-    
-    // TODO: 백엔드 API 연동 시 아래 주석을 해제하고 로컬 스토리지 저장을 제거하세요
-    // 백엔드 API 예시:
-    // POST /api/admin/homepage/slides - 슬라이드 추가
-    // GET /api/admin/homepage/slides - 슬라이드 목록 조회
-    // DELETE /api/admin/homepage/slides/{id} - 슬라이드 삭제
-    // PATCH /api/admin/homepage/slides/{id} - 슬라이드 수정
-    // 
-    // try {
-    //   await api.post('/api/admin/homepage/slides', newSlide)
-    //   alert('슬라이드가 추가되었습니다.')
-    // } catch (error) {
-    //   console.error('슬라이드 추가 실패:', error)
-    //   alert('슬라이드 추가에 실패했습니다.')
-    // }
-
-    // 폼 초기화
-    setNewSlideUrl('')
-    setNewSlideLinkUrl('')
-    setNewSlideTitle('')
-    setNewSlideSubtitle('')
-    setNewSlideBackgroundColor('#1e293b')
-    setNewSlideTextElements([])
-    alert('슬라이드가 추가되었습니다.')
   }
 
   const handleRemoveSlide = async (id: number) => {
     if (!confirm('이 슬라이드를 삭제하시겠습니까?')) return
 
-    const updatedSlides = slides.filter(slide => slide.id !== id)
-    setSlides(updatedSlides)
-    
-    // 로컬 스토리지에 저장 (임시)
-    localStorage.setItem('homepageSlides', JSON.stringify(updatedSlides))
-    
-    // TODO: 백엔드 API 연동 시 아래 주석을 해제하고 로컬 스토리지 저장을 제거하세요
-    // try {
-    //   await api.delete(`/api/admin/homepage/slides/${id}`)
-    //   alert('슬라이드가 삭제되었습니다.')
-    // } catch (error) {
-    //   console.error('슬라이드 삭제 실패:', error)
-    //   alert('슬라이드 삭제에 실패했습니다.')
-    // }
-
-    alert('슬라이드가 삭제되었습니다.')
+    try {
+      await deleteSlide(id)
+      alert('슬라이드가 삭제되었습니다.')
+      loadSlides()
+    } catch (error) {
+      console.error('슬라이드 삭제 실패:', error)
+      alert('슬라이드 삭제에 실패했습니다.')
+    }
   }
 
   const handleSaveYoutubeLinks = async () => {
@@ -409,24 +461,44 @@ function HomepageManagePage() {
     }
 
     try {
-      // 로컬 스토리지에 저장
-      localStorage.setItem('youtubeLinks', JSON.stringify(youtubeLinks))
-      
-      // TODO: 실제 API 연동 시 구현
-      // await api.patch('/api/admin/homepage/youtube', youtubeLinks)
-
+      await updateYoutubeConfig(youtubeLinks)
       alert('유튜브 링크가 저장되었습니다.')
+      loadYoutubeLinks()
     } catch (error) {
       console.error('유튜브 링크 저장 실패:', error)
       alert('유튜브 링크 저장에 실패했습니다.')
     }
   }
 
+  const getStatusLabel = (status: UserStatus) => {
+    switch (status) {
+      case 'PENDING': return '승인 대기'
+      case 'ACTIVE': return '활성'
+      case 'INACTIVE': return '비활성'
+      default: return status
+    }
+  }
+
+  const getStatusColor = (status: UserStatus) => {
+    switch (status) {
+      case 'PENDING': return 'bg-yellow-100 text-yellow-700'
+      case 'ACTIVE': return 'bg-green-100 text-green-700'
+      case 'INACTIVE': return 'bg-slate-100 text-slate-700'
+      default: return 'bg-slate-100 text-slate-700'
+    }
+  }
+
   const tabs = [
-    { id: 'pending' as TabType, label: '회원가입 신청 관리', count: pendingUsers.length },
-    { id: 'approved' as TabType, label: '승인된 사용자 관리', count: approvedUsers.length },
+    { id: 'users' as TabType, label: '사용자 관리' },
     { id: 'slides' as TabType, label: '홈페이지 슬라이드 관리' },
     { id: 'youtube' as TabType, label: '유튜브 링크 관리' },
+  ]
+
+  const statusFilters: { value: UserStatus | 'ALL', label: string }[] = [
+    { value: 'ALL', label: '전체' },
+    { value: 'PENDING', label: '승인 대기' },
+    { value: 'ACTIVE', label: '활성' },
+    { value: 'INACTIVE', label: '비활성' },
   ]
 
   return (
@@ -453,11 +525,6 @@ function HomepageManagePage() {
                 }`}
               >
                 {tab.label}
-                {tab.count !== undefined && tab.count > 0 && (
-                  <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-600">
-                    {tab.count}
-                  </span>
-                )}
               </button>
             ))}
           </nav>
@@ -465,90 +532,44 @@ function HomepageManagePage() {
 
         {/* 탭 컨텐츠 */}
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          {/* 회원가입 신청 관리 탭 */}
-          {activeTab === 'pending' && (
+          {/* 사용자 관리 탭 */}
+          {activeTab === 'users' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">승인 대기 사용자</h2>
-                <button
-                  onClick={loadPendingUsers}
-                  disabled={isLoadingPending}
-                  className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-50"
-                >
-                  {isLoadingPending ? '로딩 중...' : '새로고침'}
-                </button>
-              </div>
-
-              {isLoadingPending ? (
-                <div className="py-8 text-center text-sm text-slate-500">로딩 중...</div>
-              ) : pendingUsers.length === 0 ? (
-                <div className="py-8 text-center text-sm text-slate-500">
-                  승인 대기 중인 사용자가 없습니다.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {pendingUsers.map((user) => (
-                    <div
-                      key={user.userId}
-                      className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-4"
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <h2 className="text-lg font-semibold">사용자 목록</h2>
+                <div className="flex gap-2">
+                  {statusFilters.map((filter) => (
+                    <button
+                      key={filter.value}
+                      onClick={() => setStatusFilter(filter.value)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                        statusFilter === filter.value
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
                     >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3">
-                          <div>
-                            <p className="font-semibold text-slate-900">{user.name}</p>
-                            <p className="mt-1 text-xs text-slate-500">
-                              아이디: {user.loginId} | 전화번호: {user.phone}
-                            </p>
-                            <p className="mt-1 text-xs text-slate-400">
-                              신청일: {new Date(user.createdAt).toLocaleDateString('ko-KR')}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleApprove(user.userId)}
-                          className="rounded-lg bg-green-600 px-4 py-2 text-xs font-semibold text-white hover:bg-green-700"
-                        >
-                          승인
-                        </button>
-                        <button
-                          onClick={() => handleReject(user.userId)}
-                          className="rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700"
-                        >
-                          거절
-                        </button>
-                      </div>
-                    </div>
+                      {filter.label}
+                    </button>
                   ))}
+                  <button
+                    onClick={loadUsers}
+                    disabled={isLoadingUsers}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 ml-2"
+                  >
+                    새로고침
+                  </button>
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* 승인된 사용자 관리 탭 */}
-          {activeTab === 'approved' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">승인된 사용자</h2>
-                <button
-                  onClick={loadApprovedUsers}
-                  disabled={isLoadingApproved}
-                  className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-50"
-                >
-                  {isLoadingApproved ? '로딩 중...' : '새로고침'}
-                </button>
               </div>
 
-              {isLoadingApproved ? (
+              {isLoadingUsers ? (
                 <div className="py-8 text-center text-sm text-slate-500">로딩 중...</div>
-              ) : approvedUsers.length === 0 ? (
+              ) : users.length === 0 ? (
                 <div className="py-8 text-center text-sm text-slate-500">
-                  승인된 사용자가 없습니다.
+                  사용자가 없습니다.
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {approvedUsers.map((user) => (
+                  {users.map((user) => (
                     <div
                       key={user.userId}
                       className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-4"
@@ -556,20 +577,61 @@ function HomepageManagePage() {
                       <div className="flex-1">
                         <div className="flex items-center gap-3">
                           <div>
-                            <p className="font-semibold text-slate-900">{user.name}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-slate-900">{user.name}</p>
+                              <span className={`rounded px-2 py-0.5 text-[10px] font-bold ${getStatusColor(user.status)}`}>
+                                {getStatusLabel(user.status)}
+                              </span>
+                            </div>
                             <p className="mt-1 text-xs text-slate-500">
                               아이디: {user.loginId} | 전화번호: {user.phone}
                             </p>
                             <p className="mt-1 text-xs text-slate-400">
-                              승인일: {new Date(user.approvedAt).toLocaleDateString('ko-KR')}
+                              가입일: {new Date(user.createdAt).toLocaleDateString('ko-KR')}
                             </p>
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <span className="rounded-lg bg-green-100 px-3 py-1.5 text-xs font-semibold text-green-700">
-                          승인됨
-                        </span>
+                      <div className="relative">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setOpenMenuUserId(openMenuUserId === user.userId ? null : user.userId)
+                          }}
+                          className="rounded-full p-2 hover:bg-slate-200 text-slate-500 transition"
+                        >
+                          {/* 점 세개 아이콘 */}
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="1" />
+                            <circle cx="12" cy="5" r="1" />
+                            <circle cx="12" cy="19" r="1" />
+                          </svg>
+                        </button>
+
+                        {/* 드롭다운 메뉴 */}
+                        {openMenuUserId === user.userId && (
+                          <div 
+                            ref={menuRef}
+                            className="absolute right-0 top-full z-10 mt-1 w-32 origin-top-right rounded-lg border border-slate-200 bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
+                          >
+                            <div className="py-1">
+                              {(['PENDING', 'ACTIVE', 'INACTIVE'] as UserStatus[]).map((status) => (
+                                <button
+                                  key={status}
+                                  onClick={() => handleUpdateStatus(user.userId, status)}
+                                  disabled={user.status === status}
+                                  className={`block w-full px-4 py-2 text-left text-sm ${
+                                    user.status === status
+                                      ? 'bg-slate-50 text-slate-400 cursor-default'
+                                      : 'text-slate-700 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {getStatusLabel(status)}로 변경
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -632,15 +694,35 @@ function HomepageManagePage() {
                     <>
                       <div>
                         <label className="block text-xs font-medium text-slate-700">
-                          이미지 URL <span className="text-red-500">*</span>
+                          이미지 파일 또는 URL <span className="text-red-500">*</span>
                         </label>
-                        <input
-                          type="text"
-                          value={newSlideUrl}
-                          onChange={(e) => setNewSlideUrl(e.target.value)}
-                          placeholder="https://example.com/image.jpg"
-                          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
+                        <div className="mt-1 flex gap-2">
+                          <input
+                            type="text"
+                            value={newSlideUrl}
+                            onChange={(e) => setNewSlideUrl(e.target.value)}
+                            placeholder="https://example.com/image.jpg"
+                            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                          <input
+                            type="file"
+                            accept="image/*"
+                            ref={fileInputRef}
+                            onChange={handleImageUpload}
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={isUploading}
+                            className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+                          >
+                            {isUploading ? '업로드 중...' : '파일 선택'}
+                          </button>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          권장 비율: 4:1 (예: 1200x300). 모바일에서는 이미지가 작게 보일 수 있지만, 배경색이 자동으로 채워져 자연스럽게 보입니다. (글씨는 크게 넣는 것을 추천합니다)
+                        </p>
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-slate-700">클릭 시 이동할 링크 (선택)</label>
@@ -702,7 +784,7 @@ function HomepageManagePage() {
                         </div>
                       </div>
 
-                      {/* 텍스트 요소 관리 */}
+                      {/* 텍스트 요소 관리 (레이어 패널 스타일) */}
                       <div>
                         <div className="mb-3 flex items-center justify-between">
                           <label className="block text-xs font-medium text-slate-700">
@@ -716,114 +798,206 @@ function HomepageManagePage() {
                             + 텍스트 추가
                           </button>
                         </div>
-                        {newSlideTextElements.length === 0 ? (
-                          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-center">
-                            <p className="text-xs text-slate-500">텍스트 요소가 없습니다. 추가 버튼을 클릭하세요.</p>
-                          </div>
-                        ) : (
-                          <div className="space-y-3">
-                            {newSlideTextElements.map((element, index) => (
-                              <div
-                                key={element.id}
-                                className="rounded-lg border border-slate-200 bg-slate-50 p-3"
-                              >
-                                <div className="mb-2 flex items-center justify-between">
-                                  <span className="text-xs font-semibold text-slate-700">
-                                    텍스트 {index + 1}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveTextElement(element.id)}
-                                    className="rounded bg-red-500 px-2 py-1 text-xs font-semibold text-white hover:bg-red-600"
+                        
+                        <div className="flex gap-4">
+                          {/* 좌측: 레이어 목록 */}
+                          <div className="w-1/3 space-y-2">
+                            {newSlideTextElements.length === 0 ? (
+                              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-center">
+                                <p className="text-xs text-slate-500">요소 없음</p>
+                              </div>
+                            ) : (
+                              <div className="max-h-[300px] overflow-y-auto rounded-lg border border-slate-200 bg-white">
+                                {newSlideTextElements.map((element, index) => (
+                                  <div
+                                    key={element.id}
+                                    onClick={() => handleSelectTextElement(element.id)}
+                                    className={`flex cursor-pointer items-center justify-between border-b border-slate-100 px-3 py-2 last:border-0 hover:bg-slate-50 ${
+                                      selectedElementId === element.id ? 'bg-blue-50 hover:bg-blue-50' : ''
+                                    }`}
                                   >
-                                    삭제
-                                  </button>
-                                </div>
-                                <div className="space-y-2">
-                                  <div>
-                                    <label className="block text-xs font-medium text-slate-600 mb-1">
-                                      텍스트 내용 <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={element.text}
-                                      onChange={(e) => handleUpdateTextElement(element.id, 'text', e.target.value)}
-                                      placeholder="텍스트를 입력하세요"
-                                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    />
+                                    <div className="flex items-center gap-2 overflow-hidden">
+                                      <span className="flex h-5 w-5 flex-none items-center justify-center rounded bg-slate-200 text-[10px] font-bold text-slate-600">
+                                        T
+                                      </span>
+                                      <span className="truncate text-xs text-slate-700">
+                                        {element.text || `텍스트 ${index + 1}`}
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleRemoveTextElement(element.id)
+                                      }}
+                                      className="text-slate-400 hover:text-red-500"
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M18 6 6 18"></path>
+                                        <path d="m6 6 12 12"></path>
+                                      </svg>
+                                    </button>
                                   </div>
-                                  <div className="grid grid-cols-2 gap-2">
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* 우측: 속성 편집 패널 */}
+                          <div className="flex-1 rounded-lg border border-slate-200 bg-slate-50 p-4 relative min-h-[300px]">
+                            {(() => {
+                              const element = newSlideTextElements.find(el => el.id === selectedElementId)
+                              const isDisabled = !element
+                              // 기본값 객체 (선택된 요소가 없을 때 보여줄 값)
+                              const displayValues = element || {
+                                id: '',
+                                text: '',
+                                fontSize: 24,
+                                color: '#000000',
+                                x: 50,
+                                y: 50,
+                                fontWeight: 'normal',
+                                fontFamily: 'Arial'
+                              }
+                              
+                              return (
+                                <>
+                                  {/* 비활성화 오버레이 */}
+                                  {isDisabled && (
+                                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg bg-slate-50/60 backdrop-blur-[1px]">
+                                      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mb-2 text-slate-400">
+                                        <rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect>
+                                        <line x1="9" x2="15" y1="15" y2="9"></line>
+                                      </svg>
+                                      <p className="text-xs text-slate-500 font-medium">편집할 텍스트 요소를 선택하세요</p>
+                                    </div>
+                                  )}
+
+                                  <div className={`space-y-3 transition-opacity duration-200 ${isDisabled ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
+                                    <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                                      <span className="text-xs font-bold text-slate-700">속성 편집</span>
+                                      <span className="text-[10px] text-slate-400">ID: {displayValues.id ? displayValues.id.slice(-6) : '-'}</span>
+                                    </div>
+                                    
                                     <div>
                                       <label className="block text-xs font-medium text-slate-600 mb-1">
-                                        폰트 크기 (px)
+                                        텍스트 내용
                                       </label>
                                       <input
-                                        type="number"
-                                        min="10"
-                                        max="72"
-                                        value={element.fontSize}
-                                        onChange={(e) => handleUpdateTextElement(element.id, 'fontSize', Number(e.target.value))}
-                                        className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        type="text"
+                                        value={displayValues.text}
+                                        onChange={(e) => element && handleUpdateTextElement(element.id, 'text', e.target.value)}
+                                        placeholder="텍스트를 입력하세요"
+                                        disabled={isDisabled}
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
                                       />
                                     </div>
-                                    <div>
-                                      <label className="block text-xs font-medium text-slate-600 mb-1">
-                                        색상
-                                      </label>
-                                      <div className="flex gap-1">
-                                        <input
-                                          type="color"
-                                          value={element.color}
-                                          onChange={(e) => handleUpdateTextElement(element.id, 'color', e.target.value)}
-                                          className="h-8 w-12 cursor-pointer rounded border border-slate-300"
-                                        />
-                                        <input
-                                          type="text"
-                                          value={element.color}
-                                          onChange={(e) => handleUpdateTextElement(element.id, 'color', e.target.value)}
-                                          placeholder="#ffffff"
-                                          className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                        />
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                      <div>
+                                        <label className="block text-xs font-medium text-slate-600 mb-1">
+                                          폰트 크기
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                          <input
+                                            type="range"
+                                            min="10"
+                                            max="120"
+                                            value={displayValues.fontSize}
+                                            onChange={(e) => element && handleUpdateTextElement(element.id, 'fontSize', Number(e.target.value))}
+                                            disabled={isDisabled}
+                                            className="h-2 flex-1 cursor-pointer rounded-lg bg-slate-200 appearance-none accent-blue-600 disabled:opacity-50"
+                                          />
+                                          <input
+                                            type="number"
+                                            value={displayValues.fontSize}
+                                            onChange={(e) => element && handleUpdateTextElement(element.id, 'fontSize', Number(e.target.value))}
+                                            disabled={isDisabled}
+                                            className="w-12 rounded border border-slate-300 px-1 py-1 text-center text-xs disabled:bg-slate-100"
+                                          />
+                                        </div>
+                                      </div>
+                                      
+                                      <div>
+                                        <label className="block text-xs font-medium text-slate-600 mb-1">
+                                          색상
+                                        </label>
+                                        <div className="flex gap-1">
+                                          <input
+                                            type="color"
+                                            value={displayValues.color}
+                                            onChange={(e) => element && handleUpdateTextElement(element.id, 'color', e.target.value)}
+                                            disabled={isDisabled}
+                                            className="h-8 w-8 cursor-pointer rounded border border-slate-300 p-0 disabled:opacity-50"
+                                          />
+                                          <input
+                                            type="text"
+                                            value={displayValues.color}
+                                            onChange={(e) => element && handleUpdateTextElement(element.id, 'color', e.target.value)}
+                                            disabled={isDisabled}
+                                            className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs uppercase disabled:bg-slate-100"
+                                          />
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                      <label className="block text-xs font-medium text-slate-600 mb-1">
-                                        X 위치 (%)
-                                      </label>
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        max="100"
-                                        value={element.x}
-                                        onChange={(e) => handleUpdateTextElement(element.id, 'x', Number(e.target.value))}
-                                        className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                      />
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                      <div>
+                                        <label className="block text-xs font-medium text-slate-600 mb-1">
+                                          위치 (X, Y %)
+                                        </label>
+                                        <div className="flex gap-2">
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            max="100"
+                                            value={Math.round(displayValues.x)}
+                                            onChange={(e) => element && handleUpdateTextElement(element.id, 'x', Number(e.target.value))}
+                                            disabled={isDisabled}
+                                            className="w-full rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100"
+                                            placeholder="X"
+                                          />
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            max="100"
+                                            value={Math.round(displayValues.y)}
+                                            onChange={(e) => element && handleUpdateTextElement(element.id, 'y', Number(e.target.value))}
+                                            disabled={isDisabled}
+                                            className="w-full rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100"
+                                            placeholder="Y"
+                                          />
+                                        </div>
+                                      </div>
+                                      
+                                      <div>
+                                        <label className="block text-xs font-medium text-slate-600 mb-1">
+                                          스타일
+                                        </label>
+                                        <div className="flex gap-2">
+                                          <select
+                                            value={displayValues.fontWeight}
+                                            onChange={(e) => element && handleUpdateTextElement(element.id, 'fontWeight', e.target.value)}
+                                            disabled={isDisabled}
+                                            className="w-full rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100"
+                                          >
+                                            <option value="normal">Regular</option>
+                                            <option value="semibold">Semibold</option>
+                                            <option value="bold">Bold</option>
+                                          </select>
+                                        </div>
+                                      </div>
                                     </div>
+
                                     <div>
                                       <label className="block text-xs font-medium text-slate-600 mb-1">
-                                        Y 위치 (%)
-                                      </label>
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        max="100"
-                                        value={element.y}
-                                        onChange={(e) => handleUpdateTextElement(element.id, 'y', Number(e.target.value))}
-                                        className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                      />
-                                    </div>
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                      <label className="block text-xs font-medium text-slate-600 mb-1">
-                                        폰트
+                                        폰트 패밀리
                                       </label>
                                       <select
-                                        value={element.fontFamily}
-                                        onChange={(e) => handleUpdateTextElement(element.id, 'fontFamily', e.target.value)}
-                                        className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        value={displayValues.fontFamily}
+                                        onChange={(e) => element && handleUpdateTextElement(element.id, 'fontFamily', e.target.value)}
+                                        disabled={isDisabled}
+                                        className="w-full rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100"
                                       >
                                         <option value="Arial">Arial</option>
                                         <option value="Helvetica">Helvetica</option>
@@ -841,31 +1015,12 @@ function HomepageManagePage() {
                                         <option value="Nanum Gothic">Nanum Gothic</option>
                                       </select>
                                     </div>
-                                    <div>
-                                      <label className="block text-xs font-medium text-slate-600 mb-1">
-                                        굵기
-                                      </label>
-                                      <select
-                                        value={element.fontWeight}
-                                        onChange={(e) => handleUpdateTextElement(element.id, 'fontWeight', e.target.value)}
-                                        className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                      >
-                                        <option value="normal">보통</option>
-                                        <option value="semibold">중간 굵기</option>
-                                        <option value="bold">굵게</option>
-                                      </select>
-                                    </div>
                                   </div>
-                                  <div className="rounded-lg bg-blue-50 p-2">
-                                    <p className="text-xs text-blue-700">
-                                      💡 미리보기에서 텍스트를 드래그하여 위치를 이동할 수 있습니다.
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
+                                </>
+                              )
+                            })()}
                           </div>
-                        )}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -878,68 +1033,46 @@ function HomepageManagePage() {
                       style={{ userSelect: draggingElementId ? 'none' : 'auto' }}
                     >
                       {newSlideType === 'image' && newSlideUrl ? (
-                        <div className="relative h-52 w-full sm:h-72">
+                        <div 
+                          className="relative h-52 w-full sm:h-72"
+                          style={{ backgroundColor: newSlideBackgroundColor }}
+                        >
                           <img
                             src={newSlideUrl}
                             alt="미리보기"
-                            className="h-full w-full object-cover"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement
-                              target.src = 'https://via.placeholder.com/600x260?text=이미지+로드+실패'
-                            }}
+                            className="h-full w-full object-contain"
+                            draggable={false}
                           />
-                          {(newSlideTitle || newSlideSubtitle) && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/30 p-4">
-                              <div className="text-center text-white">
-                                {newSlideTitle && <p className="text-xl font-bold">{newSlideTitle}</p>}
-                                {newSlideSubtitle && <p className="mt-2 text-sm">{newSlideSubtitle}</p>}
-                              </div>
-                            </div>
-                          )}
                         </div>
                       ) : newSlideType === 'text' ? (
-                        <div
-                          style={{
-                            backgroundColor: newSlideBackgroundColor,
-                          }}
+                        <div 
                           className="relative h-52 w-full sm:h-72"
+                          style={{ backgroundColor: newSlideBackgroundColor }}
+                          onClick={() => setSelectedElementId(null)}
                         >
-                          {newSlideTextElements.length === 0 ? (
-                            <div className="flex h-full w-full items-center justify-center">
-                              <p className="text-sm text-slate-400">텍스트 요소를 추가하세요</p>
+                          {newSlideTextElements.map((element) => (
+                            <div
+                              key={element.id}
+                              onMouseDown={(e) => handleTextDragStart(e, element.id, element.x, element.y)}
+                              onTouchStart={(e) => handleTextDragStart(e, element.id, element.x, element.y)}
+                              className={`absolute cursor-move select-none whitespace-nowrap ${draggingElementId === element.id || selectedElementId === element.id ? 'opacity-70 ring-2 ring-blue-400' : ''}`}
+                              style={{
+                                left: `${element.x}%`,
+                                top: `${element.y}%`,
+                                transform: 'translate(-50%, -50%)',
+                                fontSize: `${element.fontSize}px`,
+                                color: element.color,
+                                fontWeight: element.fontWeight,
+                                fontFamily: element.fontFamily,
+                              }}
+                            >
+                              {element.text}
                             </div>
-                          ) : (
-                            newSlideTextElements.map((element) => (
-                              <div
-                                key={element.id}
-                                style={{
-                                  color: element.color,
-                                  left: `${element.x}%`,
-                                  top: `${element.y}%`,
-                                  transform: 'translate(-50%, -50%)',
-                                  fontFamily: element.fontFamily,
-                                }}
-                                className={`absolute cursor-move select-none ${
-                                  draggingElementId === element.id ? 'opacity-80 z-10' : 'z-0'
-                                }`}
-                                onMouseDown={(e) => handleTextDragStart(e, element.id, element.x, element.y)}
-                              >
-                                <p
-                                  style={{
-                                    fontSize: `${element.fontSize}px`,
-                                    fontWeight: element.fontWeight === 'bold' ? 'bold' : element.fontWeight === 'semibold' ? '600' : 'normal',
-                                  }}
-                                  className="whitespace-pre-wrap"
-                                >
-                                  {element.text || '(텍스트를 입력하세요)'}
-                                </p>
-                              </div>
-                            ))
-                          )}
+                          ))}
                         </div>
                       ) : (
                         <div className="flex h-52 w-full items-center justify-center bg-slate-100 sm:h-72">
-                          <p className="text-sm text-slate-400">미리보기를 표시하려면 정보를 입력하세요</p>
+                          <p className="text-slate-400">이미지 URL을 입력하거나 텍스트 슬라이드를 구성하세요</p>
                         </div>
                       )}
                     </div>
@@ -947,7 +1080,7 @@ function HomepageManagePage() {
 
                   <button
                     onClick={handleAddSlide}
-                    className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                    className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
                   >
                     슬라이드 추가
                   </button>
@@ -955,142 +1088,89 @@ function HomepageManagePage() {
               </div>
 
               {/* 슬라이드 목록 */}
-              {isLoadingSlides ? (
-                <div className="py-8 text-center text-sm text-slate-500">로딩 중...</div>
-              ) : slides.length === 0 ? (
-                <div className="py-8 text-center text-sm text-slate-500">
-                  등록된 슬라이드가 없습니다.
-                </div>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {slides.map((slide) => (
-                    <div
-                      key={slide.id}
-                      className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
-                    >
-                      <div className="aspect-video w-full overflow-hidden bg-slate-100">
-                        {slide.type === 'image' && slide.url ? (
-                          slide.linkUrl ? (
-                            <a
-                              href={slide.linkUrl}
-                              target={slide.linkUrl.startsWith('http') ? '_blank' : undefined}
-                              rel={slide.linkUrl.startsWith('http') ? 'noopener noreferrer' : undefined}
-                              className="block h-full w-full"
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-slate-900">등록된 슬라이드 ({slides?.length || 0})</h3>
+                {!slides || slides.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500">
+                    등록된 슬라이드가 없습니다.
+                  </div>
+                ) : (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {slides.map((slide) => (
+                      <div
+                        key={slide.id}
+                        className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
+                      >
+                        <div className="relative h-40 w-full bg-slate-100">
+                          {slide.type === 'image' || slide.type === 'IMAGE' ? (
+                            <div 
+                              className="relative h-full w-full"
+                              style={{ backgroundColor: slide.backgroundColor || '#1e293b' }}
                             >
                               <img
                                 src={slide.url}
-                                alt={slide.title || `슬라이드 ${slide.id}`}
-                                className="h-full w-full object-cover transition hover:opacity-90"
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement
-                                  target.src = 'https://via.placeholder.com/600x260?text=이미지+로드+실패'
-                                }}
+                                alt="슬라이드"
+                                className="h-full w-full object-contain"
                               />
-                            </a>
+                            </div>
                           ) : (
-                            <img
-                              src={slide.url}
-                              alt={slide.title || `슬라이드 ${slide.id}`}
-                              className="h-full w-full object-cover"
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement
-                                target.src = 'https://via.placeholder.com/600x260?text=이미지+로드+실패'
-                              }}
-                            />
-                          )
-                        ) : (
-                          <div
-                            style={{
-                              backgroundColor: slide.backgroundColor || '#1e293b',
-                            }}
-                            className="relative h-full w-full"
-                          >
-                            {slide.textElements && slide.textElements.length > 0 ? (
-                              slide.textElements.map((element) => (
+                            <div 
+                              className="relative h-full w-full"
+                              style={{ backgroundColor: slide.backgroundColor }}
+                            >
+                              {slide.textElements?.map((element) => (
                                 <div
                                   key={element.id}
+                                  className="absolute whitespace-nowrap"
                                   style={{
-                                    color: element.color,
                                     left: `${element.x}%`,
                                     top: `${element.y}%`,
                                     transform: 'translate(-50%, -50%)',
+                                    fontSize: `${Math.max(10, element.fontSize * 0.6)}px`, // 미리보기 축소 비율 적용
+                                    color: element.color,
+                                    fontWeight: element.fontWeight,
                                     fontFamily: element.fontFamily,
                                   }}
-                                  className="absolute"
                                 >
-                                  <p
-                                    style={{
-                                      fontSize: `${element.fontSize}px`,
-                                      fontWeight: element.fontWeight === 'bold' ? 'bold' : element.fontWeight === 'semibold' ? '600' : 'normal',
-                                    }}
-                                    className="whitespace-pre-wrap"
-                                  >
-                                    {element.text}
-                                  </p>
+                                  {element.text}
                                 </div>
-                              ))
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center">
-                                <p className="text-sm text-slate-400">텍스트 요소 없음</p>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {(slide.type === 'image' && (slide.title || slide.subtitle)) && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/30 p-4">
-                            <div className="text-center text-white">
-                              {slide.title && <p className="text-xl font-bold">{slide.title}</p>}
-                              {slide.subtitle && <p className="mt-2 text-sm">{slide.subtitle}</p>}
+                              ))}
                             </div>
+                          )}
+                          <div className="absolute right-2 top-2">
+                            <button
+                              onClick={() => handleRemoveSlide(slide.id)}
+                              className="rounded-full bg-white/80 p-1.5 text-red-600 hover:bg-white"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M3 6h18"></path>
+                                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                              </svg>
+                            </button>
                           </div>
-                        )}
-                      </div>
-                      <div className="p-3">
-                        <div className="mb-1 flex items-center gap-2">
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                            slide.type === 'text' 
-                              ? 'bg-blue-100 text-blue-700' 
-                              : 'bg-purple-100 text-purple-700'
-                          }`}>
-                            {slide.type === 'text' ? '텍스트' : '이미지'}
-                          </span>
                         </div>
-                        {slide.type === 'image' ? (
-                          <>
-                            {slide.title && (
-                              <p className="text-sm font-semibold text-slate-900">{slide.title}</p>
-                            )}
-                            {slide.subtitle && (
-                              <p className="mt-1 text-xs text-slate-500">{slide.subtitle}</p>
-                            )}
+                        <div className="p-3">
+                          <div className="flex items-center justify-between">
+                            <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                              {slide.type === 'image' || slide.type === 'IMAGE' ? '이미지' : '텍스트'}
+                            </span>
                             {slide.linkUrl && (
-                              <p className="mt-1 text-xs text-blue-600">링크: {slide.linkUrl}</p>
-                            )}
-                          </>
-                        ) : (
-                          <div className="space-y-1">
-                            {slide.textElements && slide.textElements.length > 0 ? (
-                              slide.textElements.map((el, idx) => (
-                                <p key={el.id} className="text-xs text-slate-600">
-                                  {idx + 1}. {el.text || '(빈 텍스트)'}
-                                </p>
-                              ))
-                            ) : (
-                              <p className="text-xs text-slate-400">텍스트 요소 없음</p>
+                              <span className="text-xs text-blue-600">🔗 링크 있음</span>
                             )}
                           </div>
-                        )}
+                          {(slide.type === 'image' || slide.type === 'IMAGE') && (
+                            <div className="mt-2 space-y-0.5">
+                              {slide.title && <p className="truncate text-sm font-medium text-slate-900">{slide.title}</p>}
+                              {slide.subtitle && <p className="truncate text-xs text-slate-500">{slide.subtitle}</p>}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <button
-                        onClick={() => handleRemoveSlide(slide.id)}
-                        className="absolute right-2 top-2 rounded-full bg-red-500 px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 shadow-lg transition hover:bg-red-600 group-hover:opacity-100"
-                      >
-                        삭제
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -1111,87 +1191,50 @@ function HomepageManagePage() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700">
-                    실시간 예배 링크 <span className="text-red-500">*</span>
+                    실시간 예배 링크 (Live URL)
                   </label>
-                  <p className="mt-1 text-xs text-slate-500">
-                    유튜브 채널 라이브 스트리밍 링크를 입력하세요.
-                  </p>
                   <input
                     type="url"
                     value={youtubeLinks.liveUrl}
-                    onChange={(e) =>
-                      setYoutubeLinks({ ...youtubeLinks, liveUrl: e.target.value })
-                    }
-                    placeholder="https://www.youtube.com/channel/..."
-                    className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    onChange={(e) => setYoutubeLinks({ ...youtubeLinks, liveUrl: e.target.value })}
+                    placeholder="https://www.youtube.com/..."
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
+                  <p className="mt-1 text-xs text-slate-500">
+                    홈페이지 상단 '실시간 예배' 버튼 클릭 시 이동할 링크입니다.
+                  </p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700">
-                    플레이리스트 링크 <span className="text-red-500">*</span>
+                    지난 설교 재생목록 (Playlist Embed URL)
                   </label>
-                  <p className="mt-1 text-xs text-slate-500">
-                    유튜브 플레이리스트 embed 링크를 입력하세요. (예: https://www.youtube.com/embed/videoseries?list=...)
-                  </p>
                   <input
                     type="url"
                     value={youtubeLinks.playlistUrl}
-                    onChange={(e) =>
-                      setYoutubeLinks({ ...youtubeLinks, playlistUrl: e.target.value })
-                    }
+                    onChange={(e) => setYoutubeLinks({ ...youtubeLinks, playlistUrl: e.target.value })}
                     placeholder="https://www.youtube.com/embed/videoseries?list=..."
-                    className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
+                  <p className="mt-1 text-xs text-slate-500">
+                    홈페이지 하단에 표시될 유튜브 플레이리스트 임베드 URL입니다.
+                  </p>
                 </div>
 
-                <div className="flex justify-end">
+                <div className="pt-2">
                   <button
                     onClick={handleSaveYoutubeLinks}
-                    className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
                   >
-                    저장
+                    저장하기
                   </button>
-                </div>
-
-                {/* 미리보기 */}
-                <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                  <h3 className="mb-3 text-sm font-semibold text-slate-900">미리보기</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <p className="mb-2 text-xs font-medium text-slate-700">실시간 예배 링크:</p>
-                      <a
-                        href={youtubeLinks.liveUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-blue-600 hover:underline"
-                      >
-                        {youtubeLinks.liveUrl}
-                      </a>
-                    </div>
-                    <div>
-                      <p className="mb-2 text-xs font-medium text-slate-700">플레이리스트 미리보기:</p>
-                      <div className="relative w-full overflow-hidden rounded-lg bg-slate-100">
-                        <div className="aspect-video w-full">
-                          <iframe
-                            className="h-full w-full"
-                            src={youtubeLinks.playlistUrl}
-                            title="청년부 설교 영상"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
           )}
         </div>
-
-        <Footer />
       </div>
+      <Footer />
     </div>
   )
 }

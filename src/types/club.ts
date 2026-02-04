@@ -1,14 +1,16 @@
-import type { Member } from './member'
 
-export enum ClubType {
-  NEW_BELIEVER = 'NEW_BELIEVER', // 새신자관리팀 / Green
-  WORSHIP = 'WORSHIP', // 찬양팀 / Purple
-  BROADCAST = 'BROADCAST', // 방송팀 / Orange
-  CONTENT = 'CONTENT', // 컨텐츠팀 / Pink
-  DESIGN = 'DESIGN', // 디자인팀 / Indigo
-  SERVICE = 'SERVICE', // 예배팀 / Blue
-  HOBBY = 'HOBBY', // 취미/친목 / Yellow
-}
+export const ClubType = {
+  NEW_BELIEVER: 'NEW_BELIEVER', // 새신자관리팀 / Green
+  WORSHIP: 'WORSHIP', // 찬양팀 / Purple
+  BROADCAST: 'BROADCAST', // 방송팀 / Orange
+  CONTENT: 'CONTENT', // 컨텐츠팀 / Pink
+  DESIGN: 'DESIGN', // 디자인팀 / Indigo
+  SERVICE: 'SERVICE', // 예배팀 / Blue
+  HOBBY: 'HOBBY', // 취미/친목 / Yellow
+} as const
+export type ClubType = typeof ClubType[keyof typeof ClubType]
+
+export default ClubType
 
 export const ClubTypeLabels: Record<ClubType, string> = {
   [ClubType.NEW_BELIEVER]: '새신자관리팀',
@@ -21,6 +23,7 @@ export const ClubTypeLabels: Record<ClubType, string> = {
 }
 
 export interface ClubMember {
+  id: number
   memberId: number
   name: string
   phone?: string

@@ -1,27 +1,61 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
 import RichTextEditor from '../components/RichTextEditor'
-import type { BoardType } from './BoardListPage'
 import { createNotice } from '../services/noticeService'
-import { createBoardPost } from '../services/boardService'
+import { createBoardPost, getBoards } from '../services/boardService'
 
 function BoardWritePage() {
-  const { boardType } = useParams<{ boardType?: BoardType }>()
+  const { boardType } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [boardName, setBoardName] = useState('')
+  const [apiBoardId, setApiBoardId] = useState<string | null>(null)
 
   const isYouthNotice = location.pathname.includes('/youth-notices')
+
+  useEffect(() => {
+    const fetchBoardInfo = async () => {
+      if (isYouthNotice) {
+        setBoardName('청년부 공지사항')
+        return
+      }
+      
+      if (boardType) {
+        try {
+          const boards = await getBoards()
+          // id 또는 boardId가 일치하는지 확인
+          const board = boards.find(b => 
+            String(b.id) === String(boardType) || 
+            (b.boardId && String(b.boardId) === String(boardType))
+          )
+          if (board) {
+            setBoardName(board.name)
+            if (board.boardId) {
+              setApiBoardId(board.boardId)
+            } else if (board.id) {
+              setApiBoardId(board.id)
+            }
+          }
+        } catch (error) {
+          console.error('게시판 정보 로드 실패:', error)
+        }
+      }
+    }
+    fetchBoardInfo()
+  }, [boardType, isYouthNotice])
 
   const handleSubmit = async () => {
     // HTML 태그를 제거한 순수 텍스트로 검증
     const textContent = content.replace(/<[^>]*>/g, '').trim()
-    if (!title.trim() || !textContent) {
-      alert('제목과 내용을 모두 입력해주세요.')
+    const hasImage = content.includes('<img')
+    
+    if (!title.trim() || (!textContent && !hasImage)) {
+      alert('제목과 내용을 입력해주세요.')
       return
     }
 
@@ -33,13 +67,14 @@ function BoardWritePage() {
         const noticeId = await createNotice({
           title: title.trim(),
           content: content.trim(),
-          isImportant: false,
+          notice: false,
         })
         alert('글이 작성되었습니다.')
         navigate(`/youth-notices/${noticeId}`)
       } else if (boardType) {
         // 게시판 작성
-        const postId = await createBoardPost(boardType, {
+        const targetId = apiBoardId || boardType
+        const postId = await createBoardPost(targetId, {
           title: title.trim(),
           content: content.trim(),
         })
@@ -49,10 +84,11 @@ function BoardWritePage() {
         alert('게시판 정보를 찾을 수 없습니다.')
         setIsSubmitting(false)
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('글 작성 실패:', error)
+      const err = error as { response?: { data?: { message?: string } }, message?: string }
       const errorMessage =
-        error?.response?.data?.message || error?.message || '글 작성 중 오류가 발생했습니다.'
+        err?.response?.data?.message || err?.message || '글 작성 중 오류가 발생했습니다.'
       alert(errorMessage)
       setIsSubmitting(false)
     }
@@ -75,7 +111,7 @@ function BoardWritePage() {
 
         {/* 헤더 */}
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-slate-900">글쓰기</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{boardName ? `${boardName} 글쓰기` : '글쓰기'}</h1>
           <button
             onClick={() => {
               if (isYouthNotice) {
@@ -114,6 +150,7 @@ function BoardWritePage() {
                 value={content}
                 onChange={setContent}
                 placeholder="내용을 입력하세요"
+                height="800px"
               />
             </div>
           </div>

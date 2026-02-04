@@ -9,12 +9,9 @@ import {
   updateAlbum,
   deleteAlbum,
   getFileUrl,
-  mapAccessTypeToPermission,
-  mapPermissionToAccessType,
-  type AlbumListItem,
-  type AlbumAccessType,
   type ReadPermission,
   type WritePermission,
+  type AlbumListItem,
 } from '../services/albumService'
 
 function YouthAlbumPage() {

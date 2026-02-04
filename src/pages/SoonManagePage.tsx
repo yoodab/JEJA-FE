@@ -1,12 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   getCells,
   createCell,
-  updateCell,
   deleteCell,
   getUnassignedMembers,
-  syncCellMembers,
+  updateCell,
   updateCellMembersBatch,
   activateSeason,
   type Cell,
@@ -27,7 +26,6 @@ function SoonManagePage() {
   
   // Drag & Drop states
   const [draggedMember, setDraggedMember] = useState<Member | null>(null)
-  const [draggedFromCellId, setDraggedFromCellId] = useState<number | null>(null) // null means from unassigned
   
   const [unassignedSearch, setUnassignedSearch] = useState('')
 
@@ -44,7 +42,7 @@ function SoonManagePage() {
   }, [showAssignmentModal, showEditModal])
 
   // 데이터 불러오기
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setIsLoading(true)
     try {
       const [cellsData, unassignedData] = await Promise.all([
@@ -69,16 +67,15 @@ function SoonManagePage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [selectedYear])
 
   useEffect(() => {
     fetchData()
-  }, [selectedYear])
+  }, [fetchData])
 
   // 드래그 앤 드롭 핸들러
-  const handleDragStart = (member: Member, cellId: number | null) => {
+  const handleDragStart = (member: Member) => {
     setDraggedMember(member)
-    setDraggedFromCellId(cellId)
   }
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -127,7 +124,7 @@ function SoonManagePage() {
             // Note: We used nextCells which already has the member removed, so we just add it.
             // But we double check for safety.
             const alreadyIn = cell.members.some(m => m.memberId === draggedMember.memberId)
-            let newMembers = [...cell.members]
+            const newMembers = [...cell.members]
             
             if (!alreadyIn) {
                // Only push if we are NOT making it a leader, OR if we are making it a leader we handle it below
@@ -164,7 +161,6 @@ function SoonManagePage() {
     }
 
     setDraggedMember(null)
-    setDraggedFromCellId(null)
   }
 
   // 멤버 제거 (미배정으로 이동)
@@ -322,7 +318,7 @@ function SoonManagePage() {
                 phone: targetCell.leaderPhone || '',
                 address: '',
                 role: '순장'
-             } as any)
+             } as unknown as Member)
         }
     }
 
@@ -337,11 +333,7 @@ function SoonManagePage() {
     setCells(prev => prev.filter(c => c.cellId !== cellId))
   }
 
-  // 순 수정 모달 열기
-  const handleEditSoon = (cellId: number) => {
-    setEditingCellId(cellId)
-    setShowEditModal(true)
-  }
+  // 순 수정 모달 열기 (제거됨)
 
   const handleCloseEditModal = () => {
     setShowEditModal(false)
@@ -572,7 +564,7 @@ function SoonManagePage() {
                     <div
                       key={member.memberId}
                       draggable
-                      onDragStart={() => handleDragStart(member, null)}
+                      onDragStart={() => handleDragStart(member)}
                       className="cursor-move rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-blue-50 hover:border-blue-300 shadow-sm flex items-center justify-between"
                     >
                       <div className="flex items-center gap-2">
@@ -626,18 +618,26 @@ function SoonManagePage() {
                                         `}
                                     >
                                         {cell.leaderMemberId ? (
-                                            <div 
-                                                draggable
-                                                onDragStart={(e) => {
-                                                    const leaderMember = cell.members.find(m => m.memberId === cell.leaderMemberId);
-                                                    if (leaderMember) {
-                                                        handleDragStart(leaderMember, cell.cellId);
-                                                    } else {
-                                                        e.preventDefault();
-                                                    }
-                                                }}
-                                                className="flex flex-col items-center gap-1 cursor-move"
-                                            >
+                                        <div 
+                                            draggable
+                                            onDragStart={() => {
+                                                // Try to find in members list first, otherwise construct partial member
+                                                let leaderMember = cell.members.find(m => m.memberId === cell.leaderMemberId);
+                                                if (!leaderMember) {
+                                                    // Construct partial member if not found in list (e.g. was just dropped as leader)
+                                                    leaderMember = {
+                                                        memberId: cell.leaderMemberId!,
+                                                        name: cell.leaderName || '',
+                                                        phone: cell.leaderPhone || '',
+                                                        birthDate: '', // Partial info
+                                                        address: '',
+                                                        role: '순장'
+                                                    } as unknown as Member;
+                                                }
+                                                handleDragStart(leaderMember);
+                                            }}
+                                            className="flex flex-col items-center gap-1 cursor-move"
+                                        >
                                                 <div className="flex items-center gap-1 text-emerald-700">
                                                     <span className="text-sm">👑</span>
                                                     <span className="font-bold">{cell.leaderName}</span>
@@ -670,7 +670,7 @@ function SoonManagePage() {
                                             <div
                                                 key={`cell-${cell.cellId}-${member.memberId}`}
                                                 draggable
-                                                onDragStart={() => handleDragStart(member, cell.cellId)}
+                                                onDragStart={() => handleDragStart(member)}
                                                 className="group flex items-center justify-between rounded border border-white bg-white px-2 py-1.5 text-xs shadow-sm cursor-move hover:border-emerald-200 hover:shadow-md transition-all"
                                             >
                                                 <div className="flex items-center gap-1">

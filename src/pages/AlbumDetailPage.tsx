@@ -56,28 +56,7 @@ function AlbumDetailPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [activePhotoMenuId])
 
-  useEffect(() => {
-    setIsManagerUser(isManager())
-    if (albumId) {
-      loadAlbum()
-    }
-  }, [albumId])
-
-  // Keyboard Navigation for Lightbox
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (lightboxIndex === null) return
-
-      if (e.key === 'Escape') closeLightbox()
-      if (e.key === 'ArrowLeft') prevPhoto()
-      if (e.key === 'ArrowRight') nextPhoto()
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [lightboxIndex, album])
-
-  const loadAlbum = async () => {
+  const loadAlbum = useCallback(async () => {
     if (!albumId) return
     try {
       setLoading(true)
@@ -90,7 +69,14 @@ function AlbumDetailPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [albumId, initialAlbum, navigate])
+
+  useEffect(() => {
+    setIsManagerUser(isManager())
+    if (albumId) {
+      loadAlbum()
+    }
+  }, [albumId, loadAlbum])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -259,22 +245,22 @@ function AlbumDetailPage() {
     document.body.style.overflow = 'hidden'
   }
 
-  const closeLightbox = () => {
+  const closeLightbox = useCallback(() => {
     setLightboxIndex(null)
     document.body.style.overflow = 'auto'
-  }
+  }, [])
 
-  const nextPhoto = () => {
+  const nextPhoto = useCallback(() => {
     if (album && lightboxIndex !== null) {
       setLightboxIndex((prev) => (prev === null || prev === album.photos.length - 1 ? 0 : prev + 1))
     }
-  }
+  }, [album, lightboxIndex])
 
-  const prevPhoto = () => {
+  const prevPhoto = useCallback(() => {
     if (album && lightboxIndex !== null) {
       setLightboxIndex((prev) => (prev === null || prev === 0 ? album.photos.length - 1 : prev - 1))
     }
-  }
+  }, [album, lightboxIndex])
 
   const handleDownloadCurrent = () => {
     if (album && lightboxIndex !== null) {
@@ -285,6 +271,20 @@ function AlbumDetailPage() {
       downloadFile(url, filename)
     }
   }
+
+  // Keyboard Navigation for Lightbox
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (lightboxIndex === null) return
+
+      if (e.key === 'Escape') closeLightbox()
+      if (e.key === 'ArrowLeft') prevPhoto()
+      if (e.key === 'ArrowRight') nextPhoto()
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [lightboxIndex, album, closeLightbox, prevPhoto, nextPhoto])
 
   if (loading) {
     return (

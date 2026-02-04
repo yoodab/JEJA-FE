@@ -1,13 +1,18 @@
-import { useState, useEffect } from 'react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { Link, useParams } from 'react-router-dom'
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
 import { getUserRole, isLoggedIn as checkLoggedIn, isManager } from '../utils/auth'
 import { getMembers } from '../services/memberService'
 import type { Member } from '../types/member'
-import { getClub, addClubMember, removeClubMember, updateClub } from '../services/clubService'
-import type { Club, ClubMember } from '../types/club'
+import { getClub } from '../services/clubService'
+import ClubType, { type ClubMember } from '../types/club'
 import { getMyInfo } from '../services/userService'
+import { getTemplateByClubId, submitForm, createFormTemplate, updateFormTemplate, getClubSubmissions, approveSubmission, rejectSubmission } from '../services/formService'
+import type { FormTemplate, ClubSubmissionResponse } from '../types/form'
+import { DynamicFormRenderer } from '../components/forms/DynamicFormRenderer'
+import { FormBuilder } from '../components/forms/FormBuilder'
+import SubmissionDetailModal from '../components/forms/SubmissionDetailModal'
 
 interface ClubActivity {
   id: number
@@ -16,79 +21,16 @@ interface ClubActivity {
   description: string
 }
 
-interface TeamApplication {
-  id: number
-  applicantName: string
-  applicantId: number
-  submittedAt: string
-  status: 'PENDING' | 'APPROVED' | 'REJECTED'
-  answers: {
-    question: string
-    answer: string
-  }[]
-}
-
-interface ApplicationTemplate {
-  questions: {
-    id: number
-    question: string
-  }[]
-}
-
 interface TeamInfo {
   clubId: number
   clubName: string
+  type: ClubType
   leader: string
   leaderId: number
-  meetingTime: string
-  meetingPlace: string
   description: string
   members: ClubMember[]
   activities: ClubActivity[]
 }
-
-// 팀별 데이터 (실제로는 API에서 가져올 데이터) -> Now fetched from API
-// const teamData removed
-
-// 임시: 현재 사용자 정보 (실제로는 API에서 가져와야 함)
-// const mockCurrentUser removed
-
-// 임시: 신청서 템플릿 (팀장이 수정 가능)
-const mockApplicationTemplate: ApplicationTemplate = {
-  questions: [
-    { id: 1, question: '이 팀에 지원하게 된 동기는 무엇인가요?' },
-    { id: 2, question: '이 팀에서 어떤 역할을 하고 싶으신가요?' },
-    { id: 3, question: '이 팀에 기여할 수 있는 점은 무엇인가요?' },
-  ],
-}
-
-// 임시: 신청서 기록 (팀장이 볼 수 있음)
-const mockApplications: TeamApplication[] = [
-  {
-    id: 1,
-    applicantName: '지원자1',
-    applicantId: 11,
-    submittedAt: '2024-12-15T10:00:00',
-    status: 'PENDING',
-    answers: [
-      { question: '이 팀에 지원하게 된 동기는 무엇인가요?', answer: '찬양에 관심이 많아서 지원했습니다.' },
-      { question: '이 팀에서 어떤 역할을 하고 싶으신가요?', answer: '보컬로 참여하고 싶습니다.' },
-      { question: '이 팀에 기여할 수 있는 점은 무엇인가요?', answer: '열정과 노력으로 팀에 기여하겠습니다.' },
-    ],
-  },
-  {
-    id: 2,
-    applicantName: '지원자2',
-    applicantId: 12,
-    submittedAt: '2024-12-14T15:30:00',
-    status: 'APPROVED',
-    answers: [
-      { question: '이 팀에 지원하게 된 동기는 무엇인가요?', answer: '음악을 좋아해서 지원했습니다.' },
-      { question: '이 팀에서 어떤 역할을 하고 싶으신가요?', answer: '기타 연주를 하고 싶습니다.' },
-      { question: '이 팀에 기여할 수 있는 점은 무엇인가요?', answer: '기타 실력으로 팀에 도움이 되겠습니다.' },
-    ],
-  },
-]
 
 type TabType = 'intro' | 'applications' | 'manage'
 type ApplicationStatus = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'
@@ -97,7 +39,7 @@ function TeamDetailPage() {
   const { teamId } = useParams<{ teamId: string }>()
   const teamIdNum = teamId ? parseInt(teamId, 10) : null
   const [team, setTeam] = useState<TeamInfo | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<{id: number, name: string} | null>(null)
 
   const [activeTab, setActiveTab] = useState<TabType>('intro')
@@ -111,18 +53,18 @@ function TeamDetailPage() {
   const [showTeamInfoEdit, setShowTeamInfoEdit] = useState(false)
   const [showAddMemberModal, setShowAddMemberModal] = useState(false)
   const [openMemberMenuId, setOpenMemberMenuId] = useState<number | null>(null)
-  const [applicationTemplate, setApplicationTemplate] = useState<ApplicationTemplate>(mockApplicationTemplate)
-  const [applications, setApplications] = useState<TeamApplication[]>(mockApplications)
-  const [applicationAnswers, setApplicationAnswers] = useState<Record<number, string>>({})
+  const [applicationFormTemplate, setApplicationFormTemplate] = useState<FormTemplate | null>(null)
+  const [applications, setApplications] = useState<ClubSubmissionResponse[]>([])
+  const [applicationAnswers, setApplicationAnswers] = useState<Record<string, any>>({})
   const [allMembers, setAllMembers] = useState<Member[]>([])
   const [teamInfoForm, setTeamInfoForm] = useState({
     clubName: '',
     description: '',
-    meetingTime: '',
-    meetingPlace: '',
   })
   const [applicationStatusFilter, setApplicationStatusFilter] = useState<ApplicationStatus>('ALL')
   const [applicationSearchTerm, setApplicationSearchTerm] = useState('')
+  const [selectedSubmissionId, setSelectedSubmissionId] = useState<number | null>(null)
+  const [isSubmissionDetailOpen, setIsSubmissionDetailOpen] = useState(false)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -151,11 +93,10 @@ function TeamDetailPage() {
           clubName: clubData.name,
           leader: clubData.leaderName || "",
           leaderId: clubData.leaderId || 0,
-          meetingTime: clubData.meetingTime || "",
-          meetingPlace: clubData.meetingPlace || "",
           description: clubData.description,
           members: clubData.members || [],
-          activities: [], 
+          activities: [],
+          type: ClubType.NEW_BELIEVER
         }
         setTeam(teamInfo)
 
@@ -168,9 +109,16 @@ function TeamDetailPage() {
         setTeamInfoForm({
           clubName: clubData.name,
           description: clubData.description,
-          meetingTime: clubData.meetingTime || "",
-          meetingPlace: clubData.meetingPlace || "",
         })
+
+        // Fetch Application Form Template
+        try {
+          const template = await getTemplateByClubId(clubData.id)
+          setApplicationFormTemplate(template)
+        } catch {
+          console.log('No application form template found')
+          setApplicationFormTemplate(null)
+        }
 
       } catch (error) {
         console.error("Failed to fetch team data:", error)
@@ -204,59 +152,94 @@ function TeamDetailPage() {
     }
   }, [showAddMemberModal])
 
-  const handleSubmitApplication = () => {
-    // 신청서 제출 로직
-    const newApplication: TeamApplication = {
-      id: applications.length + 1,
-      applicantName: mockCurrentUser.name,
-      applicantId: mockCurrentUser.id,
-      submittedAt: new Date().toISOString(),
-      status: 'PENDING',
-      answers: applicationTemplate.questions.map(q => ({
-        question: q.question,
-        answer: applicationAnswers[q.id] || '',
-      })),
+  const loadApplications = useCallback(async () => {
+    if (!teamIdNum || (!isTeamLeader && !isAdmin)) return
+    try {
+      const data = await getClubSubmissions(teamIdNum)
+      setApplications(data)
+    } catch (error) {
+      console.error('Failed to fetch applications:', error)
     }
-    setApplications([...applications, newApplication])
-    setApplicationAnswers({})
-    setShowApplicationModal(false)
-    alert('가입 신청이 완료되었습니다.')
-  }
+  }, [teamIdNum, isTeamLeader, isAdmin])
 
-  const handleApproveApplication = (applicationId: number) => {
-    const application = applications.find(app => app.id === applicationId)
-    if (!application) return
+  // 신청서 목록 로드
+  useEffect(() => {
+    if (activeTab === 'applications') {
+      loadApplications()
+    }
+  }, [activeTab, loadApplications])
 
-    setApplications(applications.map(app => 
-      app.id === applicationId ? { ...app, status: 'APPROVED' as const } : app
-    ))
-    
-    // 승인 시 팀원에 추가
-    if (team) {
-      const newMember: ClubMember = {
-        id: application.applicantId,
-        name: application.applicantName,
-      }
-      setTeam({
-        ...team,
-        members: [...team.members, newMember],
+  const handleSubmitApplication = async () => {
+    if (!applicationFormTemplate || !currentUser || !team) return
+
+    // Transform answers for API
+    const formattedAnswers = Object.entries(applicationAnswers).map(([key, value]) => ({
+      questionId: Number(key),
+      value: String(value)
+    }))
+
+    try {
+      await submitForm({
+        templateId: applicationFormTemplate.id,
+        clubId: team.clubId,
+        date: new Date().toISOString().split('T')[0],
+        answers: formattedAnswers
       })
+
+      setApplicationAnswers({})
+      setShowApplicationModal(false)
+      alert('가입 신청이 완료되었습니다.')
+    } catch (error) {
+      console.error('Failed to submit application:', error)
+      alert('가입 신청 제출에 실패했습니다.')
     }
-    
-    alert('신청이 승인되었습니다.')
   }
 
-  const handleRejectApplication = (applicationId: number) => {
-    setApplications(applications.map(app => 
-      app.id === applicationId ? { ...app, status: 'REJECTED' as const } : app
-    ))
-    alert('신청이 거절되었습니다.')
+  const handleApproveApplication = async (applicationId: number) => {
+    try {
+      await approveSubmission(applicationId)
+      alert('신청이 승인되었습니다.')
+      setIsSubmissionDetailOpen(false)
+      loadApplications()
+    } catch (e) {
+      console.error(e)
+      alert('승인 처리에 실패했습니다.')
+    }
   }
 
-  const handleSaveTemplate = () => {
-    // 템플릿 저장 로직
-    setShowTemplateEdit(false)
-    alert('신청서 양식이 저장되었습니다.')
+  const handleRejectApplication = async (applicationId: number) => {
+    try {
+      await rejectSubmission(applicationId)
+      alert('신청이 거절되었습니다.')
+      setIsSubmissionDetailOpen(false)
+      loadApplications()
+    } catch (e) {
+      console.error(e)
+      alert('거절 처리에 실패했습니다.')
+    }
+  }
+
+  const handleSaveTemplate = async (templateData: Partial<FormTemplate>) => {
+    if (!team) return
+
+    try {
+      if (applicationFormTemplate) {
+        await updateFormTemplate(applicationFormTemplate.id, templateData)
+        alert('신청서 양식이 수정되었습니다.')
+      } else {
+        await createFormTemplate(templateData)
+        alert('신청서 양식이 생성되었습니다.')
+      }
+      
+      // Refresh template
+      const template = await getTemplateByClubId(team.clubId)
+      setApplicationFormTemplate(template)
+      
+      setShowTemplateEdit(false)
+    } catch (error) {
+      console.error('Failed to save template:', error)
+      alert('저장 중 오류가 발생했습니다.')
+    }
   }
 
   const handleSaveTeamInfo = () => {
@@ -267,8 +250,6 @@ function TeamDetailPage() {
       ...team,
       clubName: teamInfoForm.clubName,
       description: teamInfoForm.description,
-      meetingTime: teamInfoForm.meetingTime,
-      meetingPlace: teamInfoForm.meetingPlace,
     })
     setShowTeamInfoEdit(false)
     alert('팀 소개가 수정되었습니다.')
@@ -277,7 +258,7 @@ function TeamDetailPage() {
   const handleTransferLeadership = (memberId: number) => {
     if (!team) return
     
-    const member = team.members.find(m => m.id === memberId)
+    const member = team.members.find(m => m.memberId === memberId)
     if (!member) return
     
     if (confirm(`정말로 ${member.name}님에게 팀장 권한을 양도하시겠습니까?`)) {
@@ -286,9 +267,9 @@ function TeamDetailPage() {
         leader: member.name,
         leaderId: memberId,
         members: team.members.map(m => 
-          m.id === memberId 
+          m.memberId === memberId 
             ? { ...m, role: '팀장' }
-            : m.id === team.leaderId
+            : m.memberId === team.leaderId
             ? { ...m, role: undefined }
             : m
         ),
@@ -304,15 +285,17 @@ function TeamDetailPage() {
     if (!member) return
     
     // 이미 팀원인지 확인
-    if (team.members.some(m => m.id === memberId)) {
+    if (team.members.some(m => m.memberId === memberId)) {
       alert('이미 팀원입니다.')
       return
     }
     
     const newMember: ClubMember = {
-      id: member.memberId,
-      name: member.name,
-    }
+          id: 0, // Optimistic update
+          memberId: member.memberId,
+          name: member.name,
+          role: 'MEMBER',
+        }
     setTeam({
       ...team,
       members: [...team.members, newMember],
@@ -323,7 +306,7 @@ function TeamDetailPage() {
   const handleRemoveMember = (memberId: number) => {
     if (!team) return
     
-    const member = team.members.find(m => m.id === memberId)
+    const member = team.members.find(m => m.memberId === memberId)
     if (!member) return
     
     // 팀장은 삭제할 수 없음
@@ -335,7 +318,7 @@ function TeamDetailPage() {
     if (confirm(`정말로 ${member.name}님을 팀에서 제외하시겠습니까?`)) {
       setTeam({
         ...team,
-        members: team.members.filter(m => m.id !== memberId),
+        members: team.members.filter(m => m.memberId !== memberId),
       })
       alert('팀원이 제외되었습니다.')
     }
@@ -372,10 +355,10 @@ function TeamDetailPage() {
           </div>
           <div className="flex items-center gap-3">
             <Link
-              to="/club"
+              to="/user-dashboard"
               className="text-sm font-semibold text-blue-600 hover:text-blue-700"
             >
-              ← 팀 목록으로
+              ← 메인으로
             </Link>
           </div>
         </div>
@@ -427,7 +410,7 @@ function TeamDetailPage() {
             <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-slate-900">{team.clubName}</h2>
-                {!isTeamMember && isLoggedIn && (
+                {!isTeamMember && isLoggedIn && applicationFormTemplate && (
                   <button
                     onClick={() => setShowApplicationModal(true)}
                     className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
@@ -443,18 +426,46 @@ function TeamDetailPage() {
                   <span className="text-slate-900">{team.leader}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-slate-600">모임 시간:</span>
-                  <span className="text-slate-900">{team.meetingTime}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-slate-600">모임 장소:</span>
-                  <span className="text-slate-900">{team.meetingPlace}</span>
-                </div>
-                <div className="flex items-center gap-2">
                   <span className="font-medium text-slate-600">팀원 수:</span>
                   <span className="text-slate-900">{team.members.length}명</span>
                 </div>
               </div>
+
+              {/* 팀 기능 바로가기 (특정 팀만 표시) */}
+              {(team.type === ClubType.NEW_BELIEVER || team.type === ClubType.CONTENT) && (
+                <div className="mt-6 border-t border-slate-100 pt-4">
+                  <h3 className="text-sm font-semibold text-slate-900 mb-3">팀 기능 바로가기</h3>
+                  <div className="flex flex-wrap gap-3">
+                    {team.type === ClubType.NEW_BELIEVER && (
+                      <>
+                        <Link
+                          to="/manage/newcomers"
+                          className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                        >
+                          <span>👥</span>
+                          <span>새신자 관리</span>
+                        </Link>
+                        <Link
+                          to="/manage/meal-tickets"
+                          className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                        >
+                          <span>🎫</span>
+                          <span>식권 관리</span>
+                        </Link>
+                      </>
+                    )}
+                    {team.type === ClubType.CONTENT && (
+                      <Link
+                        to="/manage/group-formation"
+                        className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                      >
+                        <span>🧩</span>
+                        <span>조편성</span>
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 팀원 목록 */}
@@ -463,7 +474,7 @@ function TeamDetailPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 {team.members.map((member) => (
                   <div
-                    key={member.id}
+                    key={member.memberId}
                     className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-4 py-3"
                   >
                     <span className="text-sm font-medium text-slate-900">{member.name}</span>
@@ -539,93 +550,83 @@ function TeamDetailPage() {
                 />
               </div>
               
-              {/* 신청서 양식 수정 버튼 */}
+              {/* 신청서 양식 관리 버튼 */}
               <button
                 onClick={() => setShowTemplateEdit(true)}
                 className="rounded-lg bg-gray-600 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700 whitespace-nowrap"
               >
-                신청서 양식 수정
+                {applicationFormTemplate ? '신청서 양식 수정' : '신청서 양식 생성'}
               </button>
             </div>
 
             {/* 신청서 목록 */}
-            <div className="h-[500px] overflow-y-auto space-y-4 pr-2">
-              {applications
-                .filter(app => {
-                  // 상태 필터
-                  if (applicationStatusFilter !== 'ALL' && app.status !== applicationStatusFilter) {
-                    return false
-                  }
-                  // 검색 필터
-                  if (applicationSearchTerm && !app.applicantName.toLowerCase().includes(applicationSearchTerm.toLowerCase())) {
-                    return false
-                  }
-                  return true
-                })
-                .map((app) => (
-                  <div key={app.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <span className="font-semibold text-slate-900">{app.applicantName}</span>
-                        <span className="ml-2 text-xs text-slate-500">
-                          {new Date(app.submittedAt).toLocaleString('ko-KR')}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          app.status === 'PENDING' ? 'bg-yellow-100 text-yellow-700' :
-                          app.status === 'APPROVED' ? 'bg-green-100 text-green-700' :
-                          'bg-red-100 text-red-700'
-                        }`}>
-                          {app.status === 'PENDING' ? '대기중' :
-                           app.status === 'APPROVED' ? '승인됨' : '거절됨'}
-                        </span>
-                        {app.status === 'PENDING' && (
-                          <>
-                            <button
-                              onClick={() => handleApproveApplication(app.id)}
-                              className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700"
-                            >
-                              승인
-                            </button>
-                            <button
-                              onClick={() => handleRejectApplication(app.id)}
-                              className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
-                            >
-                              거절
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      {app.answers.map((answer, idx) => (
-                        <div key={idx}>
-                          <p className="text-xs font-medium text-slate-600 mb-1">{answer.question}</p>
-                          <p className="text-sm text-slate-900 bg-white rounded px-3 py-2">{answer.answer}</p>
+            <div className="h-[500px] overflow-y-auto pr-2">
+              <div className="flex flex-col gap-4">
+                {applications
+                  .filter((app) => {
+                    // Filter by status
+                    if (applicationStatusFilter !== 'ALL' && app.status !== applicationStatusFilter) return false
+                    // Filter by search term
+                    if (
+                      applicationSearchTerm &&
+                      !app.submitterName.toLowerCase().includes(applicationSearchTerm.toLowerCase())
+                    )
+                      return false
+                    return true
+                  })
+                  .map((app) => (
+                    <div
+                      key={app.submissionId}
+                      className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md transition cursor-pointer"
+                      onClick={() => {
+                        setSelectedSubmissionId(app.submissionId)
+                        setIsSubmissionDetailOpen(true)
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <span className="font-semibold text-slate-900">{app.submitterName}</span>
+                          <span className="text-sm text-slate-500">{app.submitDate}</span>
                         </div>
-                      ))}
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                              app.status === 'APPROVED'
+                                ? 'bg-green-100 text-green-700'
+                                : app.status === 'REJECTED'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-yellow-100 text-yellow-700'
+                            }`}
+                          >
+                            {app.status === 'PENDING' ? '대기' : app.status === 'APPROVED' ? '승인' : '거절'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-sm text-slate-600">
+                         {/* 간단 내용 미리보기는 현재 DTO에 없음. 상세보기를 통해 확인하도록 유도 */}
+                         클릭하여 상세 내용을 확인하세요.
+                      </div>
                     </div>
-                  </div>
-                ))}
-              {applications.filter(app => {
-                if (applicationStatusFilter !== 'ALL' && app.status !== applicationStatusFilter) {
-                  return false
-                }
-                if (applicationSearchTerm && !app.applicantName.toLowerCase().includes(applicationSearchTerm.toLowerCase())) {
-                  return false
-                }
-                return true
-              }).length === 0 && (
-                <div className="text-center py-12 text-slate-500">
-                  {applicationSearchTerm || applicationStatusFilter !== 'ALL'
-                    ? '조건에 맞는 신청서가 없습니다.'
-                    : '신청서가 없습니다.'}
-                </div>
-              )}
+                  ))}
+                
+                {applications.length === 0 && (
+                   <div className="text-center py-10 text-slate-500">
+                     제출된 신청서가 없습니다.
+                   </div>
+                )}
+              </div>
             </div>
           </div>
         )}
+
+        {/* 신청서 상세 모달 */}
+        <SubmissionDetailModal
+          isOpen={isSubmissionDetailOpen}
+          onClose={() => setIsSubmissionDetailOpen(false)}
+          submissionId={selectedSubmissionId}
+          onApprove={handleApproveApplication}
+          onReject={handleRejectApplication}
+        />
 
         {/* 팀 관리 탭 */}
         {activeTab === 'manage' && (isTeamLeader || isAdmin) && (
@@ -650,14 +651,6 @@ function TeamDetailPage() {
                   <span className="font-medium text-slate-600">팀 설명:</span>
                   <span className="text-slate-900">{team.description}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-slate-600">모임 시간:</span>
-                  <span className="text-slate-900">{team.meetingTime}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-slate-600">모임 장소:</span>
-                  <span className="text-slate-900">{team.meetingPlace}</span>
-                </div>
               </div>
             </div>
 
@@ -677,7 +670,7 @@ function TeamDetailPage() {
               <div className="space-y-2">
                 {team.members.map((member) => (
                   <div
-                    key={member.id}
+                    key={member.memberId}
                     className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 group"
                   >
                     <div className="flex items-center gap-3">
@@ -691,14 +684,14 @@ function TeamDetailPage() {
                     {member.role !== '팀장' && (isTeamLeader || isAdmin) && (
                       <div className="relative">
                         <button
-                          onClick={() => setOpenMemberMenuId(openMemberMenuId === member.id ? null : member.id)}
+                          onClick={() => setOpenMemberMenuId(openMemberMenuId === member.memberId ? null : member.memberId)}
                           className="p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200 transition"
                         >
                           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                             <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
                           </svg>
                         </button>
-                        {openMemberMenuId === member.id && (
+                        {openMemberMenuId === member.memberId && (
                           <>
                             <div
                               className="fixed inset-0 z-10"
@@ -707,7 +700,7 @@ function TeamDetailPage() {
                             <div className="absolute right-0 mt-1 w-32 bg-white rounded-lg shadow-lg border border-slate-200 z-20">
                               <button
                                 onClick={() => {
-                                  handleTransferLeadership(member.id)
+                                  handleTransferLeadership(member.memberId)
                                   setOpenMemberMenuId(null)
                                 }}
                                 className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-t-lg"
@@ -716,7 +709,7 @@ function TeamDetailPage() {
                               </button>
                               <button
                                 onClick={() => {
-                                  handleRemoveMember(member.id)
+                                  handleRemoveMember(member.memberId)
                                   setOpenMemberMenuId(null)
                                 }}
                                 className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-b-lg"
@@ -736,11 +729,11 @@ function TeamDetailPage() {
         )}
 
         {/* 가입신청서 모달 */}
-        {showApplicationModal && (
+        {showApplicationModal && applicationFormTemplate && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white p-6 shadow-lg">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-slate-900">팀 가입신청서</h2>
+                <h2 className="text-xl font-bold text-slate-900">{applicationFormTemplate.title}</h2>
                 <button
                   onClick={() => {
                     setShowApplicationModal(false)
@@ -752,37 +745,13 @@ function TeamDetailPage() {
                 </button>
               </div>
               <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-                {applicationTemplate.questions.map((q) => (
-                  <div key={q.id}>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      {q.question}
-                    </label>
-                    <textarea
-                      value={applicationAnswers[q.id] || ''}
-                      onChange={(e) => setApplicationAnswers({ ...applicationAnswers, [q.id]: e.target.value })}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      rows={3}
-                      placeholder="답변을 입력해주세요"
-                    />
-                  </div>
-                ))}
-              </div>
-              <div className="mt-6 flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setShowApplicationModal(false)
-                    setApplicationAnswers({})
-                  }}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  취소
-                </button>
-                <button
-                  onClick={handleSubmitApplication}
-                  className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
-                >
-                  제출하기
-                </button>
+                <DynamicFormRenderer
+                  template={applicationFormTemplate}
+                  answers={applicationAnswers}
+                  onChange={setApplicationAnswers}
+                  onSubmit={handleSubmitApplication}
+                  readOnly={false}
+                />
               </div>
             </div>
           </div>
@@ -791,59 +760,25 @@ function TeamDetailPage() {
         {/* 신청서 양식 수정 모달 */}
         {showTemplateEdit && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white p-6 shadow-lg">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-slate-900">신청서 양식 수정</h2>
-                <button
-                  onClick={() => setShowTemplateEdit(false)}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-                {applicationTemplate.questions.map((q, idx) => (
-                  <div key={q.id}>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      질문 {idx + 1}
-                    </label>
-                    <input
-                      type="text"
-                      value={q.question}
-                      onChange={(e) => {
-                        const newQuestions = [...applicationTemplate.questions]
-                        newQuestions[idx] = { ...q, question: e.target.value }
-                        setApplicationTemplate({ ...applicationTemplate, questions: newQuestions })
-                      }}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      placeholder="질문을 입력해주세요"
-                    />
-                  </div>
-                ))}
-                <button
-                  onClick={() => {
-                    const newQuestions = [...applicationTemplate.questions, { id: Date.now(), question: '' }]
-                    setApplicationTemplate({ ...applicationTemplate, questions: newQuestions })
-                  }}
-                  className="w-full rounded-lg border-2 border-dashed border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:border-slate-400 hover:bg-slate-50"
-                >
-                  + 질문 추가
-                </button>
-              </div>
-              <div className="mt-6 flex justify-end gap-3">
-                <button
-                  onClick={() => setShowTemplateEdit(false)}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  취소
-                </button>
-                <button
-                  onClick={handleSaveTemplate}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                >
-                  저장하기
-                </button>
-              </div>
+            <div className="relative flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+              <FormBuilder
+                initialTemplate={applicationFormTemplate || undefined}
+                initialTitle={applicationFormTemplate ? undefined : `${team.clubName} 가입 신청서`}
+                initialCategory="CLUB_APPLICATION"
+                initialFormType="PERSONAL"
+                initialTargetClubId={team.clubId}
+                customTitle="팀 지원서 작성"
+                initialAccessList={applicationFormTemplate ? undefined : [
+                  { id: 1, accessType: 'RESPONDENT', targetType: 'ALL', targetValue: '' },
+                  { id: 2, accessType: 'MANAGER', targetType: 'CLUB', targetValue: team.clubId.toString() }
+                ]}
+                hideAccessControl={true}
+                excludedQuestionTypes={['SCHEDULE_ATTENDANCE']}
+                hideBasicInfo={true}
+                onSave={handleSaveTemplate}
+                onCancel={() => setShowTemplateEdit(false)}
+                isModal={true}
+              />
             </div>
           </div>
         )}
@@ -884,30 +819,6 @@ function TeamDetailPage() {
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     rows={4}
                     placeholder="팀에 대한 설명을 입력해주세요"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    모임 시간 *
-                  </label>
-                  <input
-                    type="text"
-                    value={teamInfoForm.meetingTime}
-                    onChange={(e) => setTeamInfoForm({ ...teamInfoForm, meetingTime: e.target.value })}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="예: 매주 토요일 오후 2시"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    모임 장소 *
-                  </label>
-                  <input
-                    type="text"
-                    value={teamInfoForm.meetingPlace}
-                    onChange={(e) => setTeamInfoForm({ ...teamInfoForm, meetingPlace: e.target.value })}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="예: 교회 본당"
                   />
                 </div>
               </div>

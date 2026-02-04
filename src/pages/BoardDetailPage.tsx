@@ -2,10 +2,20 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import UserHeader from "../components/UserHeader";
 import Footer from "../components/Footer";
-import { getBoardPostById } from "../services/boardService";
-import { getNoticeById } from "../services/noticeService";
+import { getBoardPostById, getBoardPosts, getBoards, deleteBoardPost, type Board } from "../services/boardService";
+import { 
+  getNoticeById, 
+  getNotices,
+  createComment, 
+  updateComment, 
+  deleteComment, 
+  deleteNotice, 
+  togglePostLike, 
+  toggleCommentLike, 
+  type CommentResponse 
+} from "../services/noticeService";
 
-export type BoardType = "free" | "prayer" | "question" | "meal" | string;
+export type BoardType = string;
 
 interface BoardPost {
   id: number;
@@ -16,457 +26,13 @@ interface BoardPost {
   comments: number;
   content: string;
   isNotice?: boolean;
+  likeCount?: number;
+  isLiked?: boolean;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
-
-interface Comment {
-  id: number;
-  author: string;
-  content: string;
-  createdAt: string;
-  isAuthor?: boolean;
-  userId?: string; // 댓글 작성자 ID (실제로는 로그인한 사용자와 비교)
-  replies?: Comment[]; // 대댓글
-  parentId?: number; // 부모 댓글 ID (대댓글인 경우)
-}
-
-// 현재 로그인한 사용자 (임시로 "나"로 설정, 실제로는 인증 정보에서 가져옴)
-const currentUserId = "나";
-
-// 게시판 정보
-interface BoardInfo {
-  id: BoardType;
-  name: string;
-  description: string;
-  color: string;
-}
-
-const boardInfo: Record<BoardType, BoardInfo> = {
-  free: {
-    id: "free",
-    name: "자유게시판",
-    description: "자유롭게 소통하고 나누는 공간입니다.",
-    color: "bg-blue-100 text-blue-700",
-  },
-  prayer: {
-    id: "prayer",
-    name: "기도제목게시판",
-    description: "함께 기도할 제목을 나누는 공간입니다.",
-    color: "bg-purple-100 text-purple-700",
-  },
-  question: {
-    id: "question",
-    name: "목사님께질문",
-    description: "목사님께 궁금한 것을 질문하는 공간입니다.",
-    color: "bg-emerald-100 text-emerald-700",
-  },
-  meal: {
-    id: "meal",
-    name: "밥친구 신청",
-    description: "함께 식사할 친구를 찾는 공간입니다.",
-    color: "bg-amber-100 text-amber-700",
-  },
-};
-
-// 임시 게시글 상세 데이터
-const mockPostDetails: Record<BoardType, Record<number, BoardPost>> = {
-  free: {
-    1: {
-      id: 1,
-      title: "[공지] 게시판 이용 안내",
-      author: "관리자",
-      createdAt: "2024-12-20",
-      views: 150,
-      comments: 5,
-      content: `안녕하세요. 청년부 게시판을 이용해 주셔서 감사합니다.
-
-게시판 이용 시 다음 사항을 지켜주세요:
-1. 서로를 존중하는 마음으로 글을 작성해주세요.
-2. 욕설이나 비방은 삼가주세요.
-3. 광고성 게시글은 금지입니다.
-
-건전한 소통 공간이 되도록 함께 노력해주세요.`,
-      isNotice: true,
-    },
-    2: {
-      id: 2,
-      title: "오늘 예배 너무 좋았어요!",
-      author: "김청년",
-      createdAt: "2024-12-19",
-      views: 45,
-      comments: 8,
-      content: `오늘 주일예배 정말 감동적이었어요. 찬양도 좋고 말씀도 너무 은혜로웠습니다.
-
-특히 오늘 말씀이 제 마음에 깊이 와닿았어요. 다음 주도 기대됩니다!`,
-    },
-    3: {
-      id: 3,
-      title: "이번 주 순모임 어디서 하나요?",
-      author: "이청년",
-      createdAt: "2024-12-18",
-      views: 32,
-      comments: 3,
-      content: `이번 주 순모임 장소를 모르겠어요. 혹시 아시는 분 계신가요?`,
-    },
-  },
-  prayer: {
-    1: {
-      id: 1,
-      title: "[공지] 기도제목 올리는 방법",
-      author: "관리자",
-      createdAt: "2024-12-20",
-      views: 120,
-      comments: 2,
-      content: `기도제목 게시판에 기도 제목을 올려주시면 함께 기도해드리겠습니다.`,
-      isNotice: true,
-    },
-    2: {
-      id: 2,
-      title: "가족의 건강을 위해 기도 부탁드려요",
-      author: "박청년",
-      createdAt: "2024-12-19",
-      views: 67,
-      comments: 12,
-      content: `어머니께서 요즘 건강이 좋지 않으셔서 걱정입니다. 함께 기도해주시면 감사하겠습니다.`,
-    },
-    3: {
-      id: 3,
-      title: "시험 잘 보게 해주세요",
-      author: "최청년",
-      createdAt: "2024-12-18",
-      views: 54,
-      comments: 9,
-      content: `다음 주 중요한 시험이 있어요. 시험 준비와 함께 시험 당일도 잘 보게 해주세요.`,
-    },
-  },
-  question: {
-    1: {
-      id: 1,
-      title: "[공지] 질문 작성 시 주의사항",
-      author: "관리자",
-      createdAt: "2024-12-20",
-      views: 200,
-      comments: 1,
-      content: `목사님께 질문을 올릴 때는 정중한 말투로 작성해주시고, 개인적인 질문은 개인적으로 연락해주시기 바랍니다.`,
-      isNotice: true,
-    },
-    2: {
-      id: 2,
-      title: "성경 읽는 순서에 대해 질문드려요",
-      author: "정청년",
-      createdAt: "2024-12-19",
-      views: 89,
-      comments: 4,
-      content: `성경을 처음 읽기 시작했는데, 어떤 순서로 읽는 것이 좋을까요? 추천해주시면 감사하겠습니다.`,
-    },
-    3: {
-      id: 3,
-      title: "기도 생활에 대해 궁금합니다",
-      author: "강청년",
-      createdAt: "2024-12-17",
-      views: 76,
-      comments: 6,
-      content: `기도를 어떻게 해야 할지 모르겠어요. 기도 생활을 잘 하려면 어떻게 해야 할까요?`,
-    },
-  },
-  meal: {
-    1: {
-      id: 1,
-      title: "[공지] 밥친구 신청 안내",
-      author: "관리자",
-      createdAt: "2024-12-20",
-      views: 100,
-      comments: 0,
-      content: `함께 식사할 친구를 찾는 공간입니다. 시간과 장소를 명확히 적어주시면 좋습니다.`,
-      isNotice: true,
-    },
-    2: {
-      id: 2,
-      title: "이번 주 일요일 점심 같이 드실 분?",
-      author: "윤청년",
-      createdAt: "2024-12-19",
-      views: 43,
-      comments: 7,
-      content: `이번 주 일요일 예배 후 점심 같이 드실 분 구해요! 근처 식당에서 먹을 예정입니다.`,
-    },
-    3: {
-      id: 3,
-      title: "저녁 식사 같이 하실 분 구해요",
-      author: "임청년",
-      createdAt: "2024-12-18",
-      views: 38,
-      comments: 5,
-      content: `이번 주 수요일 저녁에 식사 같이 하실 분 있나요?`,
-    },
-  },
-};
-
-// 임시 게시글 목록 데이터 (다음/이전 게시글 찾기용)
-const mockPosts: Record<BoardType, BoardPost[]> = {
-  free: [
-    {
-      id: 1,
-      title: "[공지] 게시판 이용 안내",
-      author: "관리자",
-      createdAt: "2024-12-20",
-      views: 150,
-      comments: 5,
-      content: "",
-      isNotice: true,
-    },
-    {
-      id: 2,
-      title: "오늘 예배 너무 좋았어요!",
-      author: "김청년",
-      createdAt: "2024-12-19",
-      views: 45,
-      comments: 8,
-      content: "",
-    },
-    {
-      id: 3,
-      title: "이번 주 순모임 어디서 하나요?",
-      author: "이청년",
-      createdAt: "2024-12-18",
-      views: 32,
-      comments: 3,
-      content: "",
-    },
-  ],
-  prayer: [
-    {
-      id: 1,
-      title: "[공지] 기도제목 올리는 방법",
-      author: "관리자",
-      createdAt: "2024-12-20",
-      views: 120,
-      comments: 2,
-      content: "",
-      isNotice: true,
-    },
-    {
-      id: 2,
-      title: "가족의 건강을 위해 기도 부탁드려요",
-      author: "박청년",
-      createdAt: "2024-12-19",
-      views: 67,
-      comments: 12,
-      content: "",
-    },
-    {
-      id: 3,
-      title: "시험 잘 보게 해주세요",
-      author: "최청년",
-      createdAt: "2024-12-18",
-      views: 54,
-      comments: 9,
-      content: "",
-    },
-  ],
-  question: [
-    {
-      id: 1,
-      title: "[공지] 질문 작성 시 주의사항",
-      author: "관리자",
-      createdAt: "2024-12-20",
-      views: 200,
-      comments: 1,
-      content: "",
-      isNotice: true,
-    },
-    {
-      id: 2,
-      title: "성경 읽는 순서에 대해 질문드려요",
-      author: "정청년",
-      createdAt: "2024-12-19",
-      views: 89,
-      comments: 4,
-      content: "",
-    },
-    {
-      id: 3,
-      title: "기도 생활에 대해 궁금합니다",
-      author: "강청년",
-      createdAt: "2024-12-17",
-      views: 76,
-      comments: 6,
-      content: "",
-    },
-  ],
-  meal: [
-    {
-      id: 1,
-      title: "[공지] 밥친구 신청 안내",
-      author: "관리자",
-      createdAt: "2024-12-20",
-      views: 100,
-      comments: 0,
-      content: "",
-      isNotice: true,
-    },
-    {
-      id: 2,
-      title: "이번 주 일요일 점심 같이 드실 분?",
-      author: "윤청년",
-      createdAt: "2024-12-19",
-      views: 43,
-      comments: 7,
-      content: "",
-    },
-    {
-      id: 3,
-      title: "저녁 식사 같이 하실 분 구해요",
-      author: "임청년",
-      createdAt: "2024-12-18",
-      views: 38,
-      comments: 5,
-      content: "",
-    },
-  ],
-};
-
-// 임시 댓글 데이터 (더 많은 댓글 추가)
-const mockComments: Record<BoardType, Record<number, Comment[]>> = {
-  free: {
-    1: [
-      {
-        id: 1,
-        author: "김청년",
-        content: "네, 잘 알겠습니다!",
-        createdAt: "2024-12-20",
-        userId: "김청년",
-      },
-      {
-        id: 2,
-        author: "이청년",
-        content: "감사합니다.",
-        createdAt: "2024-12-20",
-        userId: "이청년",
-      },
-      {
-        id: 3,
-        author: "나",
-        content: "좋은 정보 감사합니다!",
-        createdAt: "2024-12-20",
-        userId: "나",
-      },
-      {
-        id: 4,
-        author: "박청년",
-        content: "많은 도움이 되었어요.",
-        createdAt: "2024-12-20",
-        userId: "박청년",
-      },
-      {
-        id: 5,
-        author: "나",
-        content: "다음에도 잘 부탁드립니다.",
-        createdAt: "2024-12-20",
-        userId: "나",
-      },
-      {
-        id: 6,
-        author: "최청년",
-        content: "알겠습니다!",
-        createdAt: "2024-12-20",
-        userId: "최청년",
-      },
-      {
-        id: 7,
-        author: "정청년",
-        content: "감사합니다.",
-        createdAt: "2024-12-20",
-        userId: "정청년",
-      },
-      {
-        id: 8,
-        author: "강청년",
-        content: "좋은 정보네요!",
-        createdAt: "2024-12-20",
-        userId: "강청년",
-      },
-    ],
-    2: [
-      {
-        id: 1,
-        author: "박청년",
-        content: "저도 오늘 예배 정말 좋았어요!",
-        createdAt: "2024-12-19",
-      },
-      {
-        id: 2,
-        author: "최청년",
-        content: "다음 주도 기대됩니다!",
-        createdAt: "2024-12-19",
-      },
-    ],
-    3: [
-      {
-        id: 1,
-        author: "정청년",
-        content: "2층 소강당에서 합니다!",
-        createdAt: "2024-12-18",
-      },
-    ],
-  },
-  prayer: {
-    1: [],
-    2: [
-      {
-        id: 1,
-        author: "김청년",
-        content: "함께 기도하겠습니다.",
-        createdAt: "2024-12-19",
-      },
-    ],
-    3: [
-      {
-        id: 1,
-        author: "박청년",
-        content: "시험 잘 보시길 기도하겠습니다.",
-        createdAt: "2024-12-18",
-      },
-    ],
-  },
-  question: {
-    1: [],
-    2: [
-      {
-        id: 1,
-        author: "관리자",
-        content: "성경 읽는 순서는 마태복음부터 시작하시는 것을 추천드립니다.",
-        createdAt: "2024-12-19",
-      },
-    ],
-    3: [
-      {
-        id: 1,
-        author: "관리자",
-        content:
-          "기도는 마음으로 하나님께 말씀드리는 것입니다. 자유롭게 하시면 됩니다.",
-        createdAt: "2024-12-17",
-      },
-    ],
-  },
-  meal: {
-    1: [],
-    2: [
-      {
-        id: 1,
-        author: "김청년",
-        content: "저도 참여하고 싶어요!",
-        createdAt: "2024-12-19",
-      },
-    ],
-    3: [
-      {
-        id: 1,
-        author: "박청년",
-        content: "저도 같이 하고 싶습니다!",
-        createdAt: "2024-12-18",
-      },
-    ],
-  },
-};
 
 function BoardDetailPage() {
   const { boardType, postId, noticeId } = useParams<{
@@ -477,7 +43,7 @@ function BoardDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [commentText, setCommentText] = useState("");
-  const [comments, setComments] = useState<Comment[]>([]);
+  const [comments, setComments] = useState<CommentResponse[]>([]);
   const [showMenu, setShowMenu] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
@@ -486,6 +52,9 @@ function BoardDetailPage() {
   const [replyText, setReplyText] = useState("");
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [post, setPost] = useState<BoardPost | null>(null);
+  const [board, setBoard] = useState<Board | null>(null);
+  const [prevPost, setPrevPost] = useState<{ id: number; title: string } | null>(null);
+  const [nextPost, setNextPost] = useState<{ id: number; title: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -513,14 +82,121 @@ function BoardDetailPage() {
     }
   }, [postId, noticeId, boardType, navigate])
 
+  // 공지사항인지 게시판인지 확인
+  const id = isYouthNotice ? noticeId : postId;
+  const idNum = id ? parseInt(id, 10) : null;
+
+  // 게시글 데이터 및 게시판 정보 로드
+  useEffect(() => {
+    const loadData = async () => {
+      if (!idNum || isNaN(idNum)) {
+        // write나 edit 페이지인 경우 에러 처리하지 않음
+        if (postId === 'write' || postId === 'edit' || noticeId === 'write' || noticeId === 'edit') {
+          return;
+        }
+        setError("잘못된 게시글 ID입니다.");
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        let apiBoardId = boardType;
+
+        // 1. 게시판 정보 로드 (공지사항이 아닌 경우)
+        if (!isYouthNotice && boardType) {
+          try {
+            const boards = await getBoards();
+            // id 또는 boardId가 일치하는지 확인
+            const currentBoard = boards.find(b => 
+              String(b.id) === String(boardType) || 
+              (b.boardId && String(b.boardId) === String(boardType))
+            );
+            if (currentBoard) {
+              setBoard(currentBoard);
+              if (currentBoard.boardId) {
+                apiBoardId = currentBoard.boardId;
+              } else if (currentBoard.id) {
+                apiBoardId = currentBoard.id;
+              }
+            }
+          } catch (e) {
+            console.error('Failed to load board info', e);
+          }
+        }
+
+        // 2. 게시글 로드
+        if (isYouthNotice) {
+          // 공지사항 API 호출
+          const notice = await getNoticeById(idNum);
+          // Notice 타입을 BoardPost 타입으로 변환
+          setPost({
+            id: notice.postId,
+            title: notice.title,
+            content: notice.content,
+            author: notice.authorName,
+            createdAt: notice.createdAt,
+            views: notice.viewCount,
+            comments: notice.commentCount,
+            isNotice: notice.notice,
+            likeCount: notice.likeCount,
+            isLiked: notice.liked,
+            attachmentUrl: notice.attachmentUrl,
+            attachmentName: notice.attachmentName,
+          });
+          setComments(notice.comments || []);
+
+          // 이전/다음 글 조회
+          try {
+            const { notices } = await getNotices({ size: 100 });
+            const currentIndex = (notices || []).findIndex(n => n.postId === idNum);
+            if (currentIndex !== -1) {
+              const next = currentIndex > 0 ? notices[currentIndex - 1] : null;
+              const prev = currentIndex < notices.length - 1 ? notices[currentIndex + 1] : null;
+              setNextPost(next ? { id: next.postId, title: next.title } : null);
+              setPrevPost(prev ? { id: prev.postId, title: prev.title } : null);
+            }
+          } catch (e) {
+            console.error('Failed to load neighbor posts', e);
+          }
+        } else if (apiBoardId) {
+          // 게시판 API 호출
+          const apiPost = await getBoardPostById(apiBoardId, idNum);
+          setPost(apiPost);
+
+          // 이전/다음 글 조회
+          try {
+            const { posts } = await getBoardPosts(apiBoardId, { size: 100 });
+            const currentIndex = (posts || []).findIndex(p => p.id === idNum);
+            if (currentIndex !== -1) {
+              const next = currentIndex > 0 ? posts[currentIndex - 1] : null;
+              const prev = currentIndex < posts.length - 1 ? posts[currentIndex + 1] : null;
+              setNextPost(next ? { id: next.id, title: next.title } : null);
+              setPrevPost(prev ? { id: prev.id, title: prev.title } : null);
+            }
+          } catch (e) {
+            console.error('Failed to load neighbor posts', e);
+          }
+        } else {
+          setError("게시판 정보를 찾을 수 없습니다.");
+        }
+      } catch (error: unknown) {
+        console.warn("API에서 게시글을 가져오지 못했습니다:", error);
+        setError("게시글을 찾을 수 없습니다.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, [isYouthNotice, boardType, idNum, postId, noticeId]);
+
   // write나 edit 페이지인 경우 아무것도 렌더링하지 않음
   if (postId === 'write' || postId === 'edit' || noticeId === 'write' || noticeId === 'edit') {
     return null
   }
-
-  // 공지사항인지 게시판인지 확인
-  const id = isYouthNotice ? noticeId : postId;
-  const idNum = id ? parseInt(id, 10) : null;
 
   if ((!boardType && !isYouthNotice) || !id) {
     return (
@@ -544,76 +220,6 @@ function BoardDetailPage() {
     );
   }
 
-  const board = boardType ? boardInfo[boardType] : null;
-
-  // 게시글 데이터 로드
-  useEffect(() => {
-    const loadPost = async () => {
-      if (!idNum || isNaN(idNum)) {
-        setError("잘못된 게시글 ID입니다.");
-        setIsLoading(false);
-        return;
-      }
-
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        if (isYouthNotice) {
-          // 공지사항 API 호출
-          const notice = await getNoticeById(idNum);
-          // Notice 타입을 BoardPost 타입으로 변환
-          setPost({
-            id: notice.id,
-            title: notice.title,
-            content: notice.content,
-            author: notice.createdBy,
-            createdAt: notice.createdAt,
-            views: 0, // 공지사항 API에 views가 없을 수 있음
-            comments: 0, // 공지사항 API에 comments가 없을 수 있음
-            isNotice: notice.isImportant,
-          });
-        } else if (boardType) {
-          // 게시판 API 호출
-          const apiPost = await getBoardPostById(boardType, idNum);
-          setPost(apiPost);
-        } else {
-          setError("게시판 정보를 찾을 수 없습니다.");
-        }
-      } catch (error: any) {
-        // API 실패 시 mock 데이터로 폴백 (게시판만)
-        console.warn("API에서 게시글을 가져오지 못했습니다. mock 데이터를 사용합니다:", error);
-        if (!isYouthNotice && boardType) {
-          const mockPost = mockPostDetails[boardType]?.[idNum];
-          if (mockPost) {
-            setPost(mockPost);
-          } else {
-            setError("게시글을 찾을 수 없습니다.");
-          }
-        } else {
-          setError("게시글을 찾을 수 없습니다.");
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadPost();
-  }, [isYouthNotice, boardType, idNum]);
-
-  // 다음/이전 게시글 찾기 (mock 데이터 사용 - 나중에 API로 교체 가능)
-  const posts = boardType ? mockPosts[boardType] || [] : [];
-  const currentIndex = idNum ? posts.findIndex((p) => p.id === idNum) : -1;
-  const prevPost = currentIndex > 0 ? posts[currentIndex - 1] : null;
-  const nextPost = currentIndex < posts.length - 1 ? posts[currentIndex + 1] : null;
-
-  // 댓글 초기화
-  useEffect(() => {
-    if (boardType && idNum) {
-      const initialComments = mockComments[boardType]?.[idNum] || [];
-      setComments(initialComments);
-    }
-  }, [boardType, idNum]);
 
   if (isLoading) {
     return (
@@ -691,99 +297,295 @@ function BoardDetailPage() {
   const endIndex = startIndex + commentsPerPage;
   const currentComments = comments.slice(startIndex, endIndex);
 
-  const handleSubmitComment = () => {
-    if (!commentText.trim()) return;
-
-    const newComment: Comment = {
-      id: comments.length + 1,
-      author: currentUserId,
-      content: commentText,
-      createdAt: new Date().toISOString().split("T")[0],
-      userId: currentUserId,
-    };
-
-    setComments([...comments, newComment]);
-    setCommentText("");
-    // 마지막 페이지로 이동
-    const newTotalPages = Math.ceil((comments.length + 1) / commentsPerPage);
-    setCurrentPage(newTotalPages);
-  };
-
-  const handleEditComment = (commentId: number) => {
-    const comment = comments.find((c) => c.id === commentId);
-    if (comment) {
-      setEditingCommentId(commentId);
-      setEditingText(comment.content);
-      setOpenMenuId(null);
+  const refreshPost = async () => {
+    if (!idNum) return;
+    try {
+      if (isYouthNotice) {
+        const notice = await getNoticeById(idNum);
+        setPost({
+          id: notice.postId,
+          title: notice.title,
+          content: notice.content,
+          author: notice.authorName,
+          createdAt: notice.createdAt,
+          views: notice.viewCount,
+          comments: notice.commentCount,
+          isNotice: notice.notice,
+          likeCount: notice.likeCount,
+          isLiked: notice.liked,
+          attachmentUrl: notice.attachmentUrl,
+          attachmentName: notice.attachmentName,
+        });
+        setComments(notice.comments || []);
+      } else if (boardType) {
+        // 게시판 refresh
+        const apiPost = await getBoardPostById(boardType, idNum);
+        setPost(apiPost);
+        // 댓글은 별도 API가 없다면 post에 포함되어 있다고 가정하거나 다시 로드
+        // 현재 API 구조상 getBoardPostById가 댓글을 포함하는지 확인 필요
+        // 만약 댓글이 별도라면 여기서 로드해야 함. 
+        // 기존 코드에서는 getBoardPostById가 댓글을 포함하지 않을 수도 있지만, 
+        // noticeService를 사용하여 댓글을 관리하는 것으로 보임 (createComment 등).
+        // 하지만 createComment는 noticeId 기반일 수 있음. 
+        // 일단 noticeService의 댓글 기능이 게시판에도 통합되어 있다고 가정.
+        // 만약 통합되지 않았다면 추가 수정 필요. 
+        // 여기서는 기존 로직 유지.
+      }
+    } catch (error) {
+      console.error("Failed to refresh post:", error);
     }
   };
 
-  const handleSaveEdit = (commentId: number) => {
+  const renderComments = (commentList: CommentResponse[], depth = 0) => {
+    return commentList.map((comment) => (
+      <div 
+        key={comment.commentId} 
+        className={`${
+          depth > 0 
+            ? "mt-4 ml-10 border-l-2 border-slate-100 pl-4" 
+            : "border-b border-slate-100 py-6 last:border-0"
+        }`}
+      >
+        <div className="flex gap-4 group">
+          {/* 아바타 */}
+          <div className="flex-shrink-0">
+            <div className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white shadow-sm ${
+              ['bg-blue-500', 'bg-emerald-500', 'bg-violet-500', 'bg-amber-500', 'bg-rose-500'][comment.authorName.length % 5]
+            }`}>
+              {comment.authorName.charAt(0)}
+            </div>
+          </div>
+
+          <div className="flex-1 min-w-0">
+            {/* 헤더 */}
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-900 text-sm">
+                    {comment.authorName}
+                  </span>
+                </div>
+                <span className="text-xs text-slate-400 mt-0.5 block">
+                  {formatDateTime(comment.createdAt)}
+                </span>
+              </div>
+              
+              {/* 더보기 메뉴 */}
+              {(comment.canEdit || comment.canDelete) && (
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenMenuId(openMenuId === comment.commentId ? null : comment.commentId)}
+                    className="p-1 text-slate-300 hover:text-slate-600 rounded transition opacity-0 group-hover:opacity-100 focus:opacity-100"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                    </svg>
+                  </button>
+                  {openMenuId === comment.commentId && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
+                      <div className="absolute right-0 mt-1 w-28 bg-white rounded-lg shadow-xl border border-slate-100 z-20 py-1 overflow-hidden">
+                        {comment.canEdit && (
+                          <button
+                            onClick={() => {
+                              setEditingCommentId(comment.commentId);
+                              setEditingText(comment.content);
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 transition"
+                          >
+                            수정
+                          </button>
+                        )}
+                        {comment.canDelete && (
+                          <button
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              handleDeleteComment(comment.commentId);
+                            }}
+                            className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 transition"
+                          >
+                            삭제
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 본문 */}
+            <div className="mt-2">
+              {editingCommentId === comment.commentId ? (
+                <div className="mt-2">
+                  <textarea
+                    value={editingText}
+                    onChange={(e) => setEditingText(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 p-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    rows={3}
+                  />
+                  <div className="mt-2 flex justify-end gap-2">
+                    <button
+                      onClick={() => setEditingCommentId(null)}
+                      className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100"
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={() => handleUpdateComment(comment.commentId)}
+                      className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                    >
+                      수정 완료
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">
+                  {comment.content}
+                </p>
+              )}
+            </div>
+
+            {/* 액션 바 (좋아요, 답글) */}
+            {editingCommentId !== comment.commentId && (
+              <div className="mt-3 flex items-center gap-4">
+                <button 
+                  onClick={() => handleToggleCommentLike(comment.commentId)}
+                  className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                    comment.liked ? 'text-red-500' : 'text-slate-400 hover:text-red-500'
+                  }`}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${comment.liked ? "fill-current" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                  </svg>
+                  <span>{comment.likeCount > 0 ? comment.likeCount : '좋아요'}</span>
+                </button>
+
+                <button 
+                  onClick={() => setReplyingToId(replyingToId === comment.commentId ? null : comment.commentId)}
+                  className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                    replyingToId === comment.commentId ? 'text-blue-600' : 'text-slate-400 hover:text-blue-600'
+                  }`}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  <span>답글 달기</span>
+                </button>
+              </div>
+            )}
+
+            {/* 답글 작성 폼 */}
+            {replyingToId === comment.commentId && (
+              <div className="mt-4 animate-fadeIn">
+                <textarea
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  placeholder={`@${comment.authorName}님에게 답글 작성...`}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none transition-colors"
+                  rows={2}
+                  autoFocus
+                />
+                <div className="mt-2 flex justify-end gap-2">
+                  <button
+                    onClick={() => setReplyingToId(null)}
+                    className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={() => handleReplySubmit(comment.commentId)}
+                    className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 shadow-sm"
+                  >
+                    등록
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 재귀적으로 대댓글 렌더링 */}
+        {comment.children && comment.children.length > 0 && (
+          <div className="mt-2">
+            {renderComments(comment.children, depth + 1)}
+          </div>
+        )}
+      </div>
+    ));
+  };
+
+  const handleSubmitComment = async () => {
+    if (!commentText.trim() || !idNum) return;
+
+    try {
+      await createComment(idNum, commentText);
+      setCommentText("");
+      await refreshPost();
+    } catch (error) {
+      console.error("Failed to create comment:", error);
+      alert("댓글 작성에 실패했습니다.");
+    }
+  };
+
+  const handleReplySubmit = async (parentId: number) => {
+    if (!replyText.trim() || !idNum) return;
+
+    try {
+      await createComment(idNum, replyText, parentId);
+      setReplyText("");
+      setReplyingToId(null);
+      await refreshPost();
+    } catch (error) {
+      console.error("Failed to create reply:", error);
+      alert("답글 작성에 실패했습니다.");
+    }
+  };
+
+  const handleDeleteComment = async (commentId: number) => {
+    if (!window.confirm("댓글을 삭제하시겠습니까?")) return;
+
+    try {
+      await deleteComment(commentId);
+      await refreshPost();
+    } catch (error) {
+      console.error("Failed to delete comment:", error);
+      alert("댓글 삭제에 실패했습니다.");
+    }
+  };
+
+  const handleUpdateComment = async (commentId: number) => {
     if (!editingText.trim()) return;
 
-    setComments(
-      comments.map((c) =>
-        c.id === commentId ? { ...c, content: editingText } : c
-      )
-    );
-    setEditingCommentId(null);
-    setEditingText("");
-  };
-
-  const handleCancelEdit = () => {
-    setEditingCommentId(null);
-    setEditingText("");
-  };
-
-  const handleDeleteComment = (commentId: number) => {
-    if (confirm("정말 삭제하시겠습니까?")) {
-      setComments(comments.filter((c) => c.id !== commentId));
-      setOpenMenuId(null);
-      // 현재 페이지에 댓글이 없으면 이전 페이지로
-      const remainingComments = comments.filter((c) => c.id !== commentId);
-      const newTotalPages = Math.ceil(remainingComments.length / commentsPerPage);
-      if (currentPage > newTotalPages && newTotalPages > 0) {
-        setCurrentPage(newTotalPages);
-      }
+    try {
+      await updateComment(commentId, editingText);
+      setEditingCommentId(null);
+      setEditingText("");
+      await refreshPost();
+    } catch (error) {
+      console.error("Failed to update comment:", error);
+      alert("댓글 수정에 실패했습니다.");
     }
   };
 
-  const handleReply = (commentId: number) => {
-    setReplyingToId(commentId);
-    setOpenMenuId(null);
+  const handleToggleLike = async () => {
+    if (!idNum) return;
+    try {
+      await togglePostLike(idNum);
+      await refreshPost();
+    } catch (error) {
+      console.error("Failed to toggle like:", error);
+    }
   };
 
-  const handleSubmitReply = (parentId: number) => {
-    if (!replyText.trim()) return;
-
-    const newReply: Comment = {
-      id: comments.length + 1,
-      author: currentUserId,
-      content: replyText,
-      createdAt: new Date().toISOString().split("T")[0],
-      userId: currentUserId,
-      parentId: parentId,
-    };
-
-    // 대댓글을 부모 댓글의 replies 배열에 추가
-    setComments(
-      comments.map((c) =>
-        c.id === parentId
-          ? { ...c, replies: [...(c.replies || []), newReply] }
-          : c
-      )
-    );
-    setReplyText("");
-    setReplyingToId(null);
-  };
-
-  const handleCancelReply = () => {
-    setReplyingToId(null);
-    setReplyText("");
-  };
-
-  const isMyComment = (comment: Comment) => {
-    return comment.userId === currentUserId;
+  const handleToggleCommentLike = async (commentId: number) => {
+    try {
+      await toggleCommentLike(commentId);
+      await refreshPost();
+    } catch (error) {
+      console.error("Failed to toggle comment like:", error);
+    }
   };
 
   return (
@@ -795,7 +597,7 @@ function BoardDetailPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">
-              {board ? board.name : "게시글 상세보기"}
+              {board ? board.name : (isYouthNotice ? "청년부 공지사항" : "게시글 상세보기")}
             </h1>
           </div>
           <button
@@ -825,543 +627,240 @@ function BoardDetailPage() {
                 )}
                 <h2 className="text-xl font-bold text-slate-900">{post.title}</h2>
               </div>
-              <div className="relative">
-                <button
-                  onClick={() => setShowMenu(!showMenu)}
-                  className="p-1 rounded hover:bg-slate-200 transition"
-                  aria-label="메뉴"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5 text-slate-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+              {(post.canEdit || post.canDelete) && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowMenu(!showMenu)}
+                    className="p-1 rounded hover:bg-slate-200 transition"
+                    aria-label="메뉴"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
-                    />
-                  </svg>
-                </button>
-                {showMenu && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-10"
-                      onClick={() => setShowMenu(false)}
-                    />
-                    <div className="absolute right-0 mt-2 w-32 bg-white rounded-lg shadow-lg border border-slate-200 z-20">
-                      <button
-                        onClick={() => {
-                          setShowMenu(false)
-                          if (isYouthNotice && idNum) {
-                            navigate(`/youth-notices/${idNum}/edit`)
-                          } else if (boardType && idNum) {
-                            navigate(`/boards/${boardType}/${idNum}/edit`)
-                          }
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-t-lg"
-                      >
-                        수정
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowMenu(false)
-                          if (confirm('정말 삭제하시겠습니까?')) {
-                            // TODO: 삭제 API 호출
-                            alert('삭제되었습니다.')
-                            if (isYouthNotice) {
-                              navigate('/youth-notices')
-                            } else if (boardType) {
-                              navigate(`/boards/${boardType}`)
-                            }
-                          }
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 last:rounded-b-lg"
-                      >
-                        삭제
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5 text-slate-600"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
+                      />
+                    </svg>
+                  </button>
+                  {showMenu && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setShowMenu(false)}
+                      />
+                      <div className="absolute right-0 mt-2 w-32 bg-white rounded-lg shadow-lg border border-slate-200 z-20">
+                        {post.canEdit && (
+                          <button
+                            onClick={() => {
+                              setShowMenu(false)
+                              if (isYouthNotice && idNum) {
+                                navigate(`/youth-notices/${idNum}/edit`)
+                              } else if (boardType && idNum) {
+                                navigate(`/boards/${boardType}/${idNum}/edit`)
+                              }
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-t-lg"
+                          >
+                            수정
+                          </button>
+                        )}
+                        {post.canDelete && (
+                          <button
+                            onClick={async () => {
+                              setShowMenu(false)
+                              if (idNum && confirm('정말 삭제하시겠습니까?')) {
+                                try {
+                                  if (isYouthNotice) {
+                                    await deleteNotice(idNum)
+                                    alert('삭제되었습니다.')
+                                    navigate('/youth-notices')
+                                  } else if (boardType) {
+                                    const targetId = board?.boardId || boardType
+                                    await deleteBoardPost(targetId, idNum)
+                                    alert('삭제되었습니다.')
+                                    navigate(`/boards/${boardType}`)
+                                  }
+                                } catch (error) {
+                                  console.error("Failed to delete post:", error)
+                                  alert('게시글 삭제에 실패했습니다.')
+                                }
+                              }
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 last:rounded-b-lg"
+                          >
+                            삭제
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-4 text-sm text-slate-600">
               <span>작성자: {post.author}</span>
-              <span>작성일: {formatDate(post.createdAt)}</span>
-              <span>조회: {post.views}</span>
-              <span>댓글: {post.comments}</span>
+              <span>{formatDateTime(post.createdAt)}</span>
+              <span>조회 {post.views}</span>
             </div>
-          </div>
-
-          {/* 게시글 내용 */}
-          <div className="px-6 py-8">
-            <div
-              className="prose prose-sm max-w-none text-slate-700 [&_img]:max-w-full [&_img]:rounded-lg [&_img]:my-4 [&_p]:mb-4 [&_ul]:list-disc [&_ol]:list-decimal [&_li]:ml-6"
-              dangerouslySetInnerHTML={{ __html: post.content }}
-            />
-          </div>
-        </div>
-
-        {/* 댓글 영역 */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="mb-4 text-lg font-semibold text-slate-900">
-            댓글 ({comments.length})
-          </h3>
-
-          {/* 댓글 목록 */}
-          <div className="mb-6 space-y-4">
-            {comments.length === 0 ? (
-              <div className="py-8 text-center text-sm text-slate-500">
-                댓글이 없습니다. 첫 댓글을 작성해보세요!
+            {/* 첨부파일 표시 */}
+            {post.attachmentUrl && (
+              <div className="mt-3 flex items-center gap-2 text-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+                <a 
+                  href={post.attachmentUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  {post.attachmentName || '첨부파일'}
+                </a>
               </div>
-            ) : (
-              currentComments.map((comment) => (
-                <div key={comment.id} className="border-b border-slate-100 pb-4 last:border-0">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2 flex-1">
-                      <span className="text-sm font-semibold text-slate-900">
-                        {comment.author}
-                      </span>
-                      {comment.isAuthor && (
-                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
-                          작성자
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-500">
-                        {formatDateTime(comment.createdAt)}
-                      </span>
-                      <div className="relative">
-                        <button
-                          onClick={() => setOpenMenuId(openMenuId === comment.id ? null : comment.id)}
-                          className="p-1 rounded hover:bg-slate-200 transition"
-                          aria-label="댓글 메뉴"
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="h-4 w-4 text-slate-600"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
-                            />
-                          </svg>
-                        </button>
-                        {openMenuId === comment.id && (
-                          <>
-                            <div
-                              className="fixed inset-0 z-10"
-                              onClick={() => setOpenMenuId(null)}
-                            />
-                            <div className="absolute right-0 mt-2 w-32 bg-white rounded-lg shadow-lg border border-slate-200 z-20">
-                              {isMyComment(comment) ? (
-                                <>
-                                  <button
-                                    onClick={() => handleEditComment(comment.id)}
-                                    className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-t-lg"
-                                  >
-                                    수정
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteComment(comment.id)}
-                                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-b-lg"
-                                  >
-                                    삭제
-                                  </button>
-                                </>
-                              ) : (
-                                <button
-                                  onClick={() => handleReply(comment.id)}
-                                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg"
-                                >
-                                  대댓글
-                                </button>
-                              )}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  {editingCommentId === comment.id ? (
-                    <div className="space-y-2">
-                      <textarea
-                        value={editingText}
-                        onChange={(e) => setEditingText(e.target.value)}
-                        rows={3}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                      />
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={handleCancelEdit}
-                          className="rounded-lg px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100"
-                        >
-                          취소
-                        </button>
-                        <button
-                          onClick={() => handleSaveEdit(comment.id)}
-                          className="rounded-lg px-3 py-1 text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700"
-                        >
-                          저장
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-700 whitespace-pre-line">
-                      {comment.content}
-                    </p>
-                  )}
-                  
-                  {/* 대댓글 작성 폼 */}
-                  {replyingToId === comment.id && (
-                    <div className="mt-3 ml-4 pl-4 border-l-2 border-slate-200 space-y-2">
-                      <textarea
-                        value={replyText}
-                        onChange={(e) => setReplyText(e.target.value)}
-                        placeholder="대댓글을 입력하세요..."
-                        rows={2}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                      />
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={handleCancelReply}
-                          className="rounded-lg px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100"
-                        >
-                          취소
-                        </button>
-                        <button
-                          onClick={() => handleSubmitReply(comment.id)}
-                          disabled={!replyText.trim()}
-                          className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
-                            replyText.trim()
-                              ? "bg-blue-600 text-white hover:bg-blue-700"
-                              : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                          }`}
-                        >
-                          작성
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 대댓글 목록 */}
-                  {comment.replies && comment.replies.length > 0 && (
-                    <div className="mt-3 ml-4 pl-4 border-l-2 border-slate-200 space-y-3">
-                      {comment.replies.map((reply) => (
-                        <div key={reply.id} className="relative">
-                          <div className="flex items-start justify-between mb-1">
-                            <div className="flex items-center gap-2 flex-1">
-                              <span className="text-xs font-semibold text-slate-900">
-                                {reply.author}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-slate-500">
-                                {formatDateTime(reply.createdAt)}
-                              </span>
-                              {isMyComment(reply) && (
-                                <div className="relative">
-                                  <button
-                                    onClick={() => setOpenMenuId(openMenuId === reply.id ? null : reply.id)}
-                                    className="p-1 rounded hover:bg-slate-200 transition"
-                                    aria-label="대댓글 메뉴"
-                                  >
-                                    <svg
-                                      xmlns="http://www.w3.org/2000/svg"
-                                      className="h-3 w-3 text-slate-600"
-                                      fill="none"
-                                      viewBox="0 0 24 24"
-                                      stroke="currentColor"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
-                                      />
-                                    </svg>
-                                  </button>
-                                  {openMenuId === reply.id && (
-                                    <>
-                                      <div
-                                        className="fixed inset-0 z-10"
-                                        onClick={() => setOpenMenuId(null)}
-                                      />
-                                      <div className="absolute right-0 mt-2 w-24 bg-white rounded-lg shadow-lg border border-slate-200 z-20">
-                                        <button
-                                          onClick={() => {
-                                            handleEditComment(reply.id);
-                                            // 대댓글 수정을 위해 특별 처리 필요
-                                          }}
-                                          className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-t-lg"
-                                        >
-                                          수정
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            // 대댓글 삭제
-                                            setComments(
-                                              comments.map((c) =>
-                                                c.id === comment.id
-                                                  ? {
-                                                      ...c,
-                                                      replies: c.replies?.filter((r) => r.id !== reply.id),
-                                                    }
-                                                  : c
-                                              )
-                                            );
-                                            setOpenMenuId(null);
-                                          }}
-                                          className="w-full text-left px-3 py-2 text-xs text-red-600 hover:bg-red-50 rounded-b-lg"
-                                        >
-                                          삭제
-                                        </button>
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          {editingCommentId === reply.id ? (
-                            <div className="space-y-2">
-                              <textarea
-                                value={editingText}
-                                onChange={(e) => setEditingText(e.target.value)}
-                                rows={2}
-                                className="w-full rounded-lg border border-slate-300 px-3 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                              />
-                              <div className="flex justify-end gap-2">
-                                <button
-                                  onClick={handleCancelEdit}
-                                  className="rounded-lg px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-100"
-                                >
-                                  취소
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setComments(
-                                      comments.map((c) =>
-                                        c.id === comment.id
-                                          ? {
-                                              ...c,
-                                              replies: c.replies?.map((r) =>
-                                                r.id === reply.id ? { ...r, content: editingText } : r
-                                              ),
-                                            }
-                                          : c
-                                      )
-                                    );
-                                    setEditingCommentId(null);
-                                    setEditingText("");
-                                  }}
-                                  className="rounded-lg px-2 py-1 text-[10px] font-semibold bg-blue-600 text-white hover:bg-blue-700"
-                                >
-                                  저장
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <p className="text-xs text-slate-700 whitespace-pre-line">
-                              {reply.content}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))
             )}
           </div>
 
-          {/* 댓글 페이징 */}
-          {comments.length > commentsPerPage && (
-            <div className="flex justify-center items-center gap-2 mb-6">
-              <button
-                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-                className={`px-3 py-1 rounded-lg text-sm font-semibold transition ${
-                  currentPage === 1
-                    ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                    : "bg-slate-200 text-slate-700 hover:bg-slate-300"
-                }`}
-              >
-                이전
-              </button>
-              <div className="flex gap-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <button
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    className={`px-3 py-1 rounded-lg text-sm font-semibold transition ${
-                      currentPage === page
-                        ? "bg-blue-600 text-white"
-                        : "bg-slate-200 text-slate-700 hover:bg-slate-300"
-                    }`}
-                  >
-                    {page}
-                  </button>
-                ))}
-              </div>
-              <button
-                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                disabled={currentPage === totalPages}
-                className={`px-3 py-1 rounded-lg text-sm font-semibold transition ${
-                  currentPage === totalPages
-                    ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                    : "bg-slate-200 text-slate-700 hover:bg-slate-300"
-                }`}
-              >
-                다음
-              </button>
-            </div>
-          )}
+          {/* 게시글 내용 */}
+          <div className="px-6 py-8 min-h-[200px] prose max-w-none">
+            {/* HTML 컨텐츠 렌더링 */}
+            <div dangerouslySetInnerHTML={{ __html: post.content }} />
+          </div>
 
-          {/* 댓글 작성 */}
-          <div className="border-t border-slate-200 pt-4">
+          {/* 좋아요 버튼 (본문 하단) */}
+          <div className="flex justify-center pb-8">
+            <button
+              onClick={handleToggleLike}
+              className={`flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold shadow-sm transition-all duration-200 border ${
+                post.isLiked 
+                  ? "bg-red-50 border-red-200 text-red-600 hover:bg-red-100" 
+                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300"
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill={post.isLiked ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+              <span>좋아요 {post.likeCount || 0}</span>
+            </button>
+          </div>
+
+          {/* 이전글/다음글 네비게이션 */}
+          <div className="border-t border-slate-200 px-6 py-4">
+            <div className="flex flex-col">
+              {nextPost && (
+                <div className="flex items-center gap-4 py-3">
+                  <span className="flex-shrink-0 w-16 text-sm font-semibold text-slate-500">다음글</span>
+                  <div className="flex-1 min-w-0 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                    </svg>
+                    <Link 
+                      to={isYouthNotice ? `/youth-notices/${nextPost.id}` : `/boards/${boardType}/${nextPost.id}`}
+                      className="truncate text-sm text-slate-700 hover:text-blue-600 hover:underline"
+                    >
+                      {nextPost.title}
+                    </Link>
+                  </div>
+                </div>
+              )}
+              
+              {/* 구분선 (다음글과 이전글이 모두 있을 때만 표시) */}
+              {nextPost && prevPost && <div className="h-px bg-slate-100 my-1" />}
+
+              {prevPost && (
+                <div className="flex items-center gap-4 py-3">
+                  <span className="flex-shrink-0 w-16 text-sm font-semibold text-slate-500">이전글</span>
+                  <div className="flex-1 min-w-0 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                    <Link 
+                      to={isYouthNotice ? `/youth-notices/${prevPost.id}` : `/boards/${boardType}/${prevPost.id}`}
+                      className="truncate text-sm text-slate-700 hover:text-blue-600 hover:underline"
+                    >
+                      {prevPost.title}
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 댓글 섹션 */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="mb-4 text-lg font-bold text-slate-900">
+            댓글 <span className="text-blue-600">{comments.length}</span>
+          </h3>
+
+          {/* 댓글 목록 */}
+          <div className="mb-8 space-y-6">
+            {comments.length > 0 ? (
+              <>
+                {renderComments(currentComments)}
+                
+                {/* 페이징 */}
+                {totalPages > 1 && (
+                  <div className="flex justify-center gap-2 mt-6">
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="rounded px-2 py-1 text-sm hover:bg-slate-100 disabled:opacity-50"
+                    >
+                      이전
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`rounded px-2 py-1 text-sm ${
+                          currentPage === page
+                            ? 'bg-blue-600 text-white'
+                            : 'hover:bg-slate-100'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="rounded px-2 py-1 text-sm hover:bg-slate-100 disabled:opacity-50"
+                    >
+                      다음
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="py-8 text-center text-sm text-slate-500">
+                첫 번째 댓글을 남겨보세요!
+              </div>
+            )}
+          </div>
+
+          {/* 댓글 작성 폼 */}
+          <div className="flex gap-2">
             <textarea
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               placeholder="댓글을 입력하세요..."
+              className="flex-1 resize-none rounded-lg border border-slate-300 p-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
               rows={3}
-              className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
             />
-            <div className="mt-3 flex justify-end">
-              <button
-                onClick={handleSubmitComment}
-                disabled={!commentText.trim()}
-                className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                  commentText.trim()
-                    ? "bg-blue-600 text-white hover:bg-blue-700"
-                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                }`}
-              >
-                댓글 작성
-              </button>
-            </div>
+            <button
+              onClick={handleSubmitComment}
+              className="rounded-lg bg-blue-600 px-6 font-semibold text-white hover:bg-blue-700 transition"
+            >
+              등록
+            </button>
           </div>
-        </div>
-
-        {/* 다음/이전 게시글 */}
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="divide-y divide-slate-200">
-            {prevPost ? (
-              <Link
-                to={`/boards/${boardType}/${prevPost.id}`}
-                className="block px-6 py-4 transition hover:bg-slate-50"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex-shrink-0 text-sm font-semibold text-slate-500">
-                    이전글
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      {prevPost.isNotice && (
-                        <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">
-                          공지
-                        </span>
-                      )}
-                      <span className="text-sm font-medium text-slate-900 truncate">
-                        {prevPost.title}
-                      </span>
-                    </div>
-                  </div>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5 text-slate-400 flex-shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 19l-7-7 7-7"
-                    />
-                  </svg>
-                </div>
-              </Link>
-            ) : (
-              <div className="px-6 py-4 text-sm text-slate-400">
-                <div className="flex items-center gap-3">
-                  <div className="flex-shrink-0 text-sm font-semibold">이전글</div>
-                  <div className="flex-1">이전 게시글이 없습니다.</div>
-                </div>
-              </div>
-            )}
-            {nextPost ? (
-              <Link
-                to={`/boards/${boardType}/${nextPost.id}`}
-                className="block px-6 py-4 transition hover:bg-slate-50"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex-shrink-0 text-sm font-semibold text-slate-500">
-                    다음글
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      {nextPost.isNotice && (
-                        <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">
-                          공지
-                        </span>
-                      )}
-                      <span className="text-sm font-medium text-slate-900 truncate">
-                        {nextPost.title}
-                      </span>
-                    </div>
-                  </div>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5 text-slate-400 flex-shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
-                  </svg>
-                </div>
-              </Link>
-            ) : (
-              <div className="px-6 py-4 text-sm text-slate-400">
-                <div className="flex items-center gap-3">
-                  <div className="flex-shrink-0 text-sm font-semibold">다음글</div>
-                  <div className="flex-1">다음 게시글이 없습니다.</div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 하단 버튼 */}
-        <div className="flex justify-start">
-          <button
-            onClick={() => {
-              if (isYouthNotice) {
-                navigate('/youth-notices')
-              } else if (boardType) {
-                navigate(`/boards/${boardType}`)
-              }
-            }}
-            className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-          >
-            목록으로
-          </button>
         </div>
 
         <Footer />

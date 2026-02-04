@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getMembers } from '../services/memberService'
-import { getMeals, addMealStock, useMealTicket, updateMeal, deleteMeal, type MealHistoryItem } from '../services/mealService'
+import { getMeals, addMealStock, consumeMealTicket, updateMeal, deleteMeal, type MealHistoryItem } from '../services/mealService'
 import type { Member } from '../types/member'
 
 function MealManagePage() {
@@ -11,7 +11,6 @@ function MealManagePage() {
   // Data from Server
   const [currentStock, setCurrentStock] = useState(0)
   const [history, setHistory] = useState<MealHistoryItem[]>([])
-  const [searchQuery, setSearchQuery] = useState('') // Added state for search
 
   // Forms
   const [mealForm, setMealForm] = useState({
@@ -44,7 +43,7 @@ function MealManagePage() {
   })
 
   // Load Data
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const data = await getMeals()
       console.log('API Response Data:', data) // 디버깅용 로그
@@ -54,11 +53,14 @@ function MealManagePage() {
       console.error('식권 데이터 로드 실패:', error)
       setHistory([])
     }
-  }
+  }, [])
 
   // Initial Load
   useEffect(() => {
-    loadData()
+    const init = async () => {
+      await loadData()
+    }
+    init()
     
     const fetchTeamMembers = async () => {
       try {
@@ -69,7 +71,7 @@ function MealManagePage() {
       }
     }
     fetchTeamMembers()
-  }, [])
+  }, [loadData])
 
   // Handlers
   const handleAddMealTicket = async () => {
@@ -82,7 +84,7 @@ function MealManagePage() {
     if (!user) return
 
     try {
-      await useMealTicket({
+      await consumeMealTicket({
         userName: user.name,
         place: mealForm.place,
         count: mealForm.count
@@ -200,23 +202,21 @@ function MealManagePage() {
     .reduce((sum, item) => sum + Math.abs(item.amount), 0)
 
   // Filter logic
-  const filteredHistory = (history || []).filter(item => {
-    if (!searchQuery) return true
-    const query = searchQuery.toLowerCase()
-    return (item.targetName || '').toLowerCase().includes(query)
-  })
+  const filteredHistory = history || []
 
   // Calculate Balance for each item (Reverse calculation from currentStock)
   // Assuming history is sorted by date descending (newest first)
+  const historyWithBalance: (MealHistoryItem & { balance: number })[] = []
   let runningBalance = currentStock
-  const historyWithBalance = filteredHistory.map((item, index) => {
+  
+  for (const item of filteredHistory) {
     const balance = runningBalance
     // Prepare balance for the next item (previous in time)
     // If current item added stock (positive amount), previous balance was smaller: balance - amount
     // If current item used stock (negative amount), previous balance was larger: balance - amount (minus negative is plus)
     runningBalance = runningBalance - item.amount
-    return { ...item, balance }
-  })
+    historyWithBalance.push({ ...item, balance })
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">

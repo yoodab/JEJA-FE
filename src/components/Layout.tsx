@@ -1,39 +1,36 @@
 import { Navigate, Outlet } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { isLoggedIn, isManager, getUserRole, getToken } from '../utils/auth'
 import Footer from './Footer'
 
 function Layout() {
-  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null)
-  const [authInfo, setAuthInfo] = useState<any>(null)
-
-  useEffect(() => {
-    // 로그인 상태와 관리자 권한 확인
+  const [authInfo] = useState(() => {
     const loggedIn = isLoggedIn()
     const manager = isManager()
     const role = getUserRole()
     const token = getToken()
-    
     const info = {
       loggedIn,
       manager,
       role,
       hasToken: !!token,
     }
-    
-    setAuthInfo(info)
-    
-    // 디버깅을 위한 로그
     console.log('Layout 권한 체크:', info)
+    return info
+  })
+
+  const [isAuthorized] = useState<boolean | null>(() => {
+    const loggedIn = isLoggedIn()
+    const manager = isManager()
     
     // 개발 모드에서는 로그인만 되어 있으면 접근 허용 (권한 체크 완화)
     if (import.meta.env.DEV) {
-      setIsAuthorized(loggedIn)
+      return loggedIn
     } else {
       // 프로덕션 모드에서는 로그인되어 있고 관리자 권한이 있으면 접근 허용
-      setIsAuthorized(loggedIn && manager)
+      return loggedIn && manager
     }
-  }, [])
+  })
 
   // 권한 확인 중일 때는 아무것도 렌더링하지 않음
   if (isAuthorized === null) {

@@ -54,3 +54,8 @@ export interface UpdateScheduleRequest extends Partial<Omit<CreateScheduleReques
   recurrenceRule?: RecurrenceRule;
   recurrenceEndDate?: string;
 }
+
+export interface UpcomingScheduleResponse {
+  publicSchedules: Schedule[];
+  memberSchedules: Schedule[] | null;
+}

@@ -11,7 +11,7 @@ import {
   removeClubMember, 
   changeClubLeader 
 } from '../services/clubService'
-import { ClubType, ClubTypeLabels } from '../types/club'
+import ClubType, { ClubTypeLabels } from '../types/club'
 import type { Club } from '../types/club'
 import type { Member } from '../types/member'
 
@@ -58,11 +58,16 @@ function TeamManagePage() {
   const [openMenuId, setOpenMenuId] = useState<number | null>(null)
 
   // Form Data
-  const [createFormData, setCreateFormData] = useState({
+  const [createFormData, setCreateFormData] = useState<{
+    name: string
+    description: string
+    type: ClubType
+    leaderMemberId: number | undefined
+  }>({
     name: '',
     description: '',
     type: ClubType.SERVICE,
-    leaderMemberId: undefined as number | undefined,
+    leaderMemberId: undefined,
   })
 
   const [editFormData, setEditFormData] = useState({
