@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /signup
+Allow: /youth-notices
+Allow: /youth-album
+Disallow: /manage/
+Disallow: /my-info
+Disallow: /my-reports
+Disallow: /user-dashboard
+Disallow: /reports/
+Disallow: /club/
+Disallow: /attendance/
+Sitemap: https://jeja-91d9b.web.app/sitemap.xml
