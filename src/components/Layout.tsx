@@ -112,8 +112,10 @@ function Layout() {
 
   // 권한이 있으면 페이지 렌더링
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <Outlet />
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
+      <main className="flex-grow">
+        <Outlet />
+      </main>
       <Footer />
     </div>
   )
