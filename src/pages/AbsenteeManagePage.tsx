@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { formatPhoneNumber } from '../utils/format'
 import {
   type CareMember,
   type CareMemberDetail,
-  type CareHistory,
   type CareLog,
   type CareSummary,
   type CareSettings,
@@ -16,6 +16,8 @@ import {
   deleteCareLog,
   getCareSettings,
   updateCareSettings,
+  completeCare,
+  updateManager,
 } from '../services/absenteeService'
 
 // Tab type definition matching API statuses where possible
@@ -27,7 +29,7 @@ function AbsenteeManagePage() {
   const [members, setMembers] = useState<CareMember[]>([])
   const [filteredMembers, setFilteredMembers] = useState<CareMember[]>([])
   const [summary, setSummary] = useState<CareSummary>({ 
-    totalCount: 0,
+    resettlingCount: 0,
     longTermCount: 0, 
     needsAttentionCount: 0 
   })
@@ -37,10 +39,14 @@ function AbsenteeManagePage() {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
   const [isBasicOpen, setIsBasicOpen] = useState(false)
   const [openMemberMenuId, setOpenMemberMenuId] = useState<number | null>(null)
-  const [openMemberMenuPlacement, setOpenMemberMenuPlacement] = useState<'down' | 'up'>('down')
   const [openMemberMenuTop, setOpenMemberMenuTop] = useState<number>(0)
   const [openMemberMenuLeft, setOpenMemberMenuLeft] = useState<number>(0)
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+    alert('클립보드에 복사되었습니다.')
+  }
   
   // Completion Modal
   const [isCompletionModalOpen, setIsCompletionModalOpen] = useState(false)
@@ -65,11 +71,6 @@ function AbsenteeManagePage() {
     resettlementWeeks: 4,
   })
 
-  // Current user name (fallback)
-  const [currentUserName] = useState<string>(() => {
-    return localStorage.getItem('currentUserName') || '사용자'
-  })
-
   // Load Initial Data
   useEffect(() => {
     loadSummary()
@@ -78,9 +79,24 @@ function AbsenteeManagePage() {
   }, [])
 
   // Filter members when activeTab or members change
+  const filterMembers = useCallback(() => {
+    let filtered = members
+    
+    if (activeTab === 'NEEDS_ATTENTION') {
+      filtered = members.filter(m => m.status === 'NEEDS_ATTENTION')
+    } else if (activeTab === 'LONG_TERM_ABSENCE') {
+      filtered = members.filter(m => m.status === 'LONG_TERM_ABSENCE')
+    } else if (activeTab === 'ATTENDED') {
+      filtered = members.filter(m => m.status === 'RESETTLING' || m.status === 'COMPLETED' || m.attendanceWeeks > 0)
+    }
+    // 'ALL' shows everyone
+    
+    setFilteredMembers(filtered)
+  }, [activeTab, members])
+
   useEffect(() => {
     filterMembers()
-  }, [activeTab, members])
+  }, [filterMembers])
 
   // Body scroll lock for modal
   useEffect(() => {
@@ -123,21 +139,6 @@ function AbsenteeManagePage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const filterMembers = () => {
-    let filtered = members
-    
-    if (activeTab === 'NEEDS_ATTENTION') {
-      filtered = members.filter(m => m.status === 'NEEDS_ATTENTION')
-    } else if (activeTab === 'LONG_TERM_ABSENCE') {
-      filtered = members.filter(m => m.status === 'LONG_TERM_ABSENCE')
-    } else if (activeTab === 'ATTENDED') {
-      filtered = members.filter(m => m.status === 'RESETTLING' || m.status === 'COMPLETED' || m.attendanceWeeks > 0)
-    }
-    // 'ALL' shows everyone
-    
-    setFilteredMembers(filtered)
   }
 
   // Handle Settings Save
@@ -300,12 +301,12 @@ function AbsenteeManagePage() {
   // Helper: unify log date field (careDate or createdAt)
   const getLogDate = (log: CareLog) => {
     // Some APIs return 'careDate' instead of 'createdAt'
-    const anyLog = log as any
-    return (anyLog.careDate as string) || log.createdAt || ''
+    const logData = log as unknown as { careDate?: string }
+    return logData.careDate || log.createdAt || ''
   }
   const getLogAuthor = (log: CareLog) => {
-    const anyLog = log as any
-    return anyLog.managerName || (log as any).createdBy || ''
+    const logData = log as unknown as { managerName?: string; createdBy?: string }
+    return logData.managerName || logData.createdBy || ''
   }
 
   const openCompletionWithType = (type: 'COMPLETED' | 'STOPPED') => {
@@ -313,7 +314,7 @@ function AbsenteeManagePage() {
     setCompletionNote('')
     setIsCompletionModalOpen(true)
   }
-  const toggleMemberMenu = (memberId: number, e: any) => {
+  const toggleMemberMenu = (memberId: number, e: MouseEvent) => {
     if (openMemberMenuId === memberId) {
       setOpenMemberMenuId(null)
       return
@@ -327,7 +328,6 @@ function AbsenteeManagePage() {
     const placement = spaceBelow >= menuHeight + 8 ? 'down' : 'up'
     const left = Math.max(8, Math.min(rect.right - menuWidth, viewportWidth - menuWidth - 8))
     const top = placement === 'down' ? rect.bottom + 8 : rect.top - (menuHeight + 8)
-    setOpenMemberMenuPlacement(placement)
     setOpenMemberMenuTop(top)
     setOpenMemberMenuLeft(left)
     setOpenMemberMenuId(memberId)
@@ -389,29 +389,29 @@ function AbsenteeManagePage() {
           <button
             type="button"
             onClick={() => setIsSettingsOpen(true)}
-            className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+            className="flex items-center justify-center rounded-lg p-2 text-slate-600 hover:bg-slate-100 transition-colors"
+            title="설정"
           >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-            설정
           </button>
         </header>
 
         {/* Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="grid grid-cols-3 gap-2 md:gap-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 md:p-4 shadow-sm text-center md:text-left">
             <p className="text-xs text-slate-500">관심필요</p>
-            <p className="mt-1 text-2xl font-bold text-yellow-600">{summary.needsAttentionCount}명</p>
+            <p className="mt-1 text-xl md:text-2xl font-bold text-yellow-600">{summary.needsAttentionCount}명</p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 md:p-4 shadow-sm text-center md:text-left">
             <p className="text-xs text-slate-500">장기결석</p>
-            <p className="mt-1 text-2xl font-bold text-red-600">{summary.longTermCount}명</p>
+            <p className="mt-1 text-xl md:text-2xl font-bold text-red-600">{summary.longTermCount}명</p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 md:p-4 shadow-sm text-center md:text-left">
             <p className="text-xs text-slate-500">재정착</p>
-            <p className="mt-1 text-2xl font-bold text-green-600">{summary.resettlingCount}명</p>
+            <p className="mt-1 text-xl md:text-2xl font-bold text-green-600">{summary.resettlingCount}명</p>
           </div>
         </div>
 
@@ -453,88 +453,197 @@ function AbsenteeManagePage() {
           </div>
         </div>
 
-        {/* Members Table */}
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm min-h-[360px]">
-          {loading ? (
-            <div className="p-8 text-center text-sm text-slate-500">로딩 중...</div>
-          ) : filteredMembers.length === 0 ? (
-            <div className="p-8 text-center text-sm text-slate-500">해당 상태의 멤버가 없습니다.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">사진</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">이름</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">전화번호</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">결석 시작일</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">경과</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">담당자</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-700">메뉴</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {filteredMembers.map((member) => (
-                    <tr
-                      key={member.memberId}
-                      onClick={() => handleManageClick(member.memberId)}
-                      className="cursor-pointer hover:bg-slate-50 transition-colors"
-                    >
-                      <td className="px-4 py-3">
+        {/* Members List */}
+        {loading ? (
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm min-h-[360px] p-8 text-center text-sm text-slate-500">
+            로딩 중...
+          </div>
+        ) : filteredMembers.length === 0 ? (
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm min-h-[360px] p-8 text-center text-sm text-slate-500">
+            해당 상태의 멤버가 없습니다.
+          </div>
+        ) : (
+          <>
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-4">
+              {filteredMembers.map((member) => (
+                <div
+                  key={member.memberId}
+                  onClick={() => handleManageClick(member.memberId)}
+                  className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm active:bg-slate-50 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-full bg-slate-200 flex items-center justify-center cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setImagePreviewUrl(member.memberImageUrl || null)
+                        }}
+                      >
                         {member.memberImageUrl ? (
                           <img
                             src={member.memberImageUrl}
                             alt={member.name}
-                            className="h-10 w-10 rounded-xl object-cover border border-slate-200 cursor-zoom-in"
-                            role="button"
-                            tabIndex={0}
-                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setImagePreviewUrl(member.memberImageUrl || null) }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                setImagePreviewUrl(member.memberImageUrl || null)
-                              }
-                            }}
+                            className="h-full w-full object-cover"
                           />
                         ) : (
-                          <div
-                            className="h-10 w-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center border border-slate-200 text-sm font-bold cursor-pointer"
-                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setImagePreviewUrl('DEFAULT') }}
-                          >
+                          <div className="flex h-full w-full items-center justify-center bg-slate-100 text-slate-400 font-bold">
                             {member.name?.[0] || '🙂'}
                           </div>
                         )}
-                      </td>
-                      <td className="px-4 py-3 text-sm font-medium text-slate-900">{member.name}</td>
-                      <td className="px-4 py-3 text-sm text-slate-600">{member.phone || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-600">{formatDate(member.startDate)}</td>
-                      <td className="px-4 py-3 text-sm text-slate-600">
-                        {member.status === 'RESETTLING' || member.status === 'COMPLETED' || member.attendanceWeeks > 0 ? (
-                          <span className="text-green-600">출석 {member.attendanceWeeks}주차</span>
-                        ) : (
-                          <span>결석 {member.absenceWeeks}주차</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-600">{member.managerName || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-600" onClick={(e) => e.stopPropagation()}>
-                        <div className="relative flex justify-end">
-                          <button
-                            onClick={(e) => toggleMemberMenu(member.memberId, e)}
-                            className="p-1 rounded hover:bg-slate-100 text-slate-500"
-                          >
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
-                          </button>
-                          {/* menu rendered as fixed overlay below */}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-base font-bold text-slate-900">{member.name}</span>
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getLevelColor(member.status)}`}>
+                            {getLevelLabel(member.status)}
+                          </span>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        <div className="mt-0.5 text-xs text-slate-500">
+                          {member.status === 'RESETTLING' || member.status === 'COMPLETED' || member.attendanceWeeks > 0 ? (
+                            <span className="text-green-600">출석 {member.attendanceWeeks}주차</span>
+                          ) : (
+                            <span className="text-red-600">결석 {member.absenceWeeks}주차</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleMemberMenu(member.memberId, e)
+                        }}
+                        className="p-1 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                      >
+                        <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-y-2 gap-x-2 text-sm border-t border-slate-100 pt-3">
+                    <div className="flex flex-col">
+                      <span className="text-xs text-slate-500 mb-0.5">결석 시작일</span>
+                      <span className="font-medium text-slate-700">{formatDate(member.startDate)}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs text-slate-500 mb-0.5">연락처</span>
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={`tel:${member.phone}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-slate-700 hover:text-blue-600 underline decoration-slate-300 underline-offset-2"
+                        >
+                          {formatPhoneNumber(member.phone || '')}
+                        </a>
+                        {member.phone && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              copyToClipboard(member.phone)
+                            }}
+                            className="text-xs text-slate-400 border border-slate-200 rounded px-1.5 py-0.5 hover:bg-slate-50"
+                          >
+                            복사
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
-          )}
-        </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block rounded-2xl border border-slate-200 bg-white shadow-sm min-h-[360px]">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">사진</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">이름</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">전화번호</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">결석 시작일</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">경과</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-slate-700">메뉴</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {filteredMembers.map((member) => (
+                      <tr
+                        key={member.memberId}
+                        onClick={() => handleManageClick(member.memberId)}
+                        className="cursor-pointer hover:bg-slate-50 transition-colors"
+                      >
+                        <td className="px-4 py-3">
+                          {member.memberImageUrl ? (
+                            <img
+                              src={member.memberImageUrl}
+                              alt={member.name}
+                              className="h-10 w-10 rounded-xl object-cover border border-slate-200 cursor-zoom-in"
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                setImagePreviewUrl(member.memberImageUrl || null)
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  setImagePreviewUrl(member.memberImageUrl || null)
+                                }
+                              }}
+                            />
+                          ) : (
+                            <div
+                              className="h-10 w-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center border border-slate-200 text-sm font-bold cursor-pointer"
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                setImagePreviewUrl('DEFAULT')
+                              }}
+                            >
+                              {member.name?.[0] || '🙂'}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-medium text-slate-900">{member.name}</td>
+                        <td className="px-4 py-3 text-sm text-slate-600">{member.phone || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-600">{formatDate(member.startDate)}</td>
+                        <td className="px-4 py-3 text-sm text-slate-600">
+                          {member.status === 'RESETTLING' || member.status === 'COMPLETED' || member.attendanceWeeks > 0 ? (
+                            <span className="text-green-600">출석 {member.attendanceWeeks}주차</span>
+                          ) : (
+                            <span>결석 {member.absenceWeeks}주차</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-600" onClick={(e) => e.stopPropagation()}>
+                          <div className="relative flex justify-end">
+                            <button
+                              onClick={(e) => toggleMemberMenu(member.memberId, e)}
+                              className="p-1 rounded hover:bg-slate-100 text-slate-500"
+                            >
+                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                              </svg>
+                            </button>
+                            {/* menu rendered as fixed overlay below */}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Settings Modal */}
         {isSettingsOpen && (

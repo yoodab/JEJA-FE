@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   BarChart,
@@ -18,7 +18,7 @@ import {
 import * as XLSX from 'xlsx'
 import { scheduleService } from '../services/scheduleService'
 import { financeService } from '../services/financeService'
-import { uploadFiles } from '../services/albumService'
+import { uploadFiles, getFileUrl } from '../services/albumService'
 import { getMembers } from '../services/memberService'
 import type { Member } from '../types/member'
 import type { 
@@ -29,7 +29,6 @@ import type {
   FinanceResponseDto, 
   FinanceRequestDto, 
   CategoryDto, 
-  FinanceType,
   DuesEventDto,
   DuesRecordDto
 } from '../types/finance'
@@ -62,15 +61,7 @@ function FinanceManagePage() {
   const [generalEndDate, setGeneralEndDate] = useState(today.toISOString().split('T')[0])
 
   // 데이터 불러오기
-  useEffect(() => {
-    fetchCategories()
-  }, [])
-
-  useEffect(() => {
-    fetchFinances()
-  }, [generalStartDate, generalEndDate])
-
-  const fetchCategories = async () => {
+  const fetchCategories = useCallback(async () => {
     try {
       const [income, expense] = await Promise.all([
         financeService.getCategories('INCOME'),
@@ -83,16 +74,24 @@ function FinanceManagePage() {
       console.error('Failed to fetch categories:', error)
       return { income: [], expense: [] }
     }
-  }
+  }, [])
 
-  const fetchFinances = async () => {
+  const fetchFinances = useCallback(async () => {
     try {
       const data = await financeService.getFinances(generalStartDate, generalEndDate)
       setRecords(data)
     } catch (error) {
       console.error('Failed to fetch finances:', error)
     }
-  }
+  }, [generalStartDate, generalEndDate])
+
+  useEffect(() => {
+    fetchCategories()
+  }, [fetchCategories])
+
+  useEffect(() => {
+    fetchFinances()
+  }, [fetchFinances])
 
   // 2. 통계용: 최근 6개월 ~ 현재
   const sixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 6, 1)
@@ -110,7 +109,7 @@ function FinanceManagePage() {
   const [showGuideModal, setShowGuideModal] = useState(false)
   const [editingRecord, setEditingRecord] = useState<FinanceRecord | null>(null)
   const [previewRecords, setPreviewRecords] = useState<FinanceRecord[]>([])
-  const [formData, setFormData] = useState<Omit<FinanceRecord, 'id'>>({
+  const [formData, setFormData] = useState<Omit<FinanceRecord, 'id' | 'balance'>>({
     date: new Date().toISOString().split('T')[0],
     transactionType: 'INCOME',
     category: '주일헌금',
@@ -169,7 +168,7 @@ function FinanceManagePage() {
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null)
   const [duesRecords, setDuesRecords] = useState<DuesRecordDto[]>([])
   const [showEventModal, setShowEventModal] = useState(false)
-  const [newEvent, setNewEvent] = useState({ name: '', targetAmount: 0, date: new Date().toISOString().split('T')[0] })
+  const [newEvent, setNewEvent] = useState<{ name: string; targetAmount: number; date: string; scheduleId?: number; targetDate?: string }>({ name: '', targetAmount: 0, date: new Date().toISOString().split('T')[0] })
   const [editingEventId, setEditingEventId] = useState<number | null>(null)
   const [newPriceOptions, setNewPriceOptions] = useState<{optionId: string, name: string, amount: number}[]>([])
   const [isPriceOptionsOpen, setIsPriceOptionsOpen] = useState(false)
@@ -200,38 +199,38 @@ function FinanceManagePage() {
   const [scheduleOptions, setScheduleOptions] = useState<Schedule[]>([])
   const [selectedScheduleIdForImport, setSelectedScheduleIdForImport] = useState<number | null>(null)
 
-  useEffect(() => {
-    if (activeTab === 'DUES') {
-      fetchDuesEvents()
-    }
-  }, [activeTab])
-
-  useEffect(() => {
-    if (selectedEventId) {
-      fetchDuesRecords(selectedEventId)
-    }
-  }, [selectedEventId])
-
-  const fetchDuesEvents = async () => {
+  const fetchDuesEvents = useCallback(async () => {
     try {
       const data = await financeService.getDuesEvents()
       setDuesEvents(data)
-      if (data.length > 0 && !selectedEventId) {
-        setSelectedEventId(data[0].id)
+      if (data.length > 0) {
+        setSelectedEventId(prev => prev || data[0].id)
       }
     } catch (error) {
       console.error('Failed to fetch dues events:', error)
     }
-  }
+  }, [])
 
-  const fetchDuesRecords = async (eventId: number) => {
+  const fetchDuesRecords = useCallback(async (eventId: number) => {
     try {
       const data = await financeService.getDuesRecords(eventId)
       setDuesRecords(data)
     } catch (error) {
       console.error('Failed to fetch dues records:', error)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'DUES') {
+      fetchDuesEvents()
+    }
+  }, [activeTab, fetchDuesEvents])
+
+  useEffect(() => {
+    if (selectedEventId) {
+      fetchDuesRecords(selectedEventId)
+    }
+  }, [selectedEventId, fetchDuesRecords])
 
   const selectedEvent = useMemo(() => duesEvents.find(e => e.id === selectedEventId), [duesEvents, selectedEventId])
   
@@ -347,20 +346,7 @@ function FinanceManagePage() {
     setSearchResults([])
   }
 
-  const handleDeleteDuesRecord = async (recordId?: number) => {
-    if (!recordId) return
-    if (confirm('해당 명단을 삭제하시겠습니까?')) {
-      try {
-        await financeService.deleteDuesRecord(recordId)
-        if (selectedEventId) {
-            await fetchDuesRecords(selectedEventId)
-        }
-      } catch (error) {
-        console.error('Failed to delete record:', error)
-        alert('삭제에 실패했습니다.')
-      }
-    }
-  }
+  // Unused function removed
 
   const handleSearchSchedules = async () => {
     if (!importDate) return
@@ -472,7 +458,7 @@ function FinanceManagePage() {
 
   const handleSaveEvent = async () => {
     let eventName = newEvent.name
-    let targetAmount = newEvent.targetAmount
+    const targetAmount = newEvent.targetAmount
     let eventDate = newEvent.date
     let scheduleId: string | undefined = newEvent.scheduleId ? String(newEvent.scheduleId) : undefined
     let targetDate = newEvent.targetDate
@@ -1085,7 +1071,7 @@ function FinanceManagePage() {
       const wb = XLSX.read(bstr, { type: 'binary' })
       const wsname = wb.SheetNames[0]
       const ws = wb.Sheets[wsname]
-      const data = XLSX.utils.sheet_to_json(ws) as any[]
+      const data = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[]
 
       // 데이터 매핑 및 변환
       const parsedRecords: FinanceRecord[] = data.map((row, index) => {
@@ -1128,9 +1114,11 @@ function FinanceManagePage() {
           id: `imported-${Date.now()}-${index}`,
           date,
           transactionType,
-          category: row['항 목'] || row['카테고리'] || '기타',
-          detail: row['세부내용'] || row['제목'] || '',
+          category: String(row['항 목'] || row['카테고리'] || '기타'),
+          detail: String(row['세부내용'] || row['제목'] || ''),
           amount: amount || 0,
+          balance: 0,
+          receiptImages: []
         }
       })
 
@@ -1163,7 +1151,7 @@ function FinanceManagePage() {
       })
 
       // 새로운 카테고리 생성 요청
-      const categoryPromises: Promise<any>[] = []
+      const categoryPromises: Promise<unknown>[] = []
       
       newIncomeCategories.forEach(name => {
         categoryPromises.push(financeService.createCategory({ name, type: 'INCOME' }))
@@ -1209,15 +1197,7 @@ function FinanceManagePage() {
     EXPENSE: 'bg-rose-50 text-rose-700',
   }
 
-  const formatDiff = (diff: number) => {
-    if (diff === 0) return <span className="text-slate-400">-</span>
-    const isPositive = diff > 0
-    return (
-      <span className={isPositive ? 'text-blue-600' : 'text-rose-600'}>
-        {isPositive ? '▲' : '▼'} {Math.abs(diff).toLocaleString()}
-      </span>
-    )
-  }
+  // Unused function removed
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
@@ -1229,7 +1209,7 @@ function FinanceManagePage() {
               onClick={() => navigate('/dashboard')}
               className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
             >
-              ← 돌아가기
+              ← <span className="hidden sm:inline">돌아가기</span>
             </button>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-xl">
@@ -1571,7 +1551,7 @@ function FinanceManagePage() {
                       <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} />
                       <YAxis fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value / 10000}만`} />
                       <Tooltip 
-                        formatter={(value: number) => value.toLocaleString() + '원'}
+                        formatter={(value: any) => value.toLocaleString() + '원'}
                         contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                       />
                       <Legend iconType="circle" />
@@ -1596,14 +1576,14 @@ function FinanceManagePage() {
                           outerRadius={80}
                           paddingAngle={5}
                           dataKey="value"
-                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                          label={({ name, percent }: { name?: string; percent?: number }) => `${name || ''} ${((percent || 0) * 100).toFixed(0)}%`}
                         >
-                          {categoryStats.map((entry, index) => (
+                          {categoryStats.map((_entry, index) => (
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                           ))}
                         </Pie>
                         <Tooltip 
-                          formatter={(value: number) => {
+                          formatter={(value: any) => {
                             const total = summaryStats.expense
                             const percent = total > 0 ? ((value / total) * 100).toFixed(1) : 0
                             return [`${value.toLocaleString()}원 (${percent}%)`, '금액']
@@ -1645,7 +1625,7 @@ function FinanceManagePage() {
                       tickFormatter={(value) => `${(value / 10000).toLocaleString()}만`}
                     />
                     <Tooltip 
-                      formatter={(value: number) => [`${value.toLocaleString()}원`, '잔액']}
+                      formatter={(value: number | undefined) => [`${(value || 0).toLocaleString()}원`, '잔액']}
                       contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     />
                     <Legend />
@@ -1937,14 +1917,14 @@ function FinanceManagePage() {
                           key={record.id}
                           onClick={() => handleToggleRemoveSelection(record.id)}
                           className={`flex cursor-pointer items-center justify-between p-3 transition-colors ${
-                            selectedRemoveIds.includes(record.id) ? 'bg-rose-50' : 'hover:bg-slate-50'
+                            record.id && selectedRemoveIds.includes(record.id) ? 'bg-rose-50' : 'hover:bg-slate-50'
                           }`}
                         >
                           <div>
                             <p className="text-sm font-semibold text-slate-900">{record.memberName}</p>
                             <p className="text-xs text-slate-500">{record.paidAmount.toLocaleString()}원 납부</p>
                           </div>
-                          {selectedRemoveIds.includes(record.id) && (
+                          {record.id && selectedRemoveIds.includes(record.id) && (
                             <span className="text-rose-600">✓</span>
                           )}
                         </div>
@@ -2379,9 +2359,9 @@ function FinanceManagePage() {
                         {formData.receiptImages.map((img, idx) => (
                           <div key={idx} className="relative group">
                             <img 
-                              src={img} 
+                              src={getFileUrl(img)} 
                               alt={`Receipt ${idx + 1}`} 
-                              className="h-24 w-full rounded-lg border border-slate-200 object-cover" 
+                              className="h-20 w-full rounded-lg object-cover"
                             />
                             <button 
                               type="button"
@@ -2672,12 +2652,12 @@ function FinanceManagePage() {
                       <div className="mb-3 space-y-2">
                         {newPriceOptions.length > 0 ? (
                           newPriceOptions.map(opt => (
-                            <div key={opt.id} className="group flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm hover:border-amber-200 transition-colors">
+                            <div key={opt.optionId} className="group flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm hover:border-amber-200 transition-colors">
                               <span className="font-medium text-slate-700">{opt.name}</span>
                               <div className="flex items-center gap-3">
                                 <span className="text-slate-600 font-medium">{opt.amount.toLocaleString()}원</span>
                                 <button 
-                                  onClick={() => setNewPriceOptions(prev => prev.filter(p => p.id !== opt.id))}
+                                  onClick={() => setNewPriceOptions(prev => prev.filter(p => p.optionId !== opt.optionId))}
                                   className="flex h-5 w-5 items-center justify-center rounded-full text-slate-300 hover:bg-rose-100 hover:text-rose-500 transition-colors"
                                   title="삭제"
                                 >
@@ -2717,7 +2697,7 @@ function FinanceManagePage() {
                         <button
                           onClick={() => {
                             if (optionInput.name && optionInput.amount > 0) {
-                              setNewPriceOptions(prev => [...prev, { id: Date.now().toString(), ...optionInput }])
+                              setNewPriceOptions(prev => [...prev, { optionId: Date.now().toString(), ...optionInput }])
                               setOptionInput({ name: '', amount: 0 })
                             }
                           }}
@@ -2822,7 +2802,7 @@ function FinanceManagePage() {
               {selectedReceipts.map((img, idx) => (
                 <div key={idx} className="rounded-lg border border-slate-200 p-2">
                   <img 
-                    src={img} 
+                    src={getFileUrl(img)} 
                     alt={`Receipt ${idx + 1}`} 
                     className="w-full h-auto rounded object-contain" 
                   />
