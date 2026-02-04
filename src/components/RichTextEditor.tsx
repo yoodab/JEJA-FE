@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Editor } from '@toast-ui/react-editor'
 import '@toast-ui/editor/dist/toastui-editor.css'
 import colorSyntax from '@toast-ui/editor-plugin-color-syntax'
@@ -9,11 +9,14 @@ interface RichTextEditorProps {
   value: string
   onChange: (value: string) => void
   placeholder?: string
+  height?: string
 }
 
-export default function RichTextEditor({ value, onChange }: RichTextEditorProps) {
+export default function RichTextEditor({ value, onChange, height = '400px' }: RichTextEditorProps) {
   const editorRef = useRef<Editor>(null)
   const isUpdatingRef = useRef(false)
+  // 리사이즈 중인지 추적하는 ref 추가 (컴포넌트 레벨)
+  const isResizingRef = useRef(false)
 
   // 에디터 마운트 후 불필요한 텍스트 제거
   useEffect(() => {
@@ -99,6 +102,194 @@ export default function RichTextEditor({ value, onChange }: RichTextEditorProps)
     }
   }, [value])
 
+  const [selectedImg, setSelectedImg] = useState<HTMLImageElement | null>(null)
+
+  // 이미지 선택 처리
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      // 리사이즈 중이면 선택 해제 방지
+      if (isResizingRef.current) return
+
+      const target = e.target as HTMLElement
+      // 에디터 내부의 이미지인지 확인
+      const editorRoot = editorRef.current?.getRootElement()
+      if (editorRoot && editorRoot.contains(target) && target.tagName === 'IMG') {
+        setSelectedImg(target as HTMLImageElement)
+      } else if (!target.closest('.image-resize-handle') && !target.closest('.image-delete-btn')) {
+        // 핸들 클릭이 아니면 선택 해제
+        setSelectedImg(null)
+      }
+    }
+    
+    // 스크롤 시 선택 해제 (핸들 위치 어긋남 방지)
+    const handleScroll = () => {
+      // 리사이즈 중일 때는 해제하지 않음 (드래그 중에 스크롤 될 수 있음)
+      if (selectedImg && !isResizingRef.current) {
+        setSelectedImg(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClick)
+    // 에디터 스크롤 이벤트 캡처 (버블링되지 않을 수 있으므로 capture: true)
+    const editorRoot = editorRef.current?.getRootElement()
+    if (editorRoot) {
+      editorRoot.addEventListener('scroll', handleScroll, true)
+    }
+    // 윈도우 스크롤도 감지
+    window.addEventListener('scroll', handleScroll, true)
+
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      if (editorRoot) {
+        editorRoot.removeEventListener('scroll', handleScroll, true)
+      }
+      window.removeEventListener('scroll', handleScroll, true)
+    }
+  }, [selectedImg])
+
+  // 리사이즈 핸들 컴포넌트
+  const ResizeHandle = ({ img, onUpdate }: { img: HTMLImageElement; onUpdate: () => void }) => {
+    const [isDragging, setIsDragging] = useState(false)
+    const startXRef = useRef(0)
+    const startWidthRef = useRef(0)
+
+    useEffect(() => {
+      const handleMouseMove = (e: MouseEvent) => {
+        if (!isDragging) return
+        
+        const diffX = e.clientX - startXRef.current
+        const newWidth = Math.max(50, startWidthRef.current + diffX) // 최소 50px
+        
+        img.style.width = `${newWidth}px`
+        img.style.height = 'auto'
+      }
+
+      const handleMouseUp = () => {
+        if (isDragging) {
+          setIsDragging(false)
+          isResizingRef.current = false // 전역 리사이즈 상태 해제
+          onUpdate() // 변경 사항 저장 트리거
+        }
+      }
+
+      if (isDragging) {
+        document.addEventListener('mousemove', handleMouseMove)
+        document.addEventListener('mouseup', handleMouseUp)
+      }
+
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+      }
+    }, [isDragging, img, onUpdate])
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+      e.stopPropagation()
+      e.preventDefault()
+      setIsDragging(true)
+      isResizingRef.current = true // 전역 리사이즈 상태 설정
+      startXRef.current = e.clientX
+      startWidthRef.current = img.offsetWidth
+    }
+
+    // 이미지 위치 계산
+    const rect = img.getBoundingClientRect()
+    // 에디터 위치 계산 (스크롤 등 보정)
+    const editorRect = editorRef.current?.getRootElement().getBoundingClientRect()
+    
+    if (!editorRect) return null
+
+    const handleDelete = (e: React.MouseEvent) => {
+      e.stopPropagation()
+      e.preventDefault()
+      if (window.confirm('이미지를 삭제하시겠습니까?')) {
+        // 단순하고 확실한 방법: DOM 제거 후 상태 동기화
+        img.remove()
+        
+        const editorInstance = editorRef.current?.getInstance()
+        if (editorInstance) {
+           // DOM 변경 후 현재 에디터 컨텐츠(HTML)를 가져와서 부모에게 알림
+           // setHTML을 호출하면 커서 이동 등 부작용이 있으므로, 
+           // 부모 state만 업데이트하여 저장 시 반영되도록 함.
+           // Toast UI Editor는 내부적으로 DOM 변경을 감지하지 못할 수 있으므로
+           // 필요하다면 강제로 이벤트를 발생시켜야 하지만, 
+           // 여기서는 onChange를 통해 최종 데이터만 맞춤.
+           
+           // 에디터의 최신 HTML 가져오기 (DOM 변경 반영된 상태)
+           const root = editorRef.current?.getRootElement()
+           const contentArea = root?.querySelector('.ProseMirror') || root?.querySelector('.toastui-editor-contents')
+           
+           if (contentArea) {
+             const newHtml = contentArea.innerHTML
+             // 내부 상태 동기화를 위해 setHTML을 호출하되, 커서 문제 최소화
+             // (삭제 직후라 커서 위치는 덜 중요함)
+             isUpdatingRef.current = true
+             editorInstance.setHTML(newHtml)
+             onChange(newHtml)
+             
+             setTimeout(() => {
+                isUpdatingRef.current = false
+             }, 0)
+           }
+        }
+        
+        setSelectedImg(null)
+      }
+    }
+    
+    return (
+      <>
+        {/* 리사이즈 핸들 (우측 하단) */}
+        <div
+          className="image-resize-handle"
+          style={{
+            position: 'fixed',
+            left: rect.right - 10,
+            top: rect.bottom - 10,
+            width: '20px',
+            height: '20px',
+            backgroundColor: '#3b82f6',
+            border: '2px solid white',
+            borderRadius: '50%',
+            cursor: 'nwse-resize',
+            zIndex: 9999,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+          }}
+          onMouseDown={handleMouseDown}
+        />
+        {/* 삭제 버튼 (우측 상단) */}
+        <button
+          className="image-delete-btn"
+          onClick={handleDelete}
+          style={{
+            position: 'fixed',
+            left: rect.right - 10,
+            top: rect.top - 10,
+            width: '24px',
+            height: '24px',
+            backgroundColor: '#ef4444',
+            color: 'white',
+            border: '2px solid white',
+            borderRadius: '50%',
+            cursor: 'pointer',
+            zIndex: 9999,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            padding: 0,
+            lineHeight: 1
+          }}
+          title="이미지 삭제"
+        >
+          ×
+        </button>
+      </>
+    )
+  }
+
   const handleChange = () => {
     if (isUpdatingRef.current) return
     
@@ -110,12 +301,22 @@ export default function RichTextEditor({ value, onChange }: RichTextEditorProps)
   }
 
   return (
-    <div className="toastui-editor-wrapper">
+    <div className="toastui-editor-wrapper relative">
+      <style>{`
+        .toastui-editor-contents img,
+        .ProseMirror img {
+          max-width: 100%;
+          cursor: pointer;
+        }
+        .ProseMirror img:hover {
+          outline: 2px dashed #cbd5e1;
+        }
+      `}</style>
       <Editor
         ref={editorRef}
         initialValue=""
         previewStyle="vertical"
-        height="400px"
+        height={height}
         initialEditType="wysiwyg"
         useCommandShortcut={true}
         usageStatistics={false}
@@ -146,7 +347,7 @@ export default function RichTextEditor({ value, onChange }: RichTextEditorProps)
         toolbarItems={[
           ['heading', 'bold', 'italic', 'strike'],
           ['hr', 'quote'],
-          ['ul', 'ol', 'task'],
+          ['ul', 'ol'],
           ['table', 'image', 'link'],
           ['code', 'codeblock'],
         ]}
@@ -165,6 +366,23 @@ export default function RichTextEditor({ value, onChange }: RichTextEditorProps)
           },
         }}
       />
+      {selectedImg && (
+        <ResizeHandle 
+          img={selectedImg} 
+          onUpdate={() => {
+            // DOM 변경 사항을 에디터 상태에 반영하기 위해 getHTML 호출 및 onChange 트리거
+            const editorInstance = editorRef.current?.getInstance()
+            if (editorInstance) {
+              // DOM이 변경되었으므로 현재 HTML을 가져와서 부모에게 알림
+              // 주의: ProseMirror 상태와 DOM이 다를 수 있지만, getHTML은 보통 DOM을 직렬화하거나 상태를 직렬화함.
+              // Toast UI Editor는 Markdown 기반이므로, HTML 변경이 Markdown으로 변환되어 저장됨.
+              // 강제로 이벤트를 발생시키거나 onChange를 호출
+              const html = editorInstance.getHTML()
+              onChange(html)
+            }
+          }} 
+        />
+      )}
     </div>
   )
 }

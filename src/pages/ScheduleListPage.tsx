@@ -1,174 +1,56 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
 import { isLoggedIn as checkLoggedIn } from '../utils/auth'
+import { getSchedules } from '../services/scheduleService'
+import type { Schedule } from '../types/schedule'
+import ScheduleDetailModal from '../components/schedule/ScheduleDetailModal'
 
-interface Schedule {
-  id: string
-  title: string
-  date: string
-  time: string
-  type: '예배' | '행사' | '모임' | '기타'
-  location: string
-  description: string
-  shareScope?: 'loggedIn' | 'guest' | 'private'
+const typeColors: Record<string, string> = {
+  WORSHIP: 'bg-blue-100 text-blue-700',
+  EVENT: 'bg-purple-100 text-purple-700',
+  MEETING: 'bg-emerald-100 text-emerald-700',
+  ETC: 'bg-slate-100 text-slate-700',
 }
 
-// 임시 데이터 (실제로는 API에서 가져올 데이터)
-const mockSchedules: Schedule[] = [
-  {
-    id: '1',
-    title: '주일예배',
-    date: '2024-12-15',
-    time: '11:00',
-    type: '예배',
-    location: '본당',
-    description: '청년부 주일예배입니다. 함께 모여 예배드립니다.',
-  },
-  {
-    id: '2',
-    title: '순모임',
-    date: '2024-12-16',
-    time: '19:00',
-    type: '모임',
-    location: '각 순별 장소',
-    description: '주간 순모임입니다. 각 순별로 나뉘어 모임을 가집니다.',
-  },
-  {
-    id: '3',
-    title: '찬양팀 연습',
-    date: '2024-12-18',
-    time: '19:30',
-    type: '모임',
-    location: '찬양실',
-    description: '주일예배 찬양 연습입니다.',
-  },
-  {
-    id: '4',
-    title: '주일예배',
-    date: '2024-12-22',
-    time: '11:00',
-    type: '예배',
-    location: '본당',
-    description: '청년부 주일예배입니다. 함께 모여 예배드립니다.',
-  },
-  {
-    id: '5',
-    title: '크리스마스 특별예배',
-    date: '2024-12-24',
-    time: '19:00',
-    type: '예배',
-    location: '본당',
-    description: '크리스마스 이브 특별예배입니다.',
-  },
-  {
-    id: '6',
-    title: '크리스마스 행사',
-    date: '2024-12-25',
-    time: '14:00',
-    type: '행사',
-    location: '교회 마당',
-    description: '크리스마스 축하 행사입니다.',
-  },
-  {
-    id: '7',
-    title: '순모임',
-    date: '2024-12-23',
-    time: '19:00',
-    type: '모임',
-    location: '각 순별 장소',
-    description: '주간 순모임입니다. 각 순별로 나뉘어 모임을 가집니다.',
-  },
-  {
-    id: '8',
-    title: '연말 특별예배',
-    date: '2024-12-31',
-    time: '22:00',
-    type: '예배',
-    location: '본당',
-    description: '2024년 마지막 예배입니다. 함께 감사하며 새해를 맞이합니다.',
-  },
-  {
-    id: '9',
-    title: '신년예배',
-    date: '2025-01-01',
-    time: '11:00',
-    type: '예배',
-    location: '본당',
-    description: '2025년 첫 주일예배입니다.',
-  },
-  {
-    id: '10',
-    title: '청년부 수련회',
-    date: '2025-01-05',
-    time: '09:00',
-    type: '행사',
-    location: '수양관',
-    description: '신년 수련회입니다. 함께 모여 말씀을 나누고 교제합니다.',
-  },
-  {
-    id: '11',
-    title: '주일예배',
-    date: '2025-01-05',
-    time: '11:00',
-    type: '예배',
-    location: '본당',
-    description: '청년부 주일예배입니다.',
-  },
-  {
-    id: '12',
-    title: '찬양팀 연습',
-    date: '2025-01-08',
-    time: '19:30',
-    type: '모임',
-    location: '찬양실',
-    description: '주일예배 찬양 연습입니다.',
-  },
-  {
-    id: '13',
-    title: '순모임',
-    date: '2025-01-13',
-    time: '19:00',
-    type: '모임',
-    location: '각 순별 장소',
-    description: '주간 순모임입니다.',
-  },
-  {
-    id: '14',
-    title: '주일예배',
-    date: '2025-01-12',
-    time: '11:00',
-    type: '예배',
-    location: '본당',
-    description: '청년부 주일예배입니다.',
-  },
-  {
-    id: '15',
-    title: '청년부 모임',
-    date: '2025-01-15',
-    time: '19:00',
-    type: '모임',
-    location: '청년부실',
-    description: '정기 청년부 모임입니다.',
-  },
-]
-
-const typeColors: Record<Schedule['type'], string> = {
-  예배: 'bg-blue-100 text-blue-700',
-  행사: 'bg-purple-100 text-purple-700',
-  모임: 'bg-emerald-100 text-emerald-700',
-  기타: 'bg-slate-100 text-slate-700',
+const typeLabels: Record<string, string> = {
+  WORSHIP: '예배',
+  EVENT: '행사',
+  MEETING: '모임',
+  ETC: '기타',
 }
 
 function ScheduleListPage() {
   const navigate = useNavigate()
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0])
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [isLoggedIn] = useState(checkLoggedIn)
+  const [schedules, setSchedules] = useState<Schedule[]>([])
+  
+  // Modal State
+  const [detailModalOpen, setDetailModalOpen] = useState(false)
+  const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null)
+  const [selectedTargetDate, setSelectedTargetDate] = useState<string | null>(null)
+
+  const currentDate = new Date(selectedDate)
+  const year = currentDate.getFullYear()
+  const month = currentDate.getMonth()
+
+  const fetchSchedules = useCallback(async () => {
+    try {
+      const data = await getSchedules(year, month + 1)
+      setSchedules(data)
+    } catch (err) {
+      console.error('Failed to fetch schedules:', err)
+    }
+  }, [year, month])
 
   useEffect(() => {
-    setIsLoggedIn(checkLoggedIn())
-  }, [])
+    const load = async () => {
+      await fetchSchedules()
+    }
+    load()
+  }, [fetchSchedules])
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr)
@@ -180,10 +62,6 @@ function ScheduleListPage() {
     return `${year}.${month}.${day} (${weekday})`
   }
 
-  const currentDate = new Date(selectedDate)
-  const year = currentDate.getFullYear()
-  const month = currentDate.getMonth()
-
   // 달력 생성
   const firstDay = new Date(year, month, 1).getDay()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
@@ -193,12 +71,14 @@ function ScheduleListPage() {
   const emptyCellsAfter = totalCells - firstDay - daysInMonth
 
   const getSchedulesForDate = (date: string) => {
-    return mockSchedules.filter((s) => {
-      if (s.date !== date) return false
+    return schedules.filter((s) => {
+      // startDate: YYYY-MM-DDTHH:mm:ss
+      const sDate = s.startDate.split('T')[0]
+      if (sDate !== date) return false
       // 비공개 일정은 제외
-      if (s.shareScope === 'private') return false
-      // 로그인하지 않은 사용자는 'guest' 공유 범위만 볼 수 있음
-      if (!isLoggedIn && s.shareScope === 'loggedIn') return false
+      if (s.sharingScope === 'PRIVATE') return false
+      // 로그인하지 않은 사용자는 'LOGGED_IN_USERS' 공유 범위만 볼 수 있음
+      if (!isLoggedIn && s.sharingScope === 'LOGGED_IN_USERS') return false
       return true
     })
   }
@@ -289,22 +169,25 @@ function ScheduleListPage() {
                       key={day}
                       type="button"
                       onClick={() => handleDateClick(day)}
-                      className={`aspect-square rounded-lg border p-1 text-left text-xs transition hover:bg-slate-50 ${
+                      className={`relative aspect-square w-full overflow-hidden rounded-lg border p-0.5 text-left transition hover:bg-slate-50 ${
                         isSelected ? 'border-blue-500 bg-blue-50' : 'border-slate-200'
-                      } ${isToday ? 'font-bold text-blue-600' : 'text-slate-700'}`}
+                      }`}
                     >
-                      <div className="mb-1">{day}</div>
-                      <div className="space-y-0.5">
+                      <span className={`absolute left-1 top-1 text-[10px] leading-none z-10 ${isToday ? 'font-bold text-blue-600' : 'text-slate-700'}`}>
+                        {day}
+                      </span>
+                      
+                      <div className="mt-4 flex flex-col gap-0.5 w-full">
                         {daySchedules.slice(0, 2).map((schedule) => (
                           <div
-                            key={schedule.id}
-                            className={`truncate rounded px-1 py-0.5 text-[10px] ${typeColors[schedule.type]}`}
+                            key={schedule.scheduleId}
+                            className={`truncate rounded px-1 py-[1px] text-[8px] md:text-[10px] font-medium leading-tight ${typeColors[schedule.type] || typeColors.ETC}`}
                           >
                             {schedule.title}
                           </div>
                         ))}
                         {daySchedules.length > 2 && (
-                          <div className="text-[10px] text-slate-400">+{daySchedules.length - 2}</div>
+                          <div className="px-1 text-[8px] md:text-[10px] leading-none text-slate-400">+{daySchedules.length - 2}</div>
                         )}
                       </div>
                     </button>
@@ -327,28 +210,41 @@ function ScheduleListPage() {
               {selectedDateSchedules.length === 0 ? (
                 <p className="text-xs text-slate-400">등록된 일정이 없습니다.</p>
               ) : (
-                selectedDateSchedules.map((schedule) => (
-                  <div
-                    key={schedule.id}
-                    className="w-full rounded-lg border border-slate-200 p-3 text-left"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="mb-1 flex items-center gap-2">
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${typeColors[schedule.type]}`}>
-                            {schedule.type}
-                          </span>
-                          <span className="text-xs font-semibold text-slate-900">{schedule.title}</span>
+                selectedDateSchedules.map((schedule) => {
+                  const timeStr = new Date(schedule.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  
+                  return (
+                    <div
+                      key={schedule.scheduleId}
+                      onClick={() => {
+                        if (!isLoggedIn) {
+                          alert('로그인이 필요한 서비스입니다.')
+                          return
+                        }
+                        setSelectedScheduleId(schedule.scheduleId)
+                        setSelectedTargetDate(schedule.startDate.split('T')[0])
+                        setDetailModalOpen(true)
+                      }}
+                      className="w-full rounded-lg border border-slate-200 p-3 text-left cursor-pointer hover:bg-slate-50 transition-colors"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="mb-1 flex items-center gap-2">
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${typeColors[schedule.type] || typeColors.ETC}`}>
+                              {typeLabels[schedule.type] || schedule.type}
+                            </span>
+                            <span className="text-xs font-semibold text-slate-900">{schedule.title}</span>
+                          </div>
+                          <p className="text-xs text-slate-600">{timeStr}</p>
+                          <p className="text-xs text-slate-500">{schedule.location}</p>
+                          {schedule.content && (
+                            <p className="mt-1 text-xs text-slate-400">{schedule.content}</p>
+                          )}
                         </div>
-                        <p className="text-xs text-slate-600">{schedule.time}</p>
-                        <p className="text-xs text-slate-500">{schedule.location}</p>
-                        {schedule.description && (
-                          <p className="mt-1 text-xs text-slate-400">{schedule.description}</p>
-                        )}
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -356,6 +252,15 @@ function ScheduleListPage() {
 
         <Footer />
       </div>
+
+      {detailModalOpen && selectedScheduleId && selectedTargetDate && (
+        <ScheduleDetailModal
+          scheduleId={selectedScheduleId}
+          targetDate={selectedTargetDate}
+          onClose={() => setDetailModalOpen(false)}
+          onUpdate={fetchSchedules}
+        />
+      )}
     </div>
   )
 }

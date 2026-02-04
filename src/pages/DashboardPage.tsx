@@ -1,10 +1,5 @@
 import { useNavigate } from 'react-router-dom'
 
-const topStats = [
-  { label: '이번 주 출석', value: '128명', trend: '+8명', trendColor: 'text-emerald-600', badge: '주일예배' },
-  { label: '이번 달 새신자', value: '5명', trend: '정착 진행 중', trendColor: 'text-blue-600', badge: '새가족' },
-  { label: '장기결석자', value: '12명', trend: '케어 필요', trendColor: 'text-rose-600', badge: '' },
-]
 
 const managementMenus = [
   {
@@ -17,7 +12,7 @@ const managementMenus = [
   },
   {
     title: '이번달 생일자',
-    desc: '이번 달 생일자, 축하 진행, 선물/케이크 체크.',
+    desc: '이번 달 생일자 확인',
     accent: 'bg-purple-50 text-purple-700',
     icon: '🎂',
     iconBg: 'bg-purple-100',
@@ -72,6 +67,14 @@ const managementMenus = [
     route: '/manage/finance',
   },
   {
+    title: '식권 관리',
+    desc: '식권 추가/사용 및 재고 현황 관리.',
+    accent: 'bg-green-50 text-green-700',
+    icon: '🎫',
+    iconBg: 'bg-green-100',
+    route: '/manage/meal-tickets',
+  },
+  {
     title: '일정 관리',
     desc: '예배/행사/모임 일정 등록·공유, 리마인드 확인.',
     accent: 'bg-teal-50 text-teal-700',
@@ -94,6 +97,22 @@ const managementMenus = [
     icon: '🔀',
     iconBg: 'bg-rose-100',
     route: '/manage/group-formation',
+  },
+  {
+    title: '롤링페이퍼',
+    desc: '롤링페이퍼 생성 및 관리',
+    accent: 'bg-pink-50 text-pink-700',
+    icon: '💌',
+    iconBg: 'bg-pink-100',
+    route: '/manage/rolling-papers',
+  },
+  {
+    title: '알림 보내기',
+    desc: '앱 푸시 알림 발송 (개별/전체/그룹).',
+    accent: 'bg-indigo-50 text-indigo-700',
+    icon: '🔔',
+    iconBg: 'bg-indigo-100',
+    route: '/manage/notifications',
   },
 ]
 
@@ -130,23 +149,7 @@ function DashboardPage() {
           </div>
         </header>
 
-        {/* 핵심 요약 */}
-        <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {topStats.map((stat) => (
-            <div
-              key={stat.label}
-              className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-100 hover:shadow-md"
-            >
-              <div className="flex items-center justify-between">
-                {stat.badge && <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{stat.badge}</p>}
-                <span className="text-[11px] font-semibold text-slate-500">{stat.trend}</span>
-              </div>
-              <p className="mt-2 text-xs text-slate-500">{stat.label}</p>
-              <p className="mt-1 text-2xl font-bold text-slate-900">{stat.value}</p>
-              <p className={`mt-1 text-[11px] font-semibold ${stat.trendColor}`}>{stat.trendColor ? stat.trend : ''}</p>
-            </div>
-          ))}
-        </section>
+
 
         {/* 관리 메뉴 */}
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

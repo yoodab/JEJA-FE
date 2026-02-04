@@ -1,289 +1,175 @@
-// 앨범 접근 권한 타입
+import api from './api'
+
+// --- Types ---
+
 export type AlbumAccessType = 'PUBLIC' | 'MEMBER_ONLY'
 
-// 앨범 목록 항목
-export interface AlbumListItem {
-  id: number
-  title: string
-  date: string
-  photoCount: number
-  thumbnail: string
-  accessType?: AlbumAccessType
+// Helper to convert backend permission to frontend AccessType
+export const mapPermissionToAccessType = (permission?: string): AlbumAccessType => {
+  return permission === 'LOGGED_IN_USERS' || permission === 'LOGGED_IN' ? 'MEMBER_ONLY' : 'PUBLIC'
 }
 
-// 앨범 상세 정보
+// Helper to convert frontend AccessType to backend permission
+export const mapAccessTypeToPermission = (accessType: AlbumAccessType): string => {
+  return accessType === 'MEMBER_ONLY' ? 'LOGGED_IN_USERS' : 'ALL'
+}
+
+export type ReadPermission = 'PUBLIC_READ' | 'MEMBERS_ONLY_READ' | 'ADMIN_ONLY_READ'
+export type WritePermission = 'MEMBERS_WRITE' | 'ADMIN_WRITE'
+
+export interface AlbumListItem {
+  albumId: number
+  title: string
+  description?: string
+  coverImageUrl?: string
+  readPermission?: ReadPermission | string
+  writePermission?: WritePermission | string
+  createdAt?: string
+}
+
+export interface Photo {
+  photoId: number
+  imageUrl: string
+  caption?: string
+  uploaderName?: string
+}
+
 export interface AlbumDetail {
   id: number
   title: string
-  date: string
-  accessType: AlbumAccessType
-  photos: Photo[]
-}
-
-// 사진 정보
-export interface Photo {
-  id: number
-  url: string
   description?: string
-  uploadedAt?: string
+  accessType: AlbumAccessType
+  readPermission?: ReadPermission | string
+  writePermission?: WritePermission | string
+  photos: Photo[]
+  date?: string
 }
 
-// 앨범 생성 요청
+export interface FileUploadResult {
+  url: string
+  originalName: string
+}
+
 export interface CreateAlbumRequest {
   title: string
-  date: string
-  accessType: AlbumAccessType
+  description?: string
+  readPermission: string
+  writePermission: string
 }
 
-// 앨범 수정 요청
 export interface UpdateAlbumRequest {
   title?: string
-  date?: string
-  accessType?: AlbumAccessType
-}
-
-// 사진 업로드 요청
-export interface UploadPhotoRequest {
-  file: File
   description?: string
+  readPermission?: string
+  writePermission?: string
 }
 
-// 사진 수정 요청
-export interface UpdatePhotoRequest {
-  description?: string
+// --- Utils ---
+
+export const getFileUrl = (path: string | undefined): string => {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+  const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
+  const cleanPath = path.startsWith('/') ? path.slice(1) : path
+  
+  return `${cleanBase}/${cleanPath}`
 }
 
-// 로컬 스토리지 키
-const STORAGE_KEY = 'youth_albums'
-
-// 내부 저장용 앨범 타입
-interface StoredAlbum {
-  id: number
-  title: string
-  date: string
-  accessType: AlbumAccessType
-  photos: Photo[]
+export const isVideo = (url: string): boolean => {
+  const ext = url.split('.').pop()?.toLowerCase()
+  return ['mp4', 'webm', 'ogg', 'mov'].includes(ext || '')
 }
 
-// 초기 mock 데이터
-const initialMockAlbums: StoredAlbum[] = [
-  {
-    id: 1,
-    title: '2024 전도특공대',
-    date: '2024-03-16',
-    accessType: 'PUBLIC',
-    photos: [
-      {
-        id: 1,
-        url: 'https://via.placeholder.com/800x600?text=전도특공대+1',
-        description: '전도특공대 활동 사진',
-        uploadedAt: '2024-03-16T10:00:00',
-      },
-      {
-        id: 2,
-        url: 'https://via.placeholder.com/800x600?text=전도특공대+2',
-        description: '함께하는 시간',
-        uploadedAt: '2024-03-16T10:05:00',
-      },
-    ],
-  },
-  {
-    id: 2,
-    title: '청년부 수련회',
-    date: '2024-07-20',
-    accessType: 'MEMBER_ONLY',
-    photos: [
-      {
-        id: 3,
-        url: 'https://via.placeholder.com/800x600?text=수련회+1',
-        description: '수련회 첫날',
-        uploadedAt: '2024-07-20T09:00:00',
-      },
-    ],
-  },
-  {
-    id: 3,
-    title: '추수감사절 예배',
-    date: '2024-11-24',
-    accessType: 'PUBLIC',
-    photos: [],
-  },
-]
+// --- API Functions ---
 
-// 로컬 스토리지에서 앨범 데이터 가져오기
-function getStoredAlbums(): StoredAlbum[] {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      return JSON.parse(stored)
-    }
-    // 초기 데이터 저장
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(initialMockAlbums))
-    return initialMockAlbums
-  } catch (error) {
-    console.error('앨범 데이터 로드 실패:', error)
-    return initialMockAlbums
-  }
-}
-
-// 로컬 스토리지에 앨범 데이터 저장
-function saveAlbums(albums: StoredAlbum[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(albums))
-  } catch (error) {
-    console.error('앨범 데이터 저장 실패:', error)
-  }
-}
-
-// File을 base64로 변환
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      resolve(result)
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
+// 1. File Upload
+export async function uploadFiles(files: File[], folder: string = 'album'): Promise<FileUploadResult[]> {
+  const formData = new FormData()
+  files.forEach((file) => {
+    formData.append('files', file)
   })
+
+  const response = await api.post(`/api/files/upload`, formData, {
+    params: { folder },
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+  return response.data.data
 }
 
-// 앨범 목록 조회 - GET /api/albums
-export async function getAlbums(): Promise<AlbumListItem[]> {
-  // 임시: 약간의 지연 시뮬레이션
-  await new Promise((resolve) => setTimeout(resolve, 300))
-
-  const albums = getStoredAlbums()
-  return albums.map((album) => ({
-    id: album.id,
-    title: album.title,
-    date: album.date,
-    photoCount: album.photos.length,
-    thumbnail: album.photos.length > 0 ? album.photos[0].url : 'https://via.placeholder.com/300x200?text=No+Image',
-    accessType: album.accessType,
-  }))
+// 2. Album List
+export async function getAlbums(page: number = 0, size: number = 20): Promise<{ content: AlbumListItem[], totalPages: number, totalElements: number }> {
+  const response = await api.get('/api/albums', {
+    params: { page, size }
+  })
+  return response.data.data
 }
 
-// 앨범 상세 조회 - GET /api/albums/{albumId}
-export async function getAlbumById(albumId: number): Promise<AlbumDetail> {
-  // 임시: 약간의 지연 시뮬레이션
-  await new Promise((resolve) => setTimeout(resolve, 300))
+// 3. Album Detail (Metadata + Photos)
+export async function getAlbumPhotos(albumId: number): Promise<Photo[]> {
+  const response = await api.get(`/api/albums/${albumId}/photos`)
+  return response.data.data
+}
 
-  const albums = getStoredAlbums()
-  const album = albums.find((a) => a.id === albumId)
-  if (!album) {
-    throw new Error('앨범을 찾을 수 없습니다.')
+// Helper to get full album detail including metadata
+export async function getAlbumDetail(albumId: number, cachedMetadata?: AlbumListItem): Promise<AlbumDetail> {
+  const photosPromise = getAlbumPhotos(albumId)
+  
+  let metadata: AlbumListItem | undefined = cachedMetadata
+
+  if (!metadata) {
+     try {
+        // Fallback: Fetch list to find metadata since /api/albums/{id} is not available
+        // Try to find in first 100 items. 
+        const res = await getAlbums(0, 100)
+        metadata = res.content.find(a => a.albumId === albumId)
+     } catch (e) {
+        console.warn('Failed to fetch album list for metadata', e)
+     }
   }
-  return album
-}
 
-// 앨범 생성 (관리자) - POST /api/admin/albums
-export async function createAlbum(payload: CreateAlbumRequest): Promise<number> {
-  // 임시: 약간의 지연 시뮬레이션
-  await new Promise((resolve) => setTimeout(resolve, 300))
+  const photos = await photosPromise
 
-  const albums = getStoredAlbums()
-  const newId = albums.length > 0 ? Math.max(...albums.map((a) => a.id)) + 1 : 1
-  const newAlbum: StoredAlbum = {
-    id: newId,
-    title: payload.title,
-    date: payload.date,
-    accessType: payload.accessType,
-    photos: [],
+  return {
+    id: albumId,
+    title: metadata?.title || 'Unknown Album',
+    description: metadata?.description,
+    accessType: mapPermissionToAccessType(metadata?.readPermission),
+    photos: photos,
+    date: metadata?.createdAt ? metadata.createdAt.split('T')[0] : ''
   }
-  albums.push(newAlbum)
-  saveAlbums(albums)
-  return newId
 }
 
-// 앨범 수정 (관리자) - PATCH /api/admin/albums/{albumId}
+// 4. Create Album
+export async function createAlbum(payload: CreateAlbumRequest): Promise<number | undefined> {
+  const response = await api.post('/api/admin/albums', payload)
+  return response.data.data?.albumId
+}
+
+// 5. Update Album
 export async function updateAlbum(albumId: number, payload: UpdateAlbumRequest): Promise<void> {
-  // 임시: 약간의 지연 시뮬레이션
-  await new Promise((resolve) => setTimeout(resolve, 300))
-
-  const albums = getStoredAlbums()
-  const album = albums.find((a) => a.id === albumId)
-  if (!album) {
-    throw new Error('앨범을 찾을 수 없습니다.')
-  }
-  if (payload.title !== undefined) album.title = payload.title
-  if (payload.date !== undefined) album.date = payload.date
-  if (payload.accessType !== undefined) album.accessType = payload.accessType
-  saveAlbums(albums)
+  await api.patch(`/api/admin/albums/${albumId}`, payload)
 }
 
-// 앨범 삭제 (관리자) - DELETE /api/admin/albums/{albumId}
+// 6. Delete Album
 export async function deleteAlbum(albumId: number): Promise<void> {
-  // 임시: 약간의 지연 시뮬레이션
-  await new Promise((resolve) => setTimeout(resolve, 300))
-
-  const albums = getStoredAlbums()
-  const filtered = albums.filter((a) => a.id !== albumId)
-  saveAlbums(filtered)
+  await api.delete(`/api/admin/albums/${albumId}`)
 }
 
-// 앨범에 사진 추가 (관리자) - POST /api/admin/albums/{albumId}/photos
-export async function uploadPhoto(albumId: number, payload: UploadPhotoRequest): Promise<number> {
-  // 임시: 약간의 지연 시뮬레이션
-  await new Promise((resolve) => setTimeout(resolve, 500))
-
-  const albums = getStoredAlbums()
-  const album = albums.find((a) => a.id === albumId)
-  if (!album) {
-    throw new Error('앨범을 찾을 수 없습니다.')
-  }
-
-  // File을 base64로 변환
-  const base64Url = await fileToBase64(payload.file)
-  const newPhotoId = album.photos.length > 0 ? Math.max(...album.photos.map((p) => p.id)) + 1 : 1
-
-  const newPhoto: Photo = {
-    id: newPhotoId,
-    url: base64Url,
-    description: payload.description,
-    uploadedAt: new Date().toISOString(),
-  }
-
-  album.photos.push(newPhoto)
-  saveAlbums(albums)
-  return newPhotoId
+// 7. Add Photos to Album
+export async function addPhotosToAlbum(albumId: number, photoUrls: string[]): Promise<void> {
+  await api.post(`/api/albums/${albumId}/photos`, photoUrls)
 }
 
-// 사진 수정 (관리자) - PATCH /api/admin/albums/{albumId}/photos/{photoId}
-export async function updatePhoto(
-  albumId: number,
-  photoId: number,
-  payload: UpdatePhotoRequest
-): Promise<void> {
-  // 임시: 약간의 지연 시뮬레이션
-  await new Promise((resolve) => setTimeout(resolve, 300))
-
-  const albums = getStoredAlbums()
-  const album = albums.find((a) => a.id === albumId)
-  if (!album) {
-    throw new Error('앨범을 찾을 수 없습니다.')
-  }
-  const photo = album.photos.find((p) => p.id === photoId)
-  if (!photo) {
-    throw new Error('사진을 찾을 수 없습니다.')
-  }
-  if (payload.description !== undefined) {
-    photo.description = payload.description
-  }
-  saveAlbums(albums)
+// 8. Update Photo (Caption)
+export async function updatePhoto(albumId: number, photoId: number, caption: string): Promise<void> {
+  await api.patch(`/api/albums/${albumId}/photos/${photoId}`, { caption })
 }
 
-// 사진 삭제 (관리자) - DELETE /api/admin/albums/{albumId}/photos/{photoId}
-export async function deletePhoto(albumId: number, photoId: number): Promise<void> {
-  // 임시: 약간의 지연 시뮬레이션
-  await new Promise((resolve) => setTimeout(resolve, 300))
-
-  const albums = getStoredAlbums()
-  const album = albums.find((a) => a.id === albumId)
-  if (!album) {
-    throw new Error('앨범을 찾을 수 없습니다.')
-  }
-  album.photos = album.photos.filter((p) => p.id !== photoId)
-  saveAlbums(albums)
+// 9. Delete Photo
+export async function deletePhoto(photoId: number): Promise<void> {
+  await api.delete(`/api/photos/${photoId}`)
 }
-

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Member } from '../types/member'
 import { getMembers } from '../services/memberService'
+import { formatPhoneNumber } from '../utils/format'
 
 function BirthdayManagePage() {
   const navigate = useNavigate()
@@ -17,7 +18,8 @@ function BirthdayManagePage() {
       try {
         setLoading(true)
         setError(null)
-        const data = await getMembers()
+        const response = await getMembers({ page: 0, size: 1000 })
+        const data = response.content
         setMembers(data)
       } catch (err) {
         console.error('생일자 목록 로드 실패:', err)
@@ -84,7 +86,7 @@ function BirthdayManagePage() {
               onClick={() => navigate('/dashboard')}
               className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
             >
-              ← 돌아가기
+              ←
             </button>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 text-xl">
@@ -145,7 +147,7 @@ function BirthdayManagePage() {
                         <tr key={member.memberId} className="hover:bg-slate-50">
                           <td className="px-4 py-3 text-sm font-medium text-slate-900">{member.name}</td>
                           <td className="px-4 py-3 text-sm text-slate-600">{formatDate(member.birthDate)}</td>
-                          <td className="px-4 py-3 text-sm text-slate-600">{member.phone}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{formatPhoneNumber(member.phone)}</td>
                         </tr>
                       ))}
                     </tbody>

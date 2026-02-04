@@ -1,4 +1,5 @@
 import api from './api'
+import type { ApiResponse } from '../types/api'
 
 // 승인 대기 사용자 DTO
 export interface PendingUserDto {
@@ -9,43 +10,57 @@ export interface PendingUserDto {
   createdAt: string
 }
 
-// API 공통 응답 타입
-interface ApiResponse<T> {
-  status: string
-  code: string
-  message: string
-  data: T
-}
-
-// 승인 대기 목록 조회 - GET /api/admin/users/pending
-export async function getPendingUsers(): Promise<PendingUserDto[]> {
-  const response = await api.get<ApiResponse<PendingUserDto[]>>('/api/admin/users/pending')
-  return response.data.data
-}
-
-// 사용자 계정 승인 - PATCH /api/admin/users/{userId}/approve
-export async function approveUser(userId: number): Promise<void> {
-  await api.patch(`/api/admin/users/${userId}/approve`)
-}
-
-// 사용자 계정 거절 - PATCH /api/admin/users/{userId}/reject
-export async function rejectUser(userId: number): Promise<void> {
-  await api.patch(`/api/admin/users/${userId}/reject`)
-}
-
-// 승인된 사용자 목록 조회 - GET /api/admin/users/approved
 export interface ApprovedUserDto {
   userId: number
   loginId: string
   name: string
   phone: string
   createdAt: string
-  approvedAt: string
 }
 
-export async function getApprovedUsers(): Promise<ApprovedUserDto[]> {
-  const response = await api.get<ApiResponse<ApprovedUserDto[]>>('/api/admin/users/approved')
+export type UserStatus = 'PENDING' | 'ACTIVE' | 'INACTIVE'
+
+export interface UserDto {
+  userId: number
+  loginId: string
+  name: string
+  phone: string
+  createdAt: string
+  status: UserStatus
+}
+
+// 사용자 목록 조회 - GET /api/users?status={status}
+export async function getUsers(status?: UserStatus): Promise<UserDto[]> {
+  const url = status ? `/api/users?status=${status}` : '/api/users'
+  const response = await api.get<ApiResponse<UserDto[]>>(url)
   return response.data.data
+}
+
+// 사용자 상태 변경 - PATCH /api/users/{userId}/status
+export async function updateUserStatus(userId: number, status: UserStatus): Promise<void> {
+  await api.patch(`/api/users/${userId}/status`, { status })
+}
+
+// 승인 대기 목록 조회 (Deprecated: use getUsers('PENDING'))
+export async function getPendingUsers(): Promise<PendingUserDto[]> {
+  const users = await getUsers('PENDING')
+  return users
+}
+
+// 승인된 사용자 목록 조회 (Deprecated: use getUsers('ACTIVE'))
+export async function getApprovedUsers(): Promise<ApprovedUserDto[]> {
+  const users = await getUsers('ACTIVE')
+  return users
+}
+
+// 사용자 계정 승인 (Deprecated: use updateUserStatus)
+export async function approveUser(userId: number): Promise<void> {
+  await updateUserStatus(userId, 'ACTIVE')
+}
+
+// 사용자 계정 거절 (Deprecated: use updateUserStatus)
+export async function rejectUser(userId: number): Promise<void> {
+  await updateUserStatus(userId, 'INACTIVE')
 }
 
 // 엑셀로 멤버 일괄 등록 - POST /api/admin/members/upload-excel

@@ -1,315 +1,156 @@
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
+import { scheduleService } from '../services/scheduleService'
+import { checkIn } from '../services/attendanceService'
+import { getAlbumDetail, getFileUrl, type AlbumDetail } from '../services/albumService'
+import { isLoggedIn as checkLoggedIn } from '../utils/auth'
+import type { Schedule } from '../types/schedule'
 
-interface Schedule {
-  id: string
-  title: string
-  date: string
-  time: string
-  type: '예배' | '행사' | '모임' | '기타'
-  location: string
-  description: string
+// Helper to translate schedule type
+const getScheduleTypeLabel = (type: string) => {
+  switch (type) {
+    case 'WORSHIP': return '예배'
+    case 'EVENT': return '행사'
+    case 'MEETING': return '모임'
+    default: return '기타'
+  }
 }
 
-interface AttendanceInfo {
-  totalCount: number
-  presentCount: number
-  absentCount: number
-  attendanceList: {
-    memberId: string
-    name: string
-    status: 'PRESENT' | 'ABSENT'
-    attendanceTime?: string
-  }[]
-}
-
-interface AlbumInfo {
-  id: string
-  title: string
-  date: string
-  thumbnail: string
-  photoCount: number
-}
-
-// 임시 데이터 (실제로는 API에서 가져올 데이터)
-const mockSchedules: Schedule[] = [
-  {
-    id: '1',
-    title: '주일예배',
-    date: '2024-12-15',
-    time: '11:00',
-    type: '예배',
-    location: '본당',
-    description: '청년부 주일예배입니다. 함께 모여 예배드립니다.',
-  },
-  {
-    id: '2',
-    title: '순모임',
-    date: '2024-12-16',
-    time: '19:00',
-    type: '모임',
-    location: '각 순별 장소',
-    description: '주간 순모임입니다. 각 순별로 나뉘어 모임을 가집니다.',
-  },
-  {
-    id: '3',
-    title: '찬양팀 연습',
-    date: '2024-12-18',
-    time: '19:30',
-    type: '모임',
-    location: '찬양실',
-    description: '주일예배 찬양 연습입니다.',
-  },
-  {
-    id: '4',
-    title: '주일예배',
-    date: '2024-12-22',
-    time: '11:00',
-    type: '예배',
-    location: '본당',
-    description: '청년부 주일예배입니다. 함께 모여 예배드립니다.',
-  },
-  {
-    id: '5',
-    title: '크리스마스 특별예배',
-    date: '2024-12-24',
-    time: '19:00',
-    type: '예배',
-    location: '본당',
-    description: '크리스마스 이브 특별예배입니다.',
-  },
-  {
-    id: '6',
-    title: '크리스마스 행사',
-    date: '2024-12-25',
-    time: '14:00',
-    type: '행사',
-    location: '교회 마당',
-    description: '크리스마스 축하 행사입니다.',
-  },
-  {
-    id: '7',
-    title: '순모임',
-    date: '2024-12-23',
-    time: '19:00',
-    type: '모임',
-    location: '각 순별 장소',
-    description: '주간 순모임입니다. 각 순별로 나뉘어 모임을 가집니다.',
-  },
-  {
-    id: '8',
-    title: '연말 특별예배',
-    date: '2024-12-31',
-    time: '22:00',
-    type: '예배',
-    location: '본당',
-    description: '2024년 마지막 예배입니다. 함께 감사하며 새해를 맞이합니다.',
-  },
-  {
-    id: '9',
-    title: '신년예배',
-    date: '2025-01-01',
-    time: '11:00',
-    type: '예배',
-    location: '본당',
-    description: '2025년 첫 주일예배입니다.',
-  },
-  {
-    id: '10',
-    title: '청년부 수련회',
-    date: '2025-01-05',
-    time: '09:00',
-    type: '행사',
-    location: '수양관',
-    description: '신년 수련회입니다. 함께 모여 말씀을 나누고 교제합니다.',
-  },
-  {
-    id: '11',
-    title: '주일예배',
-    date: '2025-01-05',
-    time: '11:00',
-    type: '예배',
-    location: '본당',
-    description: '청년부 주일예배입니다.',
-  },
-  {
-    id: '12',
-    title: '찬양팀 연습',
-    date: '2025-01-08',
-    time: '19:30',
-    type: '모임',
-    location: '찬양실',
-    description: '주일예배 찬양 연습입니다.',
-  },
-  {
-    id: '13',
-    title: '순모임',
-    date: '2025-01-13',
-    time: '19:00',
-    type: '모임',
-    location: '각 순별 장소',
-    description: '주간 순모임입니다.',
-  },
-  {
-    id: '14',
-    title: '주일예배',
-    date: '2025-01-12',
-    time: '11:00',
-    type: '예배',
-    location: '본당',
-    description: '청년부 주일예배입니다.',
-  },
-  {
-    id: '15',
-    title: '청년부 모임',
-    date: '2025-01-15',
-    time: '19:00',
-    type: '모임',
-    location: '청년부실',
-    description: '정기 청년부 모임입니다.',
-  },
-]
-
-// 일정별 출석 정보 임시 데이터
-const mockAttendanceData: Record<string, AttendanceInfo> = {
-  '1': {
-    totalCount: 50,
-    presentCount: 45,
-    absentCount: 5,
-    attendanceList: [
-      { memberId: '1', name: '김청년', status: 'PRESENT', attendanceTime: '2024-12-15T11:05:00' },
-      { memberId: '2', name: '이청년', status: 'PRESENT', attendanceTime: '2024-12-15T11:02:00' },
-      { memberId: '3', name: '박청년', status: 'PRESENT', attendanceTime: '2024-12-15T11:10:00' },
-      { memberId: '4', name: '최청년', status: 'ABSENT' },
-      { memberId: '5', name: '정청년', status: 'PRESENT', attendanceTime: '2024-12-15T11:00:00' },
-    ],
-  },
-  '4': {
-    totalCount: 50,
-    presentCount: 48,
-    absentCount: 2,
-    attendanceList: [
-      { memberId: '1', name: '김청년', status: 'PRESENT', attendanceTime: '2024-12-22T11:05:00' },
-      { memberId: '2', name: '이청년', status: 'PRESENT', attendanceTime: '2024-12-22T11:02:00' },
-      { memberId: '3', name: '박청년', status: 'PRESENT', attendanceTime: '2024-12-22T11:10:00' },
-      { memberId: '4', name: '최청년', status: 'PRESENT', attendanceTime: '2024-12-22T11:00:00' },
-    ],
-  },
-  '5': {
-    totalCount: 60,
-    presentCount: 58,
-    absentCount: 2,
-    attendanceList: [
-      { memberId: '1', name: '김청년', status: 'PRESENT', attendanceTime: '2024-12-24T19:00:00' },
-      { memberId: '2', name: '이청년', status: 'PRESENT', attendanceTime: '2024-12-24T18:55:00' },
-      { memberId: '3', name: '박청년', status: 'PRESENT', attendanceTime: '2024-12-24T19:05:00' },
-      { memberId: '4', name: '최청년', status: 'PRESENT', attendanceTime: '2024-12-24T19:00:00' },
-    ],
-  },
-  '8': {
-    totalCount: 60,
-    presentCount: 58,
-    absentCount: 2,
-    attendanceList: [
-      { memberId: '1', name: '김청년', status: 'PRESENT', attendanceTime: '2024-12-31T22:00:00' },
-      { memberId: '2', name: '이청년', status: 'PRESENT', attendanceTime: '2024-12-31T21:55:00' },
-      { memberId: '3', name: '박청년', status: 'PRESENT', attendanceTime: '2024-12-31T22:05:00' },
-      { memberId: '4', name: '최청년', status: 'PRESENT', attendanceTime: '2024-12-31T22:00:00' },
-    ],
-  },
-  '10': {
-    totalCount: 40,
-    presentCount: 38,
-    absentCount: 2,
-    attendanceList: [
-      { memberId: '1', name: '김청년', status: 'PRESENT', attendanceTime: '2025-01-05T09:00:00' },
-      { memberId: '2', name: '이청년', status: 'PRESENT', attendanceTime: '2025-01-05T08:55:00' },
-      { memberId: '3', name: '박청년', status: 'PRESENT', attendanceTime: '2025-01-05T09:10:00' },
-    ],
-  },
-}
-
-// 일정별 앨범 정보 임시 데이터
-const mockAlbumData: Record<string, AlbumInfo[]> = {
-  '1': [
-    {
-      id: '1',
-      title: '2024년 12월 주일예배',
-      date: '2024-12-15',
-      thumbnail: 'https://via.placeholder.com/200x150?text=주일예배',
-      photoCount: 15,
-    },
-  ],
-  '4': [
-    {
-      id: '2',
-      title: '2024년 12월 주일예배',
-      date: '2024-12-22',
-      thumbnail: 'https://via.placeholder.com/200x150?text=주일예배',
-      photoCount: 18,
-    },
-  ],
-  '5': [
-    {
-      id: '3',
-      title: '크리스마스 특별예배',
-      date: '2024-12-24',
-      thumbnail: 'https://via.placeholder.com/200x150?text=크리스마스',
-      photoCount: 30,
-    },
-  ],
-  '6': [
-    {
-      id: '4',
-      title: '크리스마스 행사',
-      date: '2024-12-25',
-      thumbnail: 'https://via.placeholder.com/200x150?text=크리스마스행사',
-      photoCount: 40,
-    },
-  ],
-  '8': [
-    {
-      id: '5',
-      title: '연말 특별예배',
-      date: '2024-12-31',
-      thumbnail: 'https://via.placeholder.com/200x150?text=연말예배',
-      photoCount: 25,
-    },
-  ],
-  '10': [
-    {
-      id: '6',
-      title: '청년부 수련회 2025',
-      date: '2025-01-05',
-      thumbnail: 'https://via.placeholder.com/200x150?text=수련회',
-      photoCount: 50,
-    },
-  ],
-}
-
-const typeColors: Record<Schedule['type'], string> = {
-  예배: 'bg-blue-100 text-blue-700',
-  행사: 'bg-purple-100 text-purple-700',
-  모임: 'bg-emerald-100 text-emerald-700',
-  기타: 'bg-slate-100 text-slate-700',
+const typeColors: Record<string, string> = {
+  WORSHIP: 'bg-blue-100 text-blue-700',
+  EVENT: 'bg-purple-100 text-purple-700',
+  MEETING: 'bg-emerald-100 text-emerald-700',
+  ETC: 'bg-slate-100 text-slate-700',
 }
 
 function ScheduleDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
-  const schedule = mockSchedules.find((s) => s.id === id)
-  const attendanceInfo = id ? mockAttendanceData[id] : null
-  const albums = id ? mockAlbumData[id] || [] : []
+  const [schedule, setSchedule] = useState<Schedule | null>(null)
+  const [album, setAlbum] = useState<AlbumDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [isCheckingIn, setIsCheckingIn] = useState(false)
 
-  if (!schedule) {
+  useEffect(() => {
+    setIsLoggedIn(checkLoggedIn())
+  }, [])
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!id) return
+      
+      try {
+        setLoading(true)
+        // 1. Fetch Schedule Detail
+        const scheduleData = await scheduleService.getScheduleDetail(Number(id))
+        setSchedule(scheduleData)
+
+        // 2. If linked album exists, fetch album details
+        if (scheduleData.linkedAlbumId) {
+          try {
+            const albumData = await getAlbumDetail(scheduleData.linkedAlbumId)
+            setAlbum(albumData)
+          } catch (err) {
+            console.error('Failed to load linked album:', err)
+            // Don't fail the whole page if album fails
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load schedule:', err)
+        setError('일정을 불러올 수 없습니다.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [id])
+
+  const handleCheckIn = async () => {
+    if (!schedule) return
+    if (!isLoggedIn) {
+      alert('로그인이 필요합니다.')
+      navigate('/login')
+      return
+    }
+
+    if (!confirm('출석하시겠습니까?')) return
+
+    setIsCheckingIn(true)
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error("위치 정보를 지원하지 않는 브라우저입니다."))
+        }
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 60000
+        })
+      })
+
+      await checkIn(schedule.scheduleId, {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude
+      })
+
+      alert('출석이 완료되었습니다!')
+      // Refresh schedule to update attendee list
+      const updatedSchedule = await scheduleService.getScheduleDetail(schedule.scheduleId)
+      setSchedule(updatedSchedule)
+    } catch (error) {
+      console.error('출석 체크 실패:', error)
+      let errorMsg = '출석 체크 중 오류가 발생했습니다.'
+      const httpErr = error as { response?: { data?: { message?: string } } };
+      if (httpErr.response?.data?.message) {
+        errorMsg = httpErr.response.data.message
+      }
+      
+      if (error instanceof GeolocationPositionError) {
+        if (error.code === error.PERMISSION_DENIED) {
+           errorMsg = "위치 정보 권한이 차단되었습니다. 브라우저 설정에서 권한을 허용해주세요.";
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+           errorMsg = "위치 정보를 가져올 수 없습니다. GPS를 확인해주세요.";
+        } else if (error.code === error.TIMEOUT) {
+           errorMsg = "위치 확인 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.";
+        }
+      }
+
+      if ((error as { response?: { data?: { code?: string } } }).response?.data?.code === 'ATT14') {
+        errorMsg = '출석 가능 시간(20분 전후)이 아닙니다.'
+      }
+
+      alert(errorMsg)
+    } finally {
+      setIsCheckingIn(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
+        <div className="mx-auto max-w-6xl space-y-6">
+          <UserHeader />
+          <div className="flex items-center justify-center py-12">
+            <p className="text-slate-500">로딩 중...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !schedule) {
     return (
       <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
         <div className="mx-auto max-w-6xl space-y-6">
           <UserHeader />
           <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-            <p className="text-lg font-semibold text-slate-600">일정을 찾을 수 없습니다.</p>
+            <p className="text-lg font-semibold text-slate-600">{error || '일정을 찾을 수 없습니다.'}</p>
             <button
               onClick={() => navigate('/schedules')}
               className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
@@ -323,15 +164,21 @@ function ScheduleDetailPage() {
     )
   }
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr)
-    const weekdays = ['일', '월', '화', '수', '목', '금', '토']
-    const year = date.getFullYear()
-    const month = date.getMonth() + 1
-    const day = date.getDate()
-    const weekday = weekdays[date.getDay()]
-    return `${year}년 ${month}월 ${day}일 (${weekday})`
-  }
+  const startDate = new Date(schedule.startDate)
+  const dateStr = startDate.toLocaleDateString('ko-KR', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'short'
+  })
+  const timeStr = startDate.toLocaleTimeString('ko-KR', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+
+  const now = new Date()
+  const diffMinutes = (now.getTime() - startDate.getTime()) / (1000 * 60)
+  const isAvailable = diffMinutes >= -20 && diffMinutes <= 20
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
@@ -344,12 +191,23 @@ function ScheduleDetailPage() {
             <h1 className="text-2xl font-bold text-slate-900">일정 상세보기</h1>
             <p className="mt-1 text-sm text-slate-600">청년부 일정 정보를 확인하세요.</p>
           </div>
-          <button
-            onClick={() => navigate('/schedules')}
-            className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-          >
-            ← 목록으로
-          </button>
+          <div className="flex items-center gap-2">
+            {isLoggedIn && isAvailable && (
+              <button
+                onClick={handleCheckIn}
+                disabled={isCheckingIn}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isCheckingIn ? '처리 중...' : '출석하기'}
+              </button>
+            )}
+            <button
+              onClick={() => navigate('/schedules')}
+              className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+            >
+              ← 목록으로
+            </button>
+          </div>
         </div>
 
         {/* 일정 상세 정보 */}
@@ -358,9 +216,14 @@ function ScheduleDetailPage() {
             {/* 제목 및 유형 */}
             <div>
               <div className="mb-3 flex items-center gap-3">
-                <span className={`rounded-full px-3 py-1 text-sm font-semibold ${typeColors[schedule.type]}`}>
-                  {schedule.type}
+                <span className={`rounded-full px-3 py-1 text-sm font-semibold ${typeColors[schedule.type] || typeColors.ETC}`}>
+                  {getScheduleTypeLabel(schedule.type)}
                 </span>
+                {schedule.sharingScope === 'LOGGED_IN_USERS' && (
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                    회원공개
+                  </span>
+                )}
               </div>
               <h2 className="text-2xl font-bold text-slate-900">{schedule.title}</h2>
             </div>
@@ -369,130 +232,138 @@ function ScheduleDetailPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">날짜</p>
-                <p className="mt-2 text-lg font-semibold text-slate-900">{formatDate(schedule.date)}</p>
+                <p className="mt-2 text-lg font-semibold text-slate-900">{dateStr}</p>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">시간</p>
-                <p className="mt-2 text-lg font-semibold text-slate-900">{schedule.time}</p>
+                <p className="mt-2 text-lg font-semibold text-slate-900">{timeStr}</p>
               </div>
             </div>
 
             {/* 장소 */}
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">장소</p>
-              <p className="mt-2 text-lg font-semibold text-slate-900">{schedule.location}</p>
-            </div>
+            {schedule.location && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">장소</p>
+                <p className="mt-2 text-lg font-semibold text-slate-900">{schedule.location}</p>
+              </div>
+            )}
 
             {/* 설명 */}
-            {schedule.description && (
+            {schedule.content && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">설명</p>
                 <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-700">
-                  {schedule.description}
+                  {schedule.content}
                 </p>
               </div>
             )}
           </div>
         </div>
 
-        {/* 출석 정보 */}
-        {attendanceInfo && (
+        {/* 출석 정보 (API 데이터 구조에 맞춰 표시) */}
+        {schedule.attendees && schedule.attendees.length > 0 && (
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-bold text-slate-900">출석 정보</h2>
               <div className="flex gap-4 text-sm">
                 <div className="flex items-center gap-2">
                   <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">
-                    출석 {attendanceInfo.presentCount}명
-                  </span>
-                  <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
-                    결석 {attendanceInfo.absentCount}명
+                    참석 {schedule.attendees.filter(a => a.attended).length}명
                   </span>
                 </div>
               </div>
             </div>
-            <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm text-slate-600">
-                총 <span className="font-semibold text-slate-900">{attendanceInfo.totalCount}명</span> 중{' '}
-                <span className="font-semibold text-blue-600">{attendanceInfo.presentCount}명</span> 출석
-              </p>
-            </div>
-            {attendanceInfo.attendanceList.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-slate-700">출석자 목록</p>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {attendanceInfo.attendanceList.map((record) => (
-                    <div
-                      key={record.memberId}
-                      className={`rounded-lg border p-3 ${
-                        record.status === 'PRESENT'
-                          ? 'border-blue-200 bg-blue-50'
-                          : 'border-slate-200 bg-slate-50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-slate-900">{record.name}</span>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                            record.status === 'PRESENT'
-                              ? 'bg-blue-100 text-blue-700'
-                              : 'bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          {record.status === 'PRESENT' ? '출석' : '결석'}
-                        </span>
-                      </div>
-                      {record.attendanceTime && (
-                        <p className="mt-1 text-xs text-slate-500">
-                          {new Date(record.attendanceTime).toLocaleTimeString('ko-KR', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </p>
-                      )}
+            
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-slate-700">참석자 목록</p>
+              <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+                {schedule.attendees.map((attendee) => (
+                  <div
+                    key={attendee.memberId}
+                    className={`rounded-lg border p-3 ${
+                      attendee.attended
+                        ? 'border-blue-200 bg-blue-50'
+                        : 'border-slate-200 bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-slate-900">{attendee.name}</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          attendee.attended
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {attendee.attended ? '참석' : '불참'}
+                      </span>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
-            )}
-          </div>
-        )}
-
-        {/* 연결된 앨범 */}
-        {albums.length > 0 && (
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-4 text-xl font-bold text-slate-900">연결된 앨범</h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {albums.map((album) => (
-                <button
-                  key={album.id}
-                  onClick={() => navigate(`/youth-album/${album.id}`)}
-                  className="group rounded-xl border border-slate-200 bg-white text-left shadow-sm transition hover:border-blue-300 hover:shadow-md"
-                >
-                  <div className="aspect-video w-full overflow-hidden rounded-t-xl bg-slate-100">
-                    <img
-                      src={album.thumbnail}
-                      alt={album.title}
-                      className="h-full w-full object-cover transition group-hover:scale-105"
-                    />
-                  </div>
-                  <div className="p-4">
-                    <h3 className="mb-1 text-sm font-semibold text-slate-900 group-hover:text-blue-600">
-                      {album.title}
-                    </h3>
-                    <p className="text-xs text-slate-500">{album.date}</p>
-                    <p className="mt-2 text-xs text-slate-400">사진 {album.photoCount}장</p>
-                  </div>
-                </button>
-              ))}
             </div>
           </div>
         )}
 
-        {!attendanceInfo && albums.length === 0 && (
+        {/* 연결된 앨범 미리보기 */}
+        {album && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-slate-900">연결된 앨범</h2>
+              <button
+                onClick={() => navigate(`/youth-album/${album.id}`)}
+                className="flex items-center text-sm font-semibold text-blue-600 hover:text-blue-700"
+              >
+                앨범 전체보기 →
+              </button>
+            </div>
+            
+            <div className="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+               {/* 앨범 정보 헤더 */}
+               <div className="border-b border-slate-200 bg-white p-4">
+                  <h3 className="font-bold text-slate-900">{album.title}</h3>
+                  <p className="text-sm text-slate-500">{album.date || album.description}</p>
+               </div>
+
+               {/* 사진 미리보기 그리드 (최대 5장) */}
+               {album.photos && album.photos.length > 0 ? (
+                 <div className="grid grid-cols-2 gap-1 p-1 sm:grid-cols-3 md:grid-cols-5">
+                    {album.photos.slice(0, 5).map((photo, index) => (
+                      <div 
+                        key={photo.photoId} 
+                        className="aspect-square cursor-pointer overflow-hidden rounded-md bg-slate-200"
+                        onClick={() => navigate(`/youth-album/${album.id}`)}
+                      >
+                        <img 
+                          src={getFileUrl(photo.imageUrl)} 
+                          alt={photo.caption || `사진 ${index + 1}`}
+                          className="h-full w-full object-cover transition hover:scale-105"
+                        />
+                      </div>
+                    ))}
+                    {/* 더보기 플레이스홀더 */}
+                    {album.photos.length > 5 && (
+                      <div 
+                        className="flex aspect-square cursor-pointer items-center justify-center rounded-md bg-slate-100 text-slate-500 hover:bg-slate-200"
+                        onClick={() => navigate(`/youth-album/${album.id}`)}
+                      >
+                        <span className="font-semibold">+{album.photos.length - 5}장 더보기</span>
+                      </div>
+                    )}
+                 </div>
+               ) : (
+                 <div className="flex items-center justify-center py-12 text-slate-500">
+                    등록된 사진이 없습니다.
+                 </div>
+               )}
+            </div>
+          </div>
+        )}
+
+        {!schedule.linkedAlbumId && !schedule.attendees && (
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-center text-sm text-slate-500">
-              이 일정에 연결된 출석 정보나 앨범이 없습니다.
+              추가 정보가 없습니다.
             </p>
           </div>
         )}

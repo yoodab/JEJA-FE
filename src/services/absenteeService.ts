@@ -1,37 +1,68 @@
 import api from './api'
 
-// CareLevel 타입 정의
-export type CareLevel = 'NEEDS_ATTENTION' | 'LONG_TERM_ABSENCE' | 'ATTENDED'
+// --- Types ---
 
-// CareMember 타입 정의
+export interface CareSettings {
+  attentionWeeks: number
+  longTermWeeks: number
+  resettlementWeeks: number
+}
+
+// API Summary Response Map
+export interface CareSummaryMap {
+  needsAttention: number
+  resettling: number
+  longTermAbsence: number
+}
+
+// Frontend Friendly Summary
+export interface CareSummary {
+  resettlingCount: number
+  longTermCount: number
+  needsAttentionCount: number
+}
+
+export type CareStatus = 'NEEDS_ATTENTION' | 'LONG_TERM_ABSENCE' | 'RESETTLING' | 'COMPLETED' | 'CARE_STOPPED'
+
 export interface CareMember {
   memberId: number
   name: string
-  level: CareLevel
-  managerName?: string
-  absenceStartDate: string
-  daysAbsent: number
-  phone?: string
-  email?: string
+  phone: string
+  memberImageUrl?: string | null
+  status: CareStatus
+  absenceWeeks: number
+  attendanceWeeks: number
+  managerName: string
+  startDate: string // YYYY-MM-DD
 }
 
-// 케어 활동 로그 타입
+export type CareMethod = '전화' | '심방' | '문자' | '기타'
+
 export interface CareLog {
   logId: number
-  memberId: number
-  createdAt: string
+  createdAt: string // ISO string
+  careDate?: string
   content: string
+  careMethod: CareMethod
   createdBy: string
 }
 
-// 멤버 상세 정보 (사이드 패널용)
-export interface CareMemberDetail extends CareMember {
-  phone?: string
-  email?: string
-  careLogs: CareLog[]
+export interface CareMemberDetail {
+  currentInfo: CareMember
+  history: CareHistory[]
+  logs: CareLog[]
 }
 
-// API 응답 타입
+export interface CareHistory {
+  historyId: number
+  period: string // e.g. "2023.01 ~ 2023.03"
+  status: string // e.g. "재정착 성공", "타교회 이동"
+  managerName: string
+  closingNote?: string
+  startDate?: string
+  endDate?: string
+}
+
 interface ApiResponse<T> {
   status: string
   code: string
@@ -39,144 +70,120 @@ interface ApiResponse<T> {
   data: T
 }
 
-// 요약 정보 타입
-export interface CareSummary {
-  longTermAbsenceCount: number
-  needsAttentionCount: number
-  attendedCount?: number
+// --- Endpoints ---
+
+// 1. Settings
+
+export async function getCareSettings(): Promise<CareSettings> {
+  const response = await api.get<ApiResponse<CareSettings>>('/api/care/settings')
+  return response.data.data
+  // await delay(500)
+  // return MOCK_SETTINGS
 }
 
-// 장기결석자 목록 조회 - GET /api/admin/absentees?careLevel={careLevel}
-export async function getCareMembers(careLevel: CareLevel): Promise<CareMember[]> {
-  try {
-    const response = await api.get<ApiResponse<CareMember[]>>('/api/admin/absentees', {
-      params: { careLevel },
-    })
-    return response.data.data
-  } catch (error: any) {
-    // 개발 중: 백엔드가 없을 때를 대비한 에러 처리
-    if (error.response?.status === 404 || error.code === 'ERR_NETWORK') {
-      console.warn('API 엔드포인트가 아직 구현되지 않았습니다. 빈 배열을 반환합니다.')
-      return []
-    }
-    throw error
-  }
+export async function updateCareSettings(settings: CareSettings): Promise<void> {
+  await api.put('/api/care/settings', settings)
+  // await delay(500)
+  // Object.assign(MOCK_SETTINGS, settings)
 }
 
-// 요약 정보 조회 - GET /api/admin/absentees/summary
+// 2. Summary & List
+
 export async function getCareSummary(): Promise<CareSummary> {
-  try {
-    const response = await api.get<ApiResponse<CareSummary>>('/api/admin/absentees/summary')
-    return response.data.data
-  } catch (error: any) {
-    // 개발 중: 백엔드가 없을 때를 대비한 에러 처리
-    if (error.response?.status === 404 || error.code === 'ERR_NETWORK') {
-      console.warn('요약 정보 API 엔드포인트가 아직 구현되지 않았습니다. 기본값을 반환합니다.')
-      return { longTermAbsenceCount: 0, needsAttentionCount: 0 }
-    }
-    throw error
+  const response = await api.get<ApiResponse<CareSummaryMap>>('/api/care/summary')
+  const data = response.data.data
+  
+  return {
+    resettlingCount: data.resettling || 0,
+    longTermCount: data.longTermAbsence || 0,
+    needsAttentionCount: data.needsAttention || 0,
   }
+  // await delay(500)
+  // return {
+  //   resettlingCount: MOCK_MEMBERS.filter(m => m.status === 'RESETTLING').length,
+  //   longTermCount: MOCK_MEMBERS.filter(m => m.status === 'LONG_TERM_ABSENCE').length,
+  //   needsAttentionCount: MOCK_MEMBERS.filter(m => m.status === 'NEEDS_ATTENTION').length,
+  // }
 }
 
-// 멤버 상세 정보 조회 - GET /api/admin/absentees/{memberId}
+export async function getCareMembers(): Promise<CareMember[]> {
+  const response = await api.get<ApiResponse<CareMember[]>>('/api/care/absentees')
+  return response.data.data
+  // await delay(500)
+  // return [...MOCK_MEMBERS]
+}
+
+// 3. Detail & Actions
+
 export async function getCareMemberDetail(memberId: number): Promise<CareMemberDetail> {
-  try {
-    const response = await api.get<ApiResponse<CareMemberDetail>>(`/api/admin/absentees/${memberId}`)
-    return response.data.data
-  } catch (error: any) {
-    // 개발 중: 백엔드가 없을 때를 대비한 에러 처리
-    if (error.response?.status === 404 || error.code === 'ERR_NETWORK') {
-      console.warn('멤버 상세 정보 API 엔드포인트가 아직 구현되지 않았습니다.')
-      throw new Error('멤버 상세 정보를 불러올 수 없습니다. 백엔드 API가 아직 구현되지 않았습니다.')
-    }
-    throw error
-  }
+  const response = await api.get<ApiResponse<CareMemberDetail>>(`/api/care/absentees/${memberId}`)
+  return response.data.data
+  // await delay(500)
+  // const member = MOCK_MEMBERS.find(m => m.memberId === memberId)
+  // if (!member) throw new Error('Member not found')
+  // return {
+  //   currentInfo: member,
+  //   history: MOCK_HISTORY,
+  //   logs: MOCK_LOGS
+  // }
 }
 
-// 담당자 변경 - PATCH /api/admin/absentees/{memberId}/manager
-export async function updateManager(memberId: number, managerName: string): Promise<void> {
-  try {
-    await api.patch(`/api/admin/absentees/${memberId}/manager`, { managerName })
-  } catch (error: any) {
-    // 개발 중: 백엔드가 없을 때를 대비한 에러 처리
-    if (error.response?.status === 404 || error.code === 'ERR_NETWORK') {
-      console.warn('담당자 변경 API 엔드포인트가 아직 구현되지 않았습니다.')
-      throw new Error('담당자 변경에 실패했습니다. 백엔드 API가 아직 구현되지 않았습니다.')
-    }
-    throw error
-  }
+export async function updateManager(memberId: number, newManagerId: number): Promise<void> {
+  await api.patch(`/api/care/absentees/${memberId}/manager`, { newManagerId })
+  // await delay(500)
+  // // In a real mock, we might update the managerName, but since we only have IDs, we'll just log it or ignore
+  // const member = MOCK_MEMBERS.find(m => m.memberId === memberId)
+  // if (member) {
+  //   member.managerName = '새담당자' // Simple mock update
+  // }
 }
 
-// 케어 로그 추가 - POST /api/admin/absentees/{memberId}/logs
-export async function addCareLog(memberId: number, content: string): Promise<CareLog> {
-  try {
-    const response = await api.post<ApiResponse<CareLog>>(`/api/admin/absentees/${memberId}/logs`, { content })
-    return response.data.data
-  } catch (error: any) {
-    // 개발 중: 백엔드가 없을 때를 대비한 에러 처리
-    if (error.response?.status === 404 || error.code === 'ERR_NETWORK') {
-      console.warn('케어 로그 추가 API 엔드포인트가 아직 구현되지 않았습니다.')
-      throw new Error('로그 추가에 실패했습니다. 백엔드 API가 아직 구현되지 않았습니다.')
-    }
-    throw error
-  }
+export async function completeCare(memberId: number, type: 'COMPLETED' | 'STOPPED', closingNote: string): Promise<void> {
+  await api.patch(`/api/care/absentees/${memberId}/complete`, { type, closingNote })
+  // await delay(500)
+  // const member = MOCK_MEMBERS.find(m => m.memberId === memberId)
+  // if (member) {
+  //   member.status = type === 'COMPLETED' ? 'COMPLETED' : 'CARE_STOPPED'
+    
+  //   // Add to history
+  //   MOCK_HISTORY.unshift({
+  //     historyId: Date.now(),
+  //     period: `${member.startDate} ~ ${new Date().toISOString().split('T')[0]}`,
+  //     status: type === 'COMPLETED' ? '재정착 성공' : '케어 중단',
+  //     managerName: member.managerName,
+  //     closingNote: closingNote,
+  //     startDate: member.startDate,
+  //     endDate: new Date().toISOString().split('T')[0]
+  //   })
+  // }
 }
 
-// 케어 완료 처리 - PATCH /api/admin/absentees/{memberId}/complete
-export async function completeCare(memberId: number): Promise<void> {
-  try {
-    await api.patch(`/api/admin/absentees/${memberId}/complete`)
-  } catch (error: any) {
-    // 개발 중: 백엔드가 없을 때를 대비한 에러 처리
-    if (error.response?.status === 404 || error.code === 'ERR_NETWORK') {
-      console.warn('케어 완료 처리 API 엔드포인트가 아직 구현되지 않았습니다.')
-      throw new Error('케어 완료 처리에 실패했습니다. 백엔드 API가 아직 구현되지 않았습니다.')
-    }
-    throw error
-  }
+// 4. Care Logs
+
+export async function addCareLog(memberId: number, content: string, careMethod: string): Promise<void> {
+  await api.post(`/api/care/absentees/${memberId}/logs`, { content, careMethod })
+  // await delay(500)
+  // const newLog: CareLog = {
+  //   logId: Date.now(),
+  //   createdAt: new Date().toISOString(),
+  //   content,
+  //   careMethod: careMethod as CareMethod,
+  //   createdBy: 'Current User'
+  // }
+  // MOCK_LOGS = [newLog, ...MOCK_LOGS]
 }
 
-// 케어 로그 수정 - PATCH /api/admin/absentees/{memberId}/logs/{logId}
-export async function updateCareLog(memberId: number, logId: number, content: string): Promise<CareLog> {
-  try {
-    const response = await api.patch<ApiResponse<CareLog>>(`/api/admin/absentees/${memberId}/logs/${logId}`, { content })
-    return response.data.data
-  } catch (error: any) {
-    // 개발 중: 백엔드가 없을 때를 대비한 에러 처리
-    if (error.response?.status === 404 || error.code === 'ERR_NETWORK') {
-      console.warn('케어 로그 수정 API 엔드포인트가 아직 구현되지 않았습니다.')
-      throw new Error('로그 수정에 실패했습니다. 백엔드 API가 아직 구현되지 않았습니다.')
-    }
-    throw error
-  }
+export async function updateCareLog(memberId: number, logId: number, content: string, careMethod: string): Promise<void> {
+  await api.patch(`/api/care/absentees/${memberId}/logs/${logId}`, { content, careMethod })
+  // await delay(500)
+  // const logIndex = MOCK_LOGS.findIndex(l => l.logId === logId)
+  // if (logIndex !== -1) {
+  //   MOCK_LOGS[logIndex] = { ...MOCK_LOGS[logIndex], content, careMethod: careMethod as CareMethod }
+  // }
 }
 
-// 케어 로그 삭제 - DELETE /api/admin/absentees/{memberId}/logs/{logId}
 export async function deleteCareLog(memberId: number, logId: number): Promise<void> {
-  try {
-    await api.delete(`/api/admin/absentees/${memberId}/logs/${logId}`)
-  } catch (error: any) {
-    // 개발 중: 백엔드가 없을 때를 대비한 에러 처리
-    if (error.response?.status === 404 || error.code === 'ERR_NETWORK') {
-      console.warn('케어 로그 삭제 API 엔드포인트가 아직 구현되지 않았습니다.')
-      throw new Error('로그 삭제에 실패했습니다. 백엔드 API가 아직 구현되지 않았습니다.')
-    }
-    throw error
-  }
+  await api.delete(`/api/care/absentees/${memberId}/logs/${logId}`)
+  // await delay(500)
+  // MOCK_LOGS = MOCK_LOGS.filter(l => l.logId !== logId)
 }
-
-// 출석 확인된 멤버 목록 조회 - GET /api/admin/absentees/attended
-export async function getAttendedMembers(): Promise<CareMember[]> {
-  try {
-    const response = await api.get<ApiResponse<CareMember[]>>('/api/admin/absentees/attended')
-    return response.data.data
-  } catch (error: any) {
-    // 개발 중: 백엔드가 없을 때를 대비한 에러 처리
-    if (error.response?.status === 404 || error.code === 'ERR_NETWORK') {
-      console.warn('출석 확인 목록 API 엔드포인트가 아직 구현되지 않았습니다. 빈 배열을 반환합니다.')
-      return []
-    }
-    throw error
-  }
-}
-
