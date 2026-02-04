@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import type { Member } from '../../types/member'
 import { uploadMemberImage } from '../../services/memberService'
+import { getFileUrl } from '../../services/albumService'
 import type { CreateMemberRequest, UpdateMemberRequest } from '../../services/memberService'
 import { formatPhoneNumber } from '../../utils/format'
 
@@ -37,7 +38,7 @@ export default function MemberEditModal({ member, onClose, onSave }: MemberEditM
         memberImageUrl: member.memberImageUrl || '',
       })
       // If there is an existing image, prepend API_BASE_URL for display
-      setPreviewUrl(member.memberImageUrl ? `${API_BASE_URL}${member.memberImageUrl}` : null)
+      setPreviewUrl(member.memberImageUrl ? getFileUrl(member.memberImageUrl) : null)
     } else {
       setFormData({
         name: '',

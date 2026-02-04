@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { API_BASE_URL } from '../services/api'
+import { getFileUrl } from '../services/albumService'
 import { getMembers } from '../services/memberService'
 import { 
   getNewcomers, 
@@ -24,9 +24,8 @@ import type {
   MdAssignment, 
   CreateNewcomerRequest,
   CreateMdAssignmentRequest,
-  UpdateNewcomerRequest
 } from '../types/newcomer'
-import { NewcomerStatusMap, NewcomerTabMap } from '../types/newcomer'
+import { NewcomerStatusMap } from '../types/newcomer'
 import type { Member } from '../types/member'
 import { getCells, type Cell } from '../services/cellService'
 import { formatPhoneNumber } from '../utils/format'
@@ -101,7 +100,15 @@ const exportFields: ExportFieldOption[] = [
   { id: 'assignmentNote', label: '순배치 특이사항' },
 ]
 
-
+const getStatusFromTab = (tab: string): string | undefined => {
+  switch (tab) {
+    case '관리중': return 'MAIN_WORSHIP'
+    case '보류': return 'HOLD'
+    case '중단': return 'STOPPED'
+    case '정착완료': return 'SETTLED'
+    default: return undefined
+  }
+}
 
 function NewcomerManagePage() {
   const navigate = useNavigate()
@@ -113,9 +120,8 @@ function NewcomerManagePage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [openDetailMenu, setOpenDetailMenu] = useState(false)
-  const [isBasicInfoOpen, setIsBasicInfoOpen] = useState(false)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
-  const [openMdMenuId, setOpenMdMenuId] = useState<string | null>(null)
+  const [openMdMenuId, setOpenMdMenuId] = useState<number | null>(null)
   const [openMenuUp, setOpenMenuUp] = useState(false)
   const [openMdMenuUp, setOpenMdMenuUp] = useState(false)
   const [listMenuPos, setListMenuPos] = useState<{ top: number; right: number; bottom: number } | null>(null)
@@ -155,24 +161,7 @@ function NewcomerManagePage() {
     return years
   }, [])
 
-  // 이미지 URL 처리 헬퍼
-  const getFullImageUrl = (url: string | null | undefined) => {
-    if (!url) return ''
-    if (url.startsWith('http')) return url
-    return `${API_BASE_URL}${url}`
-  }
-
-  const getStatusFromTab = (tab: string): string | undefined => {
-    switch (tab) {
-      case '관리중': return 'MAIN_WORSHIP'
-      case '보류': return 'HOLD'
-      case '중단': return 'STOPPED'
-      case '정착완료': return 'SETTLED'
-      default: return undefined
-    }
-  }
-
-  const loadNewcomers = async () => {
+  const loadNewcomers = useCallback(async () => {
     try {
       const response = await getNewcomers({
         page: currentPage - 1,
@@ -187,7 +176,7 @@ function NewcomerManagePage() {
     } catch (error) {
       console.error('Failed to load newcomers', error)
     }
-  }
+  }, [currentPage, itemsPerPage, selectedYear, statusTab, searchQuery])
 
   const loadMds = async () => {
     try {
@@ -211,7 +200,7 @@ function NewcomerManagePage() {
     if (activeTab === 'list') {
       loadNewcomers()
     }
-  }, [currentPage, selectedYear, statusTab, searchQuery, activeTab])
+  }, [loadNewcomers, activeTab])
 
   useEffect(() => {
     loadMds()
@@ -273,7 +262,18 @@ function NewcomerManagePage() {
 
   // 엑셀 미리보기 및 선택 상태
   const [showPreviewModal, setShowPreviewModal] = useState(false)
-  const [excelPreviewData, setExcelPreviewData] = useState<(CreateNewcomerRequest & { isDuplicate?: boolean })[]>([])
+  const [excelPreviewData, setExcelPreviewData] = useState<
+    (CreateNewcomerRequest & {
+      isDuplicate?: boolean
+      middleStatus?: string
+      recentStatus?: string
+      assignmentNote?: string
+      mdName?: string
+      registrationDate?: string
+      isMemberRegistered?: boolean
+      firstStatus?: string
+    })[]
+  >([])
   const [selectedPreviewRows, setSelectedPreviewRows] = useState<Set<number>>(new Set())
 
   // 엑셀 양식 다운로드
@@ -347,7 +347,7 @@ function NewcomerManagePage() {
         }
 
         // 날짜 변환 (YYMMDD -> YYYY-MM-DD)
-        const parseDate = (val: any) => {
+        const parseDate = (val: unknown) => {
           if (!val) return ''
           const str = String(val).replace(/\./g, '')
           if (str.length === 6) {
@@ -361,7 +361,7 @@ function NewcomerManagePage() {
         }
 
         // 생년월일 변환 (98.03.14 -> 1998-03-14)
-        const parseBirth = (val: any) => {
+        const parseBirth = (val: unknown) => {
           if (!val) return ''
           const str = String(val).trim()
           if (str.includes('.')) {
@@ -378,7 +378,7 @@ function NewcomerManagePage() {
         }
 
         // Helper to find value by multiple possible keys, ignoring whitespace
-        const getValue = (row: any, possibleKeys: string[]) => {
+        const getValue = (row: Record<string, unknown>, possibleKeys: string[]) => {
           const rowKeys = Object.keys(row)
           for (const key of possibleKeys) {
             // 1. Try exact match
@@ -392,19 +392,20 @@ function NewcomerManagePage() {
           return undefined
         }
 
-        const newNewcomers = data.map((row: any) => {
-          const rawManagerName = getValue(row, ['담당MD', '담당자', 'MD', '인도자', '담당 MD명', '담당MD명']) || ''
+        const newNewcomers = data.map((row: unknown) => {
+          const r = row as Record<string, unknown>;
+          const rawManagerName = getValue(r, ['담당MD', '담당자', 'MD', '인도자', '담당 MD명', '담당MD명']) || ''
           const managerName = String(rawManagerName).trim()
 
-          const name = getValue(row, ['새신자명', '이름', '성명']) || ''
-          const birthDate = parseBirth(getValue(row, ['생년월일']))
-          const phone = getValue(row, ['연락처', '전화번호', '휴대폰']) || ''
+          const name = String(getValue(r, ['새신자명', '이름', '성명']) || '').trim()
+          const birthDate = parseBirth(getValue(r, ['생년월일']))
+          const phone = getValue(r, ['연락처', '전화번호', '휴대폰']) || ''
           const cleanPhone = String(phone).replace(/[^0-9]/g, '')
-          const address = getValue(row, ['거주지', '주소']) || ''
-          const regDate = getValue(row, ['작성일자', '등록일', '등록일자'])
-          const regYn = getValue(row, ['등록여부', '등록 여부'])
-          const gender = getValue(row, ['성별'])
-
+          const address = String(getValue(r, ['거주지', '주소']) || '')
+          const regDate = getValue(r, ['작성일자', '등록일', '등록일자'])
+          const regYn = getValue(r, ['등록여부', '등록 여부'])
+          const gender = getValue(r, ['성별'])
+          
           // 중복 여부 확인
           const parsedRegDate = parseDate(regDate)
           const isDuplicate = 
@@ -414,7 +415,7 @@ function NewcomerManagePage() {
 
           return {
             name: name,
-            gender: (gender === '여성' || gender === 'FEMALE') ? 'FEMALE' : 'MALE',
+            gender: ((gender === '여성' || gender === 'FEMALE') ? 'FEMALE' : 'MALE') as 'MALE' | 'FEMALE',
             birthDate: birthDate,
             phone: cleanPhone,
             address: address,
@@ -423,10 +424,10 @@ function NewcomerManagePage() {
             isMemberRegistered: false,
             isChurchRegistered: regYn === 'O' || regYn === 'o', // 엑셀에서 O/o 표시는 교회 등록 여부로 처리
             status: 'MAIN_WORSHIP', // 기본값
-            firstStatus: getValue(row, ['처음에 알게 된 현황', '초기상태']) || '',
-            middleStatus: getValue(row, ['중간 현황', '중간상태']) || '',
-            recentStatus: getValue(row, ['최근 현황', '최근상태']) || '',
-            assignmentNote: getValue(row, ['순배치참고', '비고']) || '',
+            firstStatus: String(getValue(r, ['처음에 알게 된 현황', '초기상태']) || ''),
+            middleStatus: String(getValue(r, ['중간 현황', '중간상태']) || ''),
+            recentStatus: String(getValue(r, ['최근 현황', '최근상태']) || ''),
+            assignmentNote: String(getValue(r, ['순배치참고', '비고']) || ''),
             profileImageUrl: '', // 엑셀에는 이미지 없음
             isDuplicate: !!isDuplicate
           }
@@ -620,7 +621,7 @@ function NewcomerManagePage() {
       assignmentNote: newcomer.assignmentNote,
       profileImageUrl: newcomer.profileImageUrl || '',
     })
-    setImagePreview(newcomer.profileImageUrl ? getFullImageUrl(newcomer.profileImageUrl) : null)
+    setImagePreview(newcomer.profileImageUrl ? getFileUrl(newcomer.profileImageUrl) : null)
     setShowModal(true)
   }
 
@@ -706,7 +707,6 @@ function NewcomerManagePage() {
 
     setSelectedNewcomer(newcomer)
     setOriginalNewcomer(newcomer)
-    setIsBasicInfoOpen(false)
     setIsDetailModalOpen(true)
 
     try {
@@ -814,8 +814,6 @@ function NewcomerManagePage() {
     
     // 기존 한글 값 대응 (혹시 모를 하위 호환)
     switch (status) {
-      case '관리중':
-      case '관리중':
       case '관리중':
         return 'bg-blue-100 text-blue-700'
       case '보류':
@@ -930,7 +928,7 @@ function NewcomerManagePage() {
           }
         }
 
-        const rowData: any = {}
+        const rowData: Record<string, unknown> = {}
         if (selectedExportFields.includes('name')) rowData['이름'] = n.name
         if (selectedExportFields.includes('managerName')) rowData['담당MD'] = n.managerName
         if (selectedExportFields.includes('status')) rowData['상태'] = NewcomerStatusMap[n.status] || n.status
@@ -1196,7 +1194,7 @@ function NewcomerManagePage() {
               onClick={() => navigate('/dashboard')}
               className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
             >
-              ← 돌아가기
+              ← <span className="hidden sm:inline">돌아가기</span>
             </button>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-xl">
@@ -1377,14 +1375,14 @@ function NewcomerManagePage() {
                               e.stopPropagation()
                               setImageViewName(newcomer.name)
                               if (newcomer.profileImageUrl) {
-                                setImageViewUrl(getFullImageUrl(newcomer.profileImageUrl))
-                              } else {
-                                setImageViewUrl('DEFAULT')
-                              }
-                            }}
-                          >
-                            {newcomer.profileImageUrl ? (
-                              <img src={getFullImageUrl(newcomer.profileImageUrl)} alt={newcomer.name} className="h-full w-full object-cover" />
+                                setImageViewUrl(getFileUrl(newcomer.profileImageUrl))
+                                  } else {
+                                    setImageViewUrl('DEFAULT')
+                                  }
+                                }}
+                              >
+                                {newcomer.profileImageUrl ? (
+                                  <img src={getFileUrl(newcomer.profileImageUrl)} alt={newcomer.name} className="h-full w-full object-cover" />
                             ) : (
                               <div className="flex h-full w-full items-center justify-center bg-slate-100 text-slate-400 font-bold">
                                 {newcomer.name?.[0] || '🙂'}
@@ -1495,14 +1493,14 @@ function NewcomerManagePage() {
                                   e.stopPropagation()
                                   setImageViewName(newcomer.name)
                                   if (newcomer.profileImageUrl) {
-                                    setImageViewUrl(getFullImageUrl(newcomer.profileImageUrl))
+                                    setImageViewUrl(getFileUrl(newcomer.profileImageUrl))
                                   } else {
                                     setImageViewUrl('DEFAULT')
                                   }
                                 }}
                               >
                                 {newcomer.profileImageUrl ? (
-                                  <img src={getFullImageUrl(newcomer.profileImageUrl)} alt={newcomer.name} className="h-full w-full object-cover" />
+                                  <img src={getFileUrl(newcomer.profileImageUrl)} alt={newcomer.name} className="h-full w-full object-cover" />
                                 ) : (
                                   <div className="flex h-full w-full items-center justify-center bg-slate-100 text-slate-400 font-bold">
                                     {newcomer.name?.[0] || '🙂'}
@@ -1882,14 +1880,14 @@ function NewcomerManagePage() {
                       onClick={() => {
                         setImageViewName(selectedNewcomer.name)
                         if (selectedNewcomer.profileImageUrl) {
-                          setImageViewUrl(getFullImageUrl(selectedNewcomer.profileImageUrl))
+                          setImageViewUrl(getFileUrl(selectedNewcomer.profileImageUrl))
                         } else {
                           setImageViewUrl('DEFAULT')
                         }
                       }}
                     >
                       {selectedNewcomer.profileImageUrl ? (
-                        <img src={getFullImageUrl(selectedNewcomer.profileImageUrl)} alt={selectedNewcomer.name} className="h-full w-full object-cover" />
+                        <img src={getFileUrl(selectedNewcomer.profileImageUrl)} alt={selectedNewcomer.name} className="h-full w-full object-cover" />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center bg-slate-100 text-slate-400 font-bold text-2xl md:text-5xl">
                           {selectedNewcomer.name?.[0] || '🙂'}
@@ -3052,7 +3050,7 @@ function NewcomerManagePage() {
                       <div className="h-40 w-32 flex-shrink-0 overflow-hidden rounded-lg bg-slate-100 border border-slate-200">
                         {newcomer.profileImageUrl ? (
                           <img 
-                            src={getFullImageUrl(newcomer.profileImageUrl)} 
+                            src={getFileUrl(newcomer.profileImageUrl)} 
                             alt={newcomer.name} 
                             className="h-full w-full object-cover"
                             crossOrigin="anonymous" 

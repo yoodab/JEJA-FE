@@ -1,10 +1,9 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import type { Member } from '../../types/member'
 import { formatPhoneNumber } from '../../utils/format'
 import { formatGender, formatRoles, formatMemberStatus } from '../../types/member'
 import ImagePreviewModal from '../ImagePreviewModal'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+import { getFileUrl } from '../../services/albumService'
 
 interface MemberDetailModalProps {
   member: Member
@@ -75,10 +74,10 @@ export default function MemberDetailModal({ member, onClose, onEdit, onDelete }:
           <div className="h-24 w-24 overflow-hidden rounded-full bg-slate-200 mb-4 shadow-md flex items-center justify-center">
             {member.memberImageUrl ? (
               <img 
-                src={`${API_BASE_URL}${member.memberImageUrl}`} 
+                src={getFileUrl(member.memberImageUrl)} 
                 alt={member.name} 
                 className="h-full w-full object-cover cursor-zoom-in hover:opacity-80 transition-opacity" 
-                onClick={() => setPreviewImage(`${API_BASE_URL}${member.memberImageUrl}`)}
+                onClick={() => setPreviewImage(getFileUrl(member.memberImageUrl || ''))}
               />
             ) : (
               <svg className="h-12 w-12 text-slate-400" fill="currentColor" viewBox="0 0 24 24">

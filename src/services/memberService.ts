@@ -20,6 +20,7 @@ export interface UpdateMemberRequest {
   gender?: string
   memberStatus?: string
   memberImageUrl?: string
+  roles?: string[]
 }
 
 // 멤버 목록 조회 파라미터
@@ -29,6 +30,8 @@ export interface GetMembersParams {
   keyword?: string  // 선택
   status?: string // 선택 (Enum value)
   sort?: string // default "name,asc"
+  hasAccount?: boolean // 선택
+  role?: string // 선택 (CELL_LEADER, PASTOR 등)
 }
 
 // 멤버 목록 조회 - GET /api/members
@@ -40,6 +43,8 @@ export async function getMembers(params?: GetMembersParams): Promise<Page<member
       sort: params?.sort ?? 'name,asc',
       ...(params?.keyword && { keyword: params.keyword }),
       ...(params?.status && { status: params.status }),
+      ...(params?.hasAccount !== undefined && { hasAccount: params.hasAccount }),
+      ...(params?.role && { role: params.role }),
     },
   })
   return response.data.data

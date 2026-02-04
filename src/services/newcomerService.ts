@@ -8,6 +8,18 @@ import type {
   CreateMdAssignmentRequest 
 } from '../types/newcomer'
 
+// 백엔드 원본 응답 타입 정의 (any 대체)
+interface RawNewcomerDto {
+  gender?: string
+  memberRegistered?: boolean
+  isMemberRegistered?: boolean
+  churchRegistered?: boolean
+  isChurchRegistered?: boolean
+  cellName?: string
+  assignedSoon?: string
+  [key: string]: unknown
+}
+
 // 새신자 목록 조회 파라미터
 export interface GetNewcomersParams {
   page?: number
@@ -19,7 +31,7 @@ export interface GetNewcomersParams {
 
 // 1. 목록 조회
 export async function getNewcomers(params?: GetNewcomersParams): Promise<Page<Newcomer>> {
-  const response = await api.get<ApiResponseForm<Page<any>>>('/api/newcomers', {
+  const response = await api.get<ApiResponseForm<Page<RawNewcomerDto>>>('/api/newcomers', {
     params: {
       page: params?.page ?? 0,
       size: params?.size ?? 10,
@@ -30,9 +42,9 @@ export async function getNewcomers(params?: GetNewcomersParams): Promise<Page<Ne
   })
   
   // 데이터 변환
-  const content = response.data.data.content.map((item: any) => ({
-    ...item,
-    gender: item.gender === '남자' ? 'MALE' : (item.gender === '여자' ? 'FEMALE' : item.gender),
+  const content = response.data.data.content.map((item) => ({
+    ...(item as unknown as Newcomer), // 기본 필드 복사
+    gender: item.gender === '남자' ? 'MALE' : (item.gender === '여자' ? 'FEMALE' : (item.gender as 'MALE' | 'FEMALE')),
     isMemberRegistered: item.memberRegistered !== undefined ? item.memberRegistered : item.isMemberRegistered,
     isChurchRegistered: item.churchRegistered !== undefined ? item.churchRegistered : item.isChurchRegistered,
     cellName: item.cellName || item.assignedSoon, // 등반예정순 매핑
@@ -40,23 +52,23 @@ export async function getNewcomers(params?: GetNewcomersParams): Promise<Page<Ne
 
   return {
     ...response.data.data,
-    content
+    content: content as Newcomer[]
   }
 }
 
 // 2. 상세 조회
 export async function getNewcomerById(id: number): Promise<Newcomer> {
-  const response = await api.get<ApiResponseForm<any>>(`/api/newcomers/${id}`)
+  const response = await api.get<ApiResponseForm<RawNewcomerDto>>(`/api/newcomers/${id}`)
   const data = response.data.data
 
   // 백엔드 응답 데이터 변환
   return {
-    ...data,
+    ...(data as unknown as Newcomer),
     // 한글로 오는 성별을 Enum으로 변환
-    gender: data.gender === '남자' ? 'MALE' : (data.gender === '여자' ? 'FEMALE' : data.gender),
+    gender: data.gender === '남자' ? 'MALE' : (data.gender === '여자' ? 'FEMALE' : (data.gender as 'MALE' | 'FEMALE')),
     // 필드명 불일치 해결
-    isMemberRegistered: data.memberRegistered !== undefined ? data.memberRegistered : data.isMemberRegistered,
-    isChurchRegistered: data.churchRegistered !== undefined ? data.churchRegistered : data.isChurchRegistered,
+    isMemberRegistered: data.memberRegistered !== undefined ? data.memberRegistered : (data.isMemberRegistered ?? false),
+    isChurchRegistered: data.churchRegistered !== undefined ? data.churchRegistered : (data.isChurchRegistered ?? false),
     cellName: data.cellName || data.assignedSoon, // 등반예정순 매핑
   }
 }

@@ -1,14 +1,16 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Member, MemberStats } from '../types/member'
 import { getMembers, createMember, updateMember, deleteMember, uploadMembersFromExcel, getMemberStats } from '../services/memberService'
 import type { CreateMemberRequest, UpdateMemberRequest } from '../services/memberService'
-import { formatRoles, formatMemberStatus, getMemberStatusColor } from '../types/member'
+import { formatMemberStatus, getMemberStatusColor } from '../types/member'
 import MemberDetailModal from '../components/member/MemberDetailModal'
 import MemberEditModal from '../components/member/MemberEditModal'
+import RoleSelectModal from '../components/member/RoleSelectModal'
 import ImagePreviewModal from '../components/ImagePreviewModal'
 import { formatPhoneNumber } from '../utils/format'
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+import { getFileUrl } from '../services/albumService'
+
 function MemberManagePage() {
   const navigate = useNavigate()
   
@@ -17,7 +19,6 @@ function MemberManagePage() {
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
-  const [totalElements, setTotalElements] = useState(0)
   const pageSize = 20
 
   // Stats State
@@ -36,6 +37,10 @@ function MemberManagePage() {
   // Modal State
   const [detailMember, setDetailMember] = useState<Member | null>(null)
   const [editModalData, setEditModalData] = useState<{ open: boolean, member: Member | null }>({ 
+    open: false, 
+    member: null 
+  })
+  const [roleModalData, setRoleModalData] = useState<{ open: boolean, member: Member | null }>({ 
     open: false, 
     member: null 
   })
@@ -79,12 +84,7 @@ function MemberManagePage() {
     setCurrentPage(0)
   }, [debouncedSearchTerm, selectedStatus])
 
-  // Load Members
-  useEffect(() => {
-    loadMembers()
-  }, [currentPage, debouncedSearchTerm, selectedStatus])
-
-  const loadMembers = async () => {
+  const loadMembers = useCallback(async () => {
     try {
       setLoading(true)
       const response = await getMembers({
@@ -95,14 +95,18 @@ function MemberManagePage() {
       })
       setMembers(response.content)
       setTotalPages(response.totalPages)
-      setTotalElements(response.totalElements)
     } catch (error) {
       console.error('멤버 목록 로드 실패:', error)
       alert('멤버 목록을 불러오는데 실패했습니다.')
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentPage, pageSize, debouncedSearchTerm, selectedStatus])
+
+  // Load Members
+  useEffect(() => {
+    loadMembers()
+  }, [loadMembers])
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -121,6 +125,11 @@ function MemberManagePage() {
 
   const handleEdit = (member: Member) => {
     setEditModalData({ open: true, member })
+    setActiveMenuId(null)
+  }
+
+  const handleRoleEdit = (member: Member) => {
+    setRoleModalData({ open: true, member })
     setActiveMenuId(null)
   }
 
@@ -154,6 +163,40 @@ function MemberManagePage() {
     } catch (error) {
       console.error('저장 실패:', error)
       alert('저장에 실패했습니다.')
+    }
+  }
+
+  const handleSaveRole = async (memberId: number, roles: string[]) => {
+    try {
+      // roles만 업데이트하는 API가 별도로 없으므로 updateMember 사용
+      // 기존 정보를 유지해야 하지만, updateMember 구현상 전체 필드를 보내야 하는지 확인 필요.
+      // MemberController의 updateMember는 MemberUpdateRequestDto를 받음.
+      // DTO 필드가 null이면 업데이트 안하는지, 아니면 null로 덮어쓰는지 확인 필요.
+      // Member.java의 update 메소드:
+      // this.name = dto.getName(); ... this.roles = dto.getRoles();
+      // 즉, null이면 null로 덮어쓰거나 에러가 날 수 있음.
+      // 따라서 기존 정보를 모두 채워서 보내야 함.
+
+      const member = members.find(m => m.memberId === memberId)
+      if (!member) return
+
+      const payload: UpdateMemberRequest = {
+        name: member.name,
+        phone: member.phone,
+        birthDate: member.birthDate,
+        gender: member.gender,
+        memberStatus: member.memberStatus as string,
+        memberImageUrl: member.memberImageUrl || undefined,
+        roles: roles
+      }
+
+      await updateMember(memberId, payload)
+      alert('권한이 수정되었습니다.')
+      setRoleModalData({ open: false, member: null })
+      loadMembers()
+    } catch (error) {
+      console.error('권한 수정 실패:', error)
+      alert('권한 수정에 실패했습니다.')
     }
   }
 
@@ -202,7 +245,7 @@ function MemberManagePage() {
               onClick={() => navigate('/dashboard')}
               className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
             >
-              ← 돌아가기
+              ← <span className="hidden sm:inline">돌아가기</span>
             </button>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-xl">
@@ -331,12 +374,12 @@ function MemberManagePage() {
                           <div className="h-10 w-10 overflow-hidden rounded-full bg-slate-200 flex items-center justify-center">
                             {member.memberImageUrl ? (
                               <img
-                                src={`${API_BASE_URL}${member.memberImageUrl}`}
+                                src={getFileUrl(member.memberImageUrl)}
                                 alt={member.name}
                                 className="h-full w-full object-cover cursor-zoom-in hover:opacity-80 transition-opacity"
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  setPreviewImage(`${API_BASE_URL}${member.memberImageUrl}`)
+                                  setPreviewImage(getFileUrl(member.memberImageUrl || undefined))
                                 }}
                               />
                             ) : (
@@ -464,6 +507,15 @@ function MemberManagePage() {
           </button>
           <button
             onClick={() => {
+              const member = members.find((m) => m.memberId === activeMenuId)
+              if (member) handleRoleEdit(member)
+            }}
+            className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+          >
+            권한 수정
+          </button>
+          <button
+            onClick={() => {
               handleDelete(activeMenuId)
             }}
             className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
@@ -488,6 +540,14 @@ function MemberManagePage() {
           member={editModalData.member}
           onClose={() => setEditModalData({ open: false, member: null })}
           onSave={handleSaveMember}
+        />
+      )}
+
+      {roleModalData.open && (
+        <RoleSelectModal
+          member={roleModalData.member}
+          onClose={() => setRoleModalData({ open: false, member: null })}
+          onSave={handleSaveRole}
         />
       )}
 

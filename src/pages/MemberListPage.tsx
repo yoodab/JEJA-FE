@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { Member } from '../types/member'
 import { getMembers, uploadMembersFromExcel } from '../services/memberService'
 import { formatRoles, formatMemberStatus } from '../types/member'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+import { getFileUrl } from '../services/albumService'
 
 function MemberListPage() {
   const navigate = useNavigate()
@@ -94,7 +93,7 @@ function MemberListPage() {
             onClick={() => navigate('/dashboard')}
             className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
           >
-            ← 돌아가기
+            ← <span className="hidden sm:inline">돌아가기</span>
           </button>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-xl">
@@ -215,7 +214,7 @@ function MemberListPage() {
                         <div className="h-10 w-10 overflow-hidden rounded-full bg-slate-200 flex items-center justify-center">
                           {member.memberImageUrl ? (
                             <img
-                              src={`${API_BASE_URL}${member.memberImageUrl}`}
+                              src={getFileUrl(member.memberImageUrl)}
                               alt={member.name}
                               className="h-full w-full object-cover"
                             />
