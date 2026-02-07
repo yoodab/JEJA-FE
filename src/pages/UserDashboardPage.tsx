@@ -210,14 +210,25 @@ function UserDashboardPage() {
         <main className="space-y-6">
           {/* 상단 큰 사진 슬라이드 */}
         {(slides.length > 0 && current) ? (
-          <section className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-900/80 shadow-lg">
+          <section 
+            className={`group relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-900/80 shadow-lg ${current.linkUrl ? 'cursor-pointer' : ''}`}
+            onClick={() => {
+              if (current.linkUrl) {
+                if (current.linkUrl.startsWith('http')) {
+                  window.open(current.linkUrl, '_blank', 'noopener,noreferrer');
+                } else {
+                  navigate(current.linkUrl);
+                }
+              }
+            }}
+          >
             <div 
               className="relative h-52 w-full sm:h-72"
-              style={{ backgroundColor: (current.type === 'image' ) ? current.backgroundColor || '#1e293b' : current.backgroundColor }}
+              style={{ backgroundColor: (current.type === 'image' || current.type === 'IMAGE') ? current.backgroundColor || '#1e293b' : current.backgroundColor }}
             >
-              {(current.type === 'image' ) ? (
+              {(current.type === 'image' || current.type === 'IMAGE') ? (
                 <img
-                  src={current.url}
+                  src={getFileUrl(current.url)}
                   alt={current.title || '슬라이드'}
                   className="h-full w-full object-contain"
                 />
@@ -244,7 +255,8 @@ function UserDashboardPage() {
               )}
             </div>
 
-            {/* 텍스트 오버레이 (이미지 타입이고 제목/부제목이 있을 때만 표시) */}
+            {/* 텍스트 오버레이 (이미지 타입이고 제목/부제목이 있을 때만 표시) - 사용하지 않음 (관리용 제목만 사용) */}
+            {/* 
             {(current.type === 'image' || current.type === 'IMAGE') && (current.title || current.subtitle) && (
               <div className="pointer-events-none absolute inset-0 flex flex-col justify-center bg-black/20 px-6 py-6 sm:px-10">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-200">
@@ -262,20 +274,27 @@ function UserDashboardPage() {
                 )}
               </div>
             )}
+            */}
 
             {/* 좌우 화살표 */}
             {slides.length > 1 && (
               <>
                 <button
                   type="button"
-                  onClick={prevSlide}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    prevSlide();
+                  }}
                   className="absolute left-3 top-1/2 z-10 flex -translate-y-1/2 items-center justify-center rounded-full p-2 text-white shadow-sm transition-all duration-300 hover:bg-black/20 md:opacity-0 md:group-hover:opacity-100"
                 >
                   <span className="text-3xl drop-shadow-md">‹</span>
                 </button>
                 <button
                   type="button"
-                  onClick={nextSlide}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    nextSlide();
+                  }}
                   className="absolute right-3 top-1/2 z-10 flex -translate-y-1/2 items-center justify-center rounded-full p-2 text-white shadow-sm transition-all duration-300 hover:bg-black/20 md:opacity-0 md:group-hover:opacity-100"
                 >
                   <span className="text-3xl drop-shadow-md">›</span>
@@ -290,7 +309,10 @@ function UserDashboardPage() {
                   <button
                     key={index}
                     type="button"
-                    onClick={() => setActiveIndex(index)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveIndex(index);
+                    }}
                     className={`h-2 w-2 rounded-full transition ${
                       index === activeIndex ? "bg-white" : "bg-white/40"
                     }`}
