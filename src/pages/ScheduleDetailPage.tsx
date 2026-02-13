@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
+import { useConfirm } from '../contexts/ConfirmContext'
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
 import { scheduleService } from '../services/scheduleService'
@@ -27,7 +29,10 @@ const typeColors: Record<string, string> = {
 
 function ScheduleDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
+  const targetDate = searchParams.get('date')
   const navigate = useNavigate()
+  const { confirm } = useConfirm()
 
   const [schedule, setSchedule] = useState<Schedule | null>(null)
   const [album, setAlbum] = useState<AlbumDetail | null>(null)
@@ -47,7 +52,8 @@ function ScheduleDetailPage() {
       try {
         setLoading(true)
         // 1. Fetch Schedule Detail
-        const scheduleData = await scheduleService.getScheduleDetail(Number(id))
+        // If it's a recurring schedule, we might need a specific date
+        const scheduleData = await scheduleService.getScheduleDetail(Number(id), targetDate || undefined)
         setSchedule(scheduleData)
 
         // 2. If linked album exists, fetch album details
@@ -69,39 +75,53 @@ function ScheduleDetailPage() {
     }
 
     fetchData()
-  }, [id])
+  }, [id, targetDate])
 
   const handleCheckIn = async () => {
     if (!schedule) return
     if (!isLoggedIn) {
-      alert('로그인이 필요합니다.')
+      toast.error('로그인이 필요합니다.')
       navigate('/login')
       return
     }
 
-    if (!confirm('출석하시겠습니까?')) return
+    const isConfirmed = await confirm({
+      title: '출석 체크',
+      message: '출석하시겠습니까?',
+      type: 'info'
+    })
+    
+    if (!isConfirmed) return
 
     setIsCheckingIn(true)
     try {
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        if (!navigator.geolocation) {
-          reject(new Error("위치 정보를 지원하지 않는 브라우저입니다."))
-        }
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 60000
+      let latitude: number | undefined
+      let longitude: number | undefined
+
+      // 예배인 경우에만 위치 정보 가져오기
+      if (schedule.type === 'WORSHIP') {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          if (!navigator.geolocation) {
+            reject(new Error("위치 정보를 지원하지 않는 브라우저입니다."))
+          }
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 60000
+          })
         })
-      })
+        latitude = position.coords.latitude
+        longitude = position.coords.longitude
+      }
 
       await checkIn(schedule.scheduleId, {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude
+        latitude,
+        longitude
       })
 
-      alert('출석이 완료되었습니다!')
+      toast.success('출석이 완료되었습니다!')
       // Refresh schedule to update attendee list
-      const updatedSchedule = await scheduleService.getScheduleDetail(schedule.scheduleId)
+      const updatedSchedule = await scheduleService.getScheduleDetail(schedule.scheduleId, targetDate || undefined)
       setSchedule(updatedSchedule)
     } catch (error) {
       console.error('출석 체크 실패:', error)
@@ -125,7 +145,7 @@ function ScheduleDetailPage() {
         errorMsg = '출석 가능 시간(20분 전후)이 아닙니다.'
       }
 
-      alert(errorMsg)
+      toast.error(errorMsg)
     } finally {
       setIsCheckingIn(false)
     }

@@ -9,6 +9,7 @@ export interface MyInfoResponse {
   userPhone: string
   email: string
   profileImageUrl: string
+  memberImageUrl: string
   birthDate: string
   role: string
   status: string
@@ -52,16 +53,15 @@ export const getMyAttendanceHistory = async (startDate: string, endDate: string)
   return response.data.data
 }
 
-export interface MyInfoUpdateRequest {
+export interface UpdateMyInfoRequest {
   phone?: string
   email?: string
-  memberImageUrl?: string
   profileImageUrl?: string
   currentPassword?: string
   newPassword?: string
 }
 
-export const updateMyInfo = async (data: MyInfoUpdateRequest): Promise<void> => {
+export const updateMyInfo = async (data: UpdateMyInfoRequest): Promise<void> => {
   await api.patch('/api/users/me', data)
 }
 
@@ -72,12 +72,12 @@ export const withdraw = async (password: string): Promise<void> => {
 export const uploadFile = async (file: File, folder: string = 'common'): Promise<string> => {
   const formData = new FormData()
   formData.append('files', file)
-  formData.append('folder', folder)
 
-  const response = await api.post<ApiResponseForm<{ fileUrl: string }[]>>('/api/files/upload', formData, {
+  const response = await api.post<ApiResponseForm<{ url: string }[]>>('/api/files/upload', formData, {
+    params: { folder },
     headers: {
       'Content-Type': 'multipart/form-data',
     },
   })
-  return response.data.data[0].fileUrl
+  return response.data.data[0].url
 }

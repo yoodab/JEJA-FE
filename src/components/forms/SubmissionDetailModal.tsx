@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import styled from 'styled-components';
-import { getFormSubmission } from '../../services/formService';
-import type { FormSubmission } from '../../types/form';
+import { getFormSubmission, getTemplateDetail } from '../../services/formService';
+import type { FormSubmission, FormTemplate } from '../../types/form';
 import { FaTimes } from 'react-icons/fa';
+import { toast } from 'react-hot-toast';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 interface SubmissionDetailModalProps {
   isOpen: boolean;
@@ -10,21 +12,44 @@ interface SubmissionDetailModalProps {
   submissionId: number | null;
   onApprove?: (id: number) => void;
   onReject?: (id: number) => void;
+  template?: FormTemplate | null;
 }
 
-const SubmissionDetailModal: React.FC<SubmissionDetailModalProps> = ({ isOpen, onClose, submissionId, onApprove, onReject }) => {
+const SubmissionDetailModal: React.FC<SubmissionDetailModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  submissionId, 
+  onApprove, 
+  onReject,
+  template: initialTemplate 
+}) => {
   const [submission, setSubmission] = useState<FormSubmission | null>(null);
+  const [template, setTemplate] = useState<FormTemplate | null>(null);
   const [loading, setLoading] = useState(false);
+  const { confirm } = useConfirm();
+
+  useEffect(() => {
+    if (initialTemplate) {
+      setTemplate(initialTemplate);
+    }
+  }, [initialTemplate]);
 
   const loadSubmissionDetail = useCallback(async () => {
     if (!submissionId) return;
     try {
       setLoading(true);
-      const data = await getFormSubmission(submissionId);
-      setSubmission(data);
+      const subData = await getFormSubmission(submissionId);
+      if (subData) {
+        setSubmission(subData);
+        // initialTemplate이 없거나 id가 다를 경우에만 새로 불러오기
+        if (!template || template.id !== subData.templateId) {
+          const tmplData = await getTemplateDetail(subData.templateId);
+          setTemplate(tmplData);
+        }
+      }
     } catch (error) {
       console.error('Failed to load submission detail', error);
-      alert('상세 내용을 불러오는데 실패했습니다.');
+      toast.error('상세 내용을 불러오는데 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -68,12 +93,39 @@ const SubmissionDetailModal: React.FC<SubmissionDetailModalProps> = ({ isOpen, o
               </MetaInfo>
               <Divider />
               <AnswersContainer>
-                {submission.answers.map((ans, idx) => (
-                  <AnswerItem key={idx}>
-                    <QuestionLabel>Q. {ans.questionLabel || `질문 ${ans.questionId}`}</QuestionLabel>
-                    <AnswerValue>{ans.value}</AnswerValue>
-                  </AnswerItem>
-                ))}
+                {template ? (
+                  // 양식의 모든 질문을 순서대로 표시
+                  template.questions
+                    .sort((a, b) => a.orderIndex - b.orderIndex)
+                    .map((question) => {
+                      const answer = submission.answers.find(a => a.questionId === question.id);
+                      return (
+                        <AnswerItem key={question.id}>
+                          <QuestionLabel>
+                            Q. {question.label}
+                            {question.required && <RequiredBadge>필수</RequiredBadge>}
+                          </QuestionLabel>
+                          {answer && answer.value.trim() !== '' ? (
+                            <AnswerValue>{answer.value}</AnswerValue>
+                          ) : (
+                            <NoAnswerValue>미응답</NoAnswerValue>
+                          )}
+                        </AnswerItem>
+                      );
+                    })
+                ) : (
+                  // 템플릿 정보가 없을 경우 기존처럼 제출된 답변만 표시
+                   submission.answers.map((ans, idx) => (
+                     <AnswerItem key={idx}>
+                       <QuestionLabel>Q. {ans.questionLabel || `질문 ${ans.questionId}`}</QuestionLabel>
+                       {ans.value.trim() !== '' ? (
+                         <AnswerValue>{ans.value}</AnswerValue>
+                       ) : (
+                         <NoAnswerValue>미응답</NoAnswerValue>
+                       )}
+                     </AnswerItem>
+                   ))
+                )}
               </AnswersContainer>
             </DetailWrapper>
           ) : (
@@ -82,11 +134,25 @@ const SubmissionDetailModal: React.FC<SubmissionDetailModalProps> = ({ isOpen, o
         </Content>
         {submission && submission.status === 'PENDING' && onApprove && onReject && (
           <Footer>
-            <RejectButton onClick={() => {
-                if(confirm('정말 거절하시겠습니까?')) onReject(submission.id);
+            <RejectButton onClick={async () => {
+                const isConfirmed = await confirm({
+                  title: '신청서 거절',
+                  message: '정말 거절하시겠습니까?',
+                  type: 'danger',
+                  confirmText: '거절',
+                  cancelText: '취소'
+                });
+                if(isConfirmed) onReject(submission.id);
             }}>거절</RejectButton>
-            <ApproveButton onClick={() => {
-                if(confirm('정말 승인하시겠습니까?')) onApprove(submission.id);
+            <ApproveButton onClick={async () => {
+                const isConfirmed = await confirm({
+                  title: '신청서 승인',
+                  message: '정말 승인하시겠습니까?',
+                  type: 'warning',
+                  confirmText: '승인',
+                  cancelText: '취소'
+                });
+                if(isConfirmed) onApprove(submission.id);
             }}>승인</ApproveButton>
           </Footer>
         )}
@@ -236,23 +302,48 @@ const AnswerItem = styled.div`
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 12px;
+  background-color: white;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
 `;
 
 const QuestionLabel = styled.div`
-  font-weight: 600;
+  font-size: 0.9rem;
+  font-weight: 700;
   color: #1e293b;
-  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const RequiredBadge = styled.span`
+  font-size: 0.65rem;
+  background-color: #fee2e2;
+  color: #ef4444;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 800;
 `;
 
 const AnswerValue = styled.div`
-  padding: 16px;
-  background-color: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  color: #334155;
-  white-space: pre-wrap;
-  line-height: 1.6;
   font-size: 0.95rem;
+  color: #334155;
+  padding: 8px 12px;
+  background-color: #f1f5f9;
+  border-radius: 6px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+`;
+
+const NoAnswerValue = styled.div`
+  font-size: 0.9rem;
+  color: #94a3b8;
+  font-style: italic;
+  padding: 8px 12px;
+  background-color: #f8fafc;
+  border-radius: 6px;
+  border: 1px dashed #e2e8f0;
 `;
 
 const Footer = styled.div`

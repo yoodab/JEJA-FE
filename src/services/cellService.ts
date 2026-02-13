@@ -15,6 +15,11 @@ export interface Cell {
   leaderMemberId: number | null
   leaderName: string | null
   leaderPhone: string | null
+  leaderBirthDate: string | null
+  subLeaderMemberId: number | null
+  subLeaderName: string | null
+  subLeaderPhone: string | null
+  subLeaderBirthDate: string | null
   members: Member[]
 }
 
@@ -22,6 +27,7 @@ export interface CreateCellRequest {
   cellName: string
   year: number
   leaderMemberId?: number | null
+  subLeaderMemberId?: number | null
 }
 
 export interface UpdateCellRequest {
@@ -31,12 +37,14 @@ export interface UpdateCellRequest {
 
 export interface SyncCellMembersRequest {
   leaderId: number | null
+  subLeaderId: number | null
   memberIds: number[]
 }
 
 export interface CellMemberUpdateDto {
   cellId: number
   leaderId: number | null
+  subLeaderId: number | null
   memberIds: number[]
 }
 
@@ -62,6 +70,13 @@ interface RawCellDto {
     memberId: number
     name: string
     phone: string
+    birthDate: string
+  }
+  subLeader?: {
+    memberId: number
+    name: string
+    phone: string
+    birthDate: string
   }
   members?: RawMemberDto[]
 }
@@ -71,6 +86,11 @@ export interface MyCellResponse {
   cellName: string
   year: number
   leader: {
+    memberId: number
+    name: string
+    role?: string
+  } | null
+  subLeader: {
     memberId: number
     name: string
     role?: string
@@ -93,6 +113,44 @@ export async function getMyCell(): Promise<MyCellResponse> {
   return response.data.data
 }
 
+// 특정 셀 정보 조회 (순원 목록 포함)
+export async function getCellDetail(cellId: number): Promise<Cell> {
+  const response = await api.get<ApiResponse<RawCellDto>>(`/api/cells/${cellId}`)
+  
+  if (response.data.status?.toUpperCase() !== 'SUCCESS') {
+    throw new Error(response.data.message || '셀 정보 조회 실패')
+  }
+
+  const cell = response.data.data
+  return {
+    cellId: cell.cellId,
+    cellName: cell.cellName,
+    year: cell.year,
+    active: cell.active,
+    leaderMemberId: cell.leader?.memberId || null,
+    leaderName: cell.leader?.name || null,
+    leaderPhone: cell.leader?.phone || null,
+    leaderBirthDate: cell.leader?.birthDate || null,
+    subLeaderMemberId: cell.subLeader?.memberId || null,
+    subLeaderName: cell.subLeader?.name || null,
+    subLeaderPhone: cell.subLeader?.phone || null,
+    subLeaderBirthDate: cell.subLeader?.birthDate || null,
+    members: (cell.members || [])
+      .filter((m) => m.memberId !== (cell.leader?.memberId) && m.memberId !== (cell.subLeader?.memberId))
+      .map((m) => ({
+        ...m,
+        phone: m.phone || '',
+        birthDate: m.birthDate || '',
+        memberStatus: m.memberStatus || 'ACTIVE',
+        roles: m.roles || [],
+        memberImageUrl: null,
+        hasAccount: false,
+        gender: 'MALE',
+        age: 0,
+      })),
+  }
+}
+
 // 셀 목록 조회
 export async function getCells(year: number): Promise<Cell[]> {
   const response = await api.get<ApiResponse<RawCellDto[]>>('/api/admin/cells', {
@@ -113,8 +171,13 @@ export async function getCells(year: number): Promise<Cell[]> {
     leaderMemberId: cell.leader?.memberId || null,
     leaderName: cell.leader?.name || null,
     leaderPhone: cell.leader?.phone || null,
+    leaderBirthDate: cell.leader?.birthDate || null,
+    subLeaderMemberId: cell.subLeader?.memberId || null,
+    subLeaderName: cell.subLeader?.name || null,
+    subLeaderPhone: cell.subLeader?.phone || null,
+    subLeaderBirthDate: cell.subLeader?.birthDate || null,
     members: (cell.members || [])
-      .filter((m) => m.memberId !== (cell.leader?.memberId))
+      .filter((m) => m.memberId !== (cell.leader?.memberId) && m.memberId !== (cell.subLeader?.memberId))
       .map((m) => ({
         ...m,
         // API 응답에 없는 필드 안전하게 처리

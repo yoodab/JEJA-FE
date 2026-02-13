@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
 import {
   getAttendanceSheet,
 } from '../services/attendanceService'
@@ -85,42 +86,45 @@ function GroupFormationPage() {
   }, [selectedDate, searchParams])
 
   // --- Load Members & Attendance ---
-  const loadData = useCallback(async (scheduleId: number, dateStr: string) => {
+  const loadData = useCallback(async (scheduleId: number | null, dateStr: string) => {
     setDataLoading(true)
     try {
-      // 1. Load All Members
-      // 2. Load Attendance Sheet for selection
-      const [membersPage, sheet] = await Promise.all([
-        getMembers({ page: 0, size: 2000, sort: 'name,asc' }),
-        getAttendanceSheet(scheduleId, dateStr).catch(() => null)
-      ])
-
+      // 1. Load All Members (always)
+      const membersPage = await getMembers({ page: 0, size: 2000, sort: 'name,asc' })
       setAllMembers(membersPage.content)
 
-      // Set selected members based on attendance
-      const attendedIds = new Set<number>()
-      if (sheet?.records) {
-        sheet.records.forEach((record) => {
-          if (record.attended) {
-            attendedIds.add(record.memberId)
-          }
-        })
+      // 2. Load Attendance Sheet for selection if scheduleId exists
+      if (scheduleId) {
+        const sheet = await getAttendanceSheet(scheduleId, dateStr).catch(() => null)
+        
+        // Set selected members based on attendance
+        const attendedIds = new Set<number>()
+        if (sheet?.records) {
+          sheet.records.forEach((record) => {
+            if (record.attended) {
+              attendedIds.add(record.memberId)
+            }
+          })
+        }
+        setSelectedMemberIds(attendedIds)
+      } else {
+        // If no schedule, we don't clear selectedMemberIds automatically 
+        // because user might want to manually select.
+        // But if they just switched to a date with no schedule, 
+        // maybe they expect a fresh state? 
+        // The previous behavior was clearing allMembers, so clearing selection seems consistent.
+        setSelectedMemberIds(new Set())
       }
-      setSelectedMemberIds(attendedIds)
 
     } catch (error) {
       console.error(error)
-      alert('데이터를 불러오는데 실패했습니다.')
+      toast.error('데이터를 불러오는데 실패했습니다.')
     } finally {
       setDataLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    if (!selectedScheduleId) {
-      setAllMembers([])
-      return
-    }
     loadData(selectedScheduleId, selectedDate)
   }, [selectedScheduleId, selectedDate, loadData])
 
@@ -159,11 +163,11 @@ function GroupFormationPage() {
   // --- Formation Logic ---
   const formGroups = () => {
     if (selectedMemberIds.size === 0) {
-      alert('최소 1명 이상의 인원을 선택해주세요.')
+      toast.error('최소 1명 이상의 인원을 선택해주세요.')
       return
     }
     if (selectedMemberIds.size < settings.groupCount) {
-      alert('선택한 인원 수가 조 개수보다 적습니다.')
+      toast.error('선택한 인원 수가 조 개수보다 적습니다.')
       return
     }
 
@@ -387,10 +391,6 @@ function GroupFormationPage() {
             {dataLoading ? (
               <div className="flex h-full items-center justify-center py-20">
                 <div className="text-slate-500">데이터를 불러오는 중입니다...</div>
-              </div>
-            ) : !selectedScheduleId ? (
-              <div className="flex h-full items-center justify-center py-20">
-                <div className="text-slate-500">일정을 선택해주세요.</div>
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-1 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12">

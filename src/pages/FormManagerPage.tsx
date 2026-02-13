@@ -1,40 +1,70 @@
-import { useState, useMemo, useEffect } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import type { FormSubmission, FormTemplate, FormQuestion } from '../types/form';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+import { useConfirm } from '../contexts/ConfirmContext';
+import type { FormTemplate, FormSubmission } from '../types/form';
 import { mockMembers } from '../data/mockData';
-import { getFormTemplate, getFormSubmissions, getFormSubmission, updateTemplateStatus } from '../services/formService';
+import { getFormTemplate, getFormSubmissions, getFormSubmission, updateFormTemplate, deleteFormTemplate, createFormTemplate } from '../services/formService';
 import { DynamicFormRenderer } from '../components/forms/DynamicFormRenderer';
-import { Calendar, ChevronLeft, ChevronRight, X, Edit3, Power, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { FormBuilder } from '../components/forms/FormBuilder';
+import type { FormBuilderHandle } from '../components/forms/FormBuilder';
+import { 
+  ChevronLeft, ChevronRight, Eye, Settings, Share2, 
+  Calendar, Lock, Download, User, Trash2, PlayCircle, StopCircle, Copy
+} from 'lucide-react';
+import {
+  PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer
+} from 'recharts';
+import * as XLSX from 'xlsx';
+import { format } from 'date-fns';
+import debounce from 'lodash/debounce';
+import isEqual from 'lodash/isEqual';
 
 export default function FormManagerPage() {
   const { templateId } = useParams<{ templateId: string }>();
-  const location = useLocation();
   const navigate = useNavigate();
-  const stateTemplate = location.state?.template as FormTemplate | undefined;
-
-  const [template, setTemplate] = useState<FormTemplate | null>(stateTemplate || null);
+  const { confirm } = useConfirm();
+  
+  // State
+  const [template, setTemplate] = useState<FormTemplate | null>(null);
   const [loadingTemplate, setLoadingTemplate] = useState(false);
+  const [activeTab, setActiveTab] = useState<'questions' | 'responses'>('questions');
+  
+  // Form Builder Ref
+  const formBuilderRef = useRef<FormBuilderHandle>(null);
+
+  // Auto-save Status
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
 
   // Submissions State
   const [submissions, setSubmissions] = useState<FormSubmission[]>([]);
+  const [allSubmissionDetails, setAllSubmissionDetails] = useState<FormSubmission[]>([]);
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  
+  // Response View State
+  const [responseSubTab, setResponseSubTab] = useState<'summary' | 'question' | 'individual'>('summary');
+  const [currentSubmissionIndex, setCurrentSubmissionIndex] = useState(0);
+  const [selectedQuestionId, setSelectedQuestionId] = useState<number | null>(null);
+  
+  // Cell Report Filter State
+  const [selectedTargetDate, setSelectedTargetDate] = useState<string>('ALL');
 
-  const [activeTab, setActiveTab] = useState<'preview' | 'submissions'>('preview');
-
-  // Preview Members
-  const [previewMembers, setPreviewMembers] = useState<string[]>(mockMembers);
-
-  // --- Submission Manager States ---
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [detailedSubmission, setDetailedSubmission] = useState<FormSubmission | null>(null);
+  // Reset indices when filter changes
+  useEffect(() => {
+    setCurrentSubmissionIndex(0);
+  }, [selectedTargetDate, activeTab]);
 
   useEffect(() => {
-    const id = templateId ? Number(templateId) : stateTemplate?.id;
-    if (id) {
-      fetchTemplate(id);
+    if (templateId) {
+      fetchTemplate(Number(templateId));
     }
-    // For preview, we use mock members to show how the matrix looks like
-    setPreviewMembers(mockMembers);
-  }, [templateId, stateTemplate?.id]);
+  }, [templateId]);
+
+  useEffect(() => {
+    if (activeTab === 'responses' && template?.id) {
+      fetchSubmissions(template.id);
+    }
+  }, [activeTab, template?.id]);
 
   const fetchTemplate = async (id: number) => {
     try {
@@ -48,509 +78,660 @@ export default function FormManagerPage() {
     }
   };
 
-  useEffect(() => {
-    if (activeTab === 'submissions' && template?.id) {
-      fetchSubmissions(template.id);
-    }
-  }, [activeTab, template?.id]);
-
-  const fetchSubmissions = async (templateId: number) => {
+  const fetchSubmissions = async (id: number) => {
     try {
-      const data = await getFormSubmissions(templateId);
-      setSubmissions(data);
+      setLoadingSubmissions(true);
+      // 1. Get Summary List
+      const summaryList = await getFormSubmissions(id);
+      setSubmissions(summaryList);
+
+      // 2. Fetch Details for all
+      // In a real app, optimize this or use pagination
+      const details = await Promise.all(summaryList.map(s => getFormSubmission(s.id)));
+      
+      // Merge summary info into details
+      const mergedDetails = details.map(d => {
+        const summary = summaryList.find(s => s.id === d.id);
+        return {
+          ...d,
+          submitterName: summary?.submitterName || d.submitterName,
+          status: summary?.status || d.status,
+          targetSundayDate: summary?.targetSundayDate || d.targetSundayDate
+        };
+      });
+      
+      setAllSubmissionDetails(mergedDetails);
     } catch (error) {
       console.error('Failed to fetch submissions:', error);
+    } finally {
+      setLoadingSubmissions(false);
     }
   };
 
-  const handleSubmissionClick = async (id: number) => {
-    try {
-      const [detailData, summaryData] = await Promise.all([
-        getFormSubmission(id),
-        Promise.resolve(submissions.find(s => s.id === id))
-      ]);
-      
-      // Merge summary info (name, status) into detail data if missing
-      if (summaryData) {
-        setDetailedSubmission({
-          ...detailData,
-          submitterName: summaryData.submitterName,
-          status: summaryData.status,
-          targetSundayDate: summaryData.targetSundayDate || detailData.targetSundayDate
-        });
-      } else {
-        setDetailedSubmission(detailData);
+  // Auto-save Logic
+  const debouncedSave = useCallback(
+    debounce(async (updatedData: Partial<FormTemplate>) => {
+      if (!templateId) return;
+      try {
+        setSaveStatus('saving');
+        await updateFormTemplate(Number(templateId), updatedData);
+        setSaveStatus('saved');
+        // Update local template state to reflect saved changes
+        setTemplate(prev => prev ? { ...prev, ...updatedData } : null);
+      } catch (error) {
+        console.error('Auto-save failed:', error);
+        setSaveStatus('error');
       }
-    } catch (error) {
-      console.error('Failed to fetch submission detail:', error);
-      alert('상세 정보를 불러오는데 실패했습니다.');
-    }
-  };
+    }, 3000),
+    [templateId]
+  );
 
-  const closeDetailModal = () => {
-    setDetailedSubmission(null);
-  };
+  const handleDataChange = (data: Partial<FormTemplate>) => {
+    // 1. If template is not loaded yet, ignore
+    if (!template) return;
 
-  // --- Helpers ---
-  const getWeekRange = (date: Date) => {
-    const sunday = new Date(date);
-    sunday.setDate(date.getDate() - date.getDay()); // Go to Sunday
-    const saturday = new Date(sunday);
-    saturday.setDate(sunday.getDate() + 6); // Go to Saturday
-    return {
-      start: sunday.toISOString().split('T')[0],
-      end: saturday.toISOString().split('T')[0],
-    };
-  };
-
-  const { start, end } = getWeekRange(selectedDate);
-
-  // --- Filter Logic ---
-  const filteredSubmissions = useMemo(() => {
-    if (!template) return [];
+    // 2. Check if changed (Deep Comparison)
+    // Merge data into current template to check if it results in any effective change
+    const merged = { ...template, ...data };
     
-    // Filter by submitDate being within the selected week
-    return submissions.filter(sub => {
-        if (!sub.submitDate) return false;
-        // sub.submitDate is YYYY-MM-DD string
-        return sub.submitDate >= start && sub.submitDate <= end;
-    });
-  }, [template, submissions, start, end]);
+    // Use isEqual for deep comparison of arrays/objects
+    if (isEqual(merged, template)) {
+      return;
+    }
 
-  // --- Handlers ---
-  const moveWeek = (direction: 'prev' | 'next') => {
-    const newDate = new Date(selectedDate);
-    newDate.setDate(selectedDate.getDate() + (direction === 'next' ? 7 : -7));
-    setSelectedDate(newDate);
+    setTemplate(merged);
+    setSaveStatus('saving');
+    debouncedSave(data);
+  };
+
+  // Filtered Submissions Logic
+  const filteredSubmissions = useMemo(() => {
+    if (template?.category !== 'CELL_REPORT' || selectedTargetDate === 'ALL') {
+      return allSubmissionDetails;
+    }
+    return allSubmissionDetails.filter(s => s.targetSundayDate === selectedTargetDate);
+  }, [allSubmissionDetails, selectedTargetDate, template?.category]);
+
+  const availableDates = useMemo(() => {
+    const dates = Array.from(new Set(allSubmissionDetails.map(s => s.targetSundayDate).filter(Boolean)));
+    return dates.sort().reverse(); // Newest first
+  }, [allSubmissionDetails]);
+
+  // Export Excel
+  const handleExportExcel = () => {
+    if (filteredSubmissions.length === 0) {
+      toast.error('내보낼 응답이 없습니다.');
+      return;
+    }
+
+    const questions = template?.questions || [];
+    const data = filteredSubmissions.map(sub => {
+      const row: any = {
+        'ID': sub.id,
+        '제출자': sub.submitterName,
+        '제출일': sub.submitDate ? format(new Date(sub.submitDate), 'yyyy-MM-dd HH:mm') : '',
+        '보고서 기준일': sub.targetSundayDate || '',
+        '상태': sub.status
+      };
+      
+      questions.forEach(q => {
+        const answer = sub.answers.find(a => a.questionId === q.id);
+        const value = answer ? (Array.isArray(answer.value) ? answer.value.join(', ') : answer.value) : '';
+        row[q.label] = value;
+      });
+      
+      return row;
+    });
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "응답");
+    XLSX.writeFile(wb, `${template?.title}_응답.xlsx`);
   };
 
   const handleToggleActive = async () => {
-    console.log('handleToggleActive called');
-    if (!template) {
-      console.log('No template');
-      return;
-    }
+    if (!template) return;
+    const newActive = !template.isActive;
     
-    const newActiveState = !template.isActive;
-    console.log('Toggling active state to:', newActiveState);
-
-    const confirmMsg = newActiveState 
-      ? '이 양식을 활성화하시겠습니까? 활성화되면 사용자들이 양식을 작성할 수 있습니다.' 
-      : '이 양식을 비활성화하시겠습니까? 비활성화되면 더 이상 양식을 작성할 수 없습니다.';
-    
-    if (!window.confirm(confirmMsg)) {
-      console.log('User cancelled');
-      return;
+    if (!newActive) {
+      const isConfirmed = await confirm({
+        title: '게시 중단',
+        message: '정말 이 양식을 게시 중단하시겠습니까? 더 이상 응답을 받을 수 없습니다.',
+        type: 'warning'
+      });
+      if (!isConfirmed) return;
     }
 
     try {
-      console.log('Sending request to update status...');
-      await updateTemplateStatus(template.id, newActiveState);
-      console.log('Request success');
-      setTemplate({ ...template, isActive: newActiveState });
-      alert(newActiveState ? '양식이 활성화되었습니다.' : '양식이 비활성화되었습니다.');
+      // 0. Cancel any pending auto-saves to prevent race conditions
+      debouncedSave.cancel();
+
+      // 1. Optimistically update UI
+      setTemplate(prev => prev ? { ...prev, isActive: newActive } : null);
+
+      let updateData: Partial<FormTemplate> = { isActive: newActive };
+
+      // 2. Decide whether to save everything or just the status
+      // If FormBuilder is active, we should save current work along with status
+      if (activeTab === 'questions' && formBuilderRef.current) {
+         const currentData = formBuilderRef.current.getTemplateData();
+         updateData = { ...currentData, isActive: newActive };
+         const result = await updateFormTemplate(template.id, updateData);
+         setTemplate(result);
+      } else {
+         // If on responses tab, just update the status via specialized API if available, 
+         // or use updateFormTemplate with partial data
+         const result = await updateFormTemplate(template.id, { isActive: newActive });
+         setTemplate(prev => prev ? { ...prev, ...result } : null);
+      }
+      
+      toast.success(newActive ? '양식이 게시되었습니다.' : '양식이 게시 중단되었습니다.');
     } catch (error) {
-      console.error('Failed to update template status:', error);
-      alert('상태 변경에 실패했습니다.');
+      console.error('Failed to update status:', error);
+      // Revert optimistic update on error
+      setTemplate(prev => prev ? { ...prev, isActive: !newActive } : null);
+      toast.error('상태 변경에 실패했습니다.');
     }
   };
 
-  if (!template) {
+  // Actions
+  const handleOpenPreview = () => {
+    formBuilderRef.current?.openPreview();
+  };
+
+  const handleOpenAccessSettings = () => {
+    formBuilderRef.current?.openAccessSettings();
+  };
+
+  const handleOpenDateSettings = () => {
+    formBuilderRef.current?.openDateSettings();
+  };
+
+  const copyLink = () => {
+    const link = `${window.location.origin}/reports/write/${templateId}`;
+    navigator.clipboard.writeText(link);
+    toast.success('설문 링크가 복사되었습니다.');
+  };
+
+  const handleCopyForm = async () => {
+    if (!formBuilderRef.current) return;
+    
+    const isConfirmed = await confirm({
+      title: '양식 복사',
+      message: '이 양식을 복사하여 새로운 양식을 만드시겠습니까?',
+      type: 'info'
+    });
+    
+    if (!isConfirmed) return;
+
+    try {
+      const currentData = formBuilderRef.current.getTemplateData();
+      
+      const newData: any = {
+        ...currentData,
+        title: `[복사본] ${currentData.title || ''}`,
+        isActive: false,
+        id: undefined,
+        sections: currentData.sections?.map(section => ({
+            ...section,
+            id: undefined,
+            questions: section.questions.map(q => ({
+                ...q,
+                id: undefined
+            }))
+        }))
+      };
+
+      const created = await createFormTemplate(newData);
+      toast.success('양식이 복사되었습니다.');
+      navigate(`/manage/forms/${created.id}`);
+    } catch (error) {
+      console.error('Failed to copy form:', error);
+      toast.error('양식 복사에 실패했습니다.');
+    }
+  };
+
+  const handleDeleteForm = async () => {
+    if (!template) return;
+    
+    const isConfirmed = await confirm({
+      title: '양식 삭제',
+      message: '정말 이 양식을 삭제하시겠습니까? 삭제된 양식은 복구할 수 없습니다.',
+      type: 'danger'
+    });
+    
+    if (!isConfirmed) return;
+
+    try {
+      await deleteFormTemplate(template.id);
+      toast.success('양식이 삭제되었습니다.');
+      navigate('/manage/reports');
+    } catch (error) {
+      console.error('Failed to delete form:', error);
+      toast.error('양식 삭제에 실패했습니다.');
+    }
+  };
+
+  // --- Render Helpers ---
+
+  const renderSummary = () => {
+    if (!template) return null;
+    const questions = template.questions || [];
+
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <p className="text-lg text-slate-500">선택된 양식이 없습니다.</p>
-          <button
-            onClick={() => navigate('/manage/reports')}
-            className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-          >
-            목록으로 돌아가기
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-      <div className="mx-auto max-w-6xl space-y-6">
-        {/* Header */}
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/manage/reports')}
-              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-            >
-              ← 목록으로
-            </button>
-            <div className="h-6 w-px bg-slate-200"></div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-600">
-                  {template.category}
-                </span>
-                <span className="text-xs text-slate-400">{template.type}</span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${template.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                    {template.isActive ? '운영중' : '미운영'}
-                </span>
-              </div>
-              <h1 className="text-lg font-bold text-slate-900">{template.title}</h1>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleToggleActive}
-              className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
-                template.isActive
-                  ? 'bg-rose-100 text-rose-700 hover:bg-rose-200'
-                  : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-              }`}
-            >
-              <Power className="h-4 w-4" />
-              {template.isActive ? '비활성화' : '활성화'}
-            </button>
-            <button
-              onClick={() => navigate('/manage/forms/builder', { state: { template } })}
-              className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              <Edit3 className="h-4 w-4" />
-              양식 수정
-            </button>
-          </div>
-        </header>
-
-        {/* Tabs */}
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex border-b border-slate-200">
-            <button
-              onClick={() => setActiveTab('preview')}
-              className={`flex-1 border-b-2 px-4 py-3 text-sm font-semibold transition ${
-                activeTab === 'preview'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              양식 미리보기
-            </button>
-            <button
-              onClick={() => setActiveTab('submissions')}
-              className={`flex-1 border-b-2 px-4 py-3 text-sm font-semibold transition ${
-                activeTab === 'submissions'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              보고서 결과 관리
-            </button>
-          </div>
-
-          <div className="p-6">
-            {activeTab === 'preview' && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between rounded-lg bg-blue-50 p-4 text-blue-900">
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-200 text-xs font-bold">i</span>
-                    실제 사용자가 보게 될 입력 화면입니다. (입력값은 저장되지 않습니다)
-                  </div>
-                  <button
-                    onClick={() => navigate('/manage/forms/builder', { state: { template } })}
-                    className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-blue-600 shadow-sm hover:bg-blue-50"
-                  >
-                    <Edit3 className="h-3.5 w-3.5" />
-                    양식 수정하기
-                  </button>
+      <div className="space-y-8 max-w-3xl mx-auto py-8 px-4">
+        {questions.map(q => {
+          const answers = filteredSubmissions.flatMap(s => s.answers.filter(a => a.questionId === q.id));
+          const hasAnswers = answers.length > 0;
+          
+          return (
+            <div key={q.id} className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="font-bold text-slate-900 mb-2">{q.label}</h3>
+              <div className="text-xs text-slate-400 mb-4">응답 {answers.length}개</div>
+              
+              {!hasAnswers ? (
+                <div className="text-sm text-slate-400 italic py-4">응답이 없습니다.</div>
+              ) : (q.inputType === 'SINGLE_CHOICE' || q.inputType === 'BOOLEAN' || q.inputType === 'MULTIPLE_CHOICE') ? (
+                 <div className="h-64 w-full">
+                   <ResponsiveContainer width="100%" height="100%">
+                     <PieChart>
+                       <Pie
+                         data={Object.entries(answers.reduce((acc, curr) => {
+                           const values = Array.isArray(curr.value) ? curr.value : [curr.value];
+                           values.forEach(v => {
+                             if (v !== undefined && v !== null && v !== '') {
+                               const displayValue = v === 'true' ? '예' : v === 'false' ? '아니오' : v;
+                               acc[displayValue] = (acc[displayValue] || 0) + 1;
+                             }
+                           });
+                           return acc;
+                         }, {} as Record<string, number>))
+                         .map(([name, value]) => ({ name, value }))
+                         .sort((a, b) => b.value - a.value)}
+                         cx="50%"
+                         cy="50%"
+                         outerRadius={80}
+                         fill="#8884d8"
+                         dataKey="value"
+                         label={({name, percent}) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                       >
+                         {Object.keys(answers).map((entry, index) => (
+                           <Cell key={`cell-${index}`} fill={['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'][index % 6]} />
+                         ))}
+                       </Pie>
+                       <Tooltip />
+                       <Legend />
+                     </PieChart>
+                   </ResponsiveContainer>
                 </div>
-                
-                <div className="mx-auto max-w-4xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                  {loadingTemplate ? (
-                    <div className="flex h-64 items-center justify-center">
-                      <div className="text-center">
-                        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600"></div>
-                        <p className="mt-2 text-sm text-slate-500">양식 정보를 불러오는 중...</p>
+              ) : (q.inputType === 'WORSHIP_ATTENDANCE' || q.inputType === 'SCHEDULE_ATTENDANCE' || q.isMemberSpecific) ? (
+                <div className="space-y-4">
+                  {/* 통계 요약 */}
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="bg-blue-50 p-3 rounded-lg text-center">
+                      <div className="text-xs text-blue-600 font-medium mb-1">참석/예</div>
+                      <div className="text-xl font-bold text-blue-700">
+                        {answers.filter(a => a.value === 'true').length}
                       </div>
                     </div>
-                  ) : (
-                    <DynamicFormRenderer
-                      template={template}
-                      answers={{}}
-                      onChange={() => {}}
-                      members={previewMembers}
-                      readOnly={false}
-                    />
-                  )}
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'submissions' && (
-              <div className="space-y-6">
-                {/* 1. Week Picker */}
-                <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-blue-600 shadow-sm">
-                      <Calendar className="h-5 w-5" />
+                    <div className="bg-slate-50 p-3 rounded-lg text-center">
+                      <div className="text-xs text-slate-500 font-medium mb-1">결석/아니오</div>
+                      <div className="text-xl font-bold text-slate-700">
+                        {answers.filter(a => a.value === 'false').length}
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500">조회 주차</p>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => moveWeek('prev')} className="rounded p-1 hover:bg-slate-200">
-                          <ChevronLeft className="h-4 w-4" />
-                        </button>
-                        <span className="text-lg font-bold text-slate-900">
-                          {start} ~ {end}
+                  </div>
+                  
+                  <div className="space-y-2 max-h-60 overflow-y-auto bg-slate-50 p-4 rounded border border-slate-100">
+                    {answers.map((a, i) => (
+                      <div key={i} className="flex justify-between items-center bg-white p-2 rounded border border-slate-100 text-sm">
+                        <span className="text-slate-600 font-medium">{a.targetMemberName || '익명'}</span>
+                        <span className={`font-bold ${a.value === 'true' ? 'text-blue-600' : 'text-slate-400'}`}>
+                          {a.value === 'true' ? '참석' : '결석'}
                         </span>
-                        <button onClick={() => moveWeek('next')} className="rounded p-1 hover:bg-slate-200">
-                          <ChevronRight className="h-4 w-4" />
-                        </button>
                       </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-60 overflow-y-auto bg-slate-50 p-4 rounded border border-slate-100">
+                  {answers.map((a, i) => (
+                    <div key={i} className="bg-white p-3 rounded border border-slate-100 text-sm text-slate-700 shadow-sm">
+                      <div className="flex justify-between mb-1">
+                        <span className="text-[10px] text-slate-400">{a.targetMemberName || ''}</span>
+                      </div>
+                      {Array.isArray(a.value) ? a.value.join(', ') : a.value}
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-slate-500">제출된 보고서</p>
-                    <p className="text-xl font-bold text-slate-900">{filteredSubmissions.length}건</p>
-                  </div>
+                  ))}
                 </div>
-
-                {/* 2. Submission List */}
-                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-slate-500">
-                      <tr>
-                        <th className="px-6 py-3 font-medium">제출자</th>
-                        <th className="px-6 py-3 font-medium">제출일</th>
-                        <th className="px-6 py-3 font-medium">상태</th>
-                        <th className="px-6 py-3 font-medium text-right">관리</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredSubmissions.length === 0 ? (
-                        <tr>
-                          <td colSpan={4} className="py-12 text-center text-slate-400">
-                            해당 주차에 제출된 보고서가 없습니다.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredSubmissions.map((sub) => (
-                          <tr
-                            key={sub.id}
-                            onClick={() => handleSubmissionClick(sub.id)}
-                            className="group cursor-pointer hover:bg-slate-50"
-                          >
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-3">
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-600">
-                                  {sub.submitterName.charAt(0)}
-                                </div>
-                                <span className="font-semibold text-slate-900 group-hover:text-blue-600">
-                                  {sub.submitterName}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 text-slate-500">
-                              <div className="flex items-center gap-1.5">
-                                <Clock className="h-3.5 w-3.5" />
-                                {sub.submitDate}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                                sub.status === 'APPROVED' ? 'bg-green-100 text-green-700' :
-                                sub.status === 'REJECTED' ? 'bg-red-100 text-red-700' :
-                                'bg-yellow-100 text-yellow-700'
-                              }`}>
-                                {sub.status === 'APPROVED' && <CheckCircle className="h-3 w-3" />}
-                                {sub.status === 'REJECTED' && <XCircle className="h-3 w-3" />}
-                                {sub.status === 'PENDING' && <Clock className="h-3 w-3" />}
-                                {sub.status === 'APPROVED' ? '승인됨' : sub.status === 'REJECTED' ? '반려됨' : '대기중'}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <button className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-600">
-                                상세보기
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+              )}
+            </div>
+          );
+        })}
       </div>
-
-      {/* 3. Detail Modal (Matrix View) */}
-      {detailedSubmission && template && (
-        <MatrixDetailModal
-          submission={detailedSubmission}
-          template={template}
-          onClose={closeDetailModal}
-        />
-      )}
-    </div>
-  );
-}
-
-// --- Sub Components ---
-
-function MatrixDetailModal({
-  submission,
-  template,
-  onClose,
-}: {
-  submission: FormSubmission;
-  template: FormTemplate;
-  onClose: () => void;
-}) {
-  // 1. Identify Rows (Members) & Columns (Questions)
-  // Get unique members from answers (for GROUP type)
-  const memberNames = Array.from(
-    new Set(submission.answers.map((a) => a.targetMemberName).filter((n): n is string => !!n))
-  );
-
-  const memberQuestions = template.questions
-    .filter((q) => q.memberSpecific)
-    .sort((a, b) => a.orderIndex - b.orderIndex);
-
-  const commonQuestions = template.questions
-    .filter((q) => !q.memberSpecific)
-    .sort((a, b) => a.orderIndex - b.orderIndex);
-
-  // Helper to find answer
-  const getAnswer = (questionId: number, memberName?: string) => {
-    return submission.answers.find(
-      (a) => a.questionId === questionId && a.targetMemberName === memberName
     );
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-7xl flex-col rounded-2xl bg-white shadow-2xl">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <div>
-            <h3 className="text-xl font-bold text-slate-900">{template.title}</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              {submission.submitterName} | {submission.targetSundayDate} (제출일: {submission.submitDate})
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-          >
-            <X className="h-6 w-6" />
-          </button>
-        </div>
+  const renderByQuestion = () => {
+    if (!template) return null;
+    const questions = template.questions || [];
+    
+    return (
+      <div className="max-w-4xl mx-auto py-8 px-4 space-y-8">
+        {questions.map(q => {
+          const answers = filteredSubmissions.flatMap(s => 
+            s.answers
+              .filter(a => a.questionId === q.id)
+              .map(a => ({
+                submissionId: s.id,
+                submitter: s.submitterName,
+                targetMemberName: a.targetMemberName,
+                date: s.submitDate,
+                value: a.value
+              }))
+          ).filter(a => a.value !== null && a.value !== '');
 
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {/* Section 1: Member Matrix (Group Type Only) */}
-          {template.type === 'GROUP' && memberNames.length > 0 && (
-            <div className="mb-8 space-y-3">
-              <h4 className="font-bold text-slate-800 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded bg-blue-100 text-xs font-bold text-blue-700">1</span>
-                순원별 보고 내용
-              </h4>
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full min-w-max border-collapse text-sm">
-                  <thead>
-                    <tr className="bg-slate-50">
-                      <th className="sticky left-0 z-10 border-b border-r border-slate-200 bg-slate-50 px-4 py-3 text-left font-semibold text-slate-700">
-                        성명
-                      </th>
-                      {memberQuestions.map((q) => (
-                        <th
-                          key={q.id}
-                          className="border-b border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 min-w-[100px]"
-                        >
-                          {q.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white">
-                    {memberNames.map((member) => (
-                      <tr key={member} className="hover:bg-slate-50">
-                        <td className="sticky left-0 z-10 border-r border-slate-200 bg-white px-4 py-3 font-bold text-slate-900 group-hover:bg-slate-50">
-                          {member}
-                        </td>
-                        {memberQuestions.map((q) => {
-                          const ans = getAnswer(q.id, member);
-                          return (
-                            <td key={q.id} className="border-r border-slate-200 px-4 py-3 align-top">
-                              <AnswerCell question={q} value={ans?.value} />
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          return (
+            <div key={q.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+                <h3 className="font-bold text-slate-900">{q.label}</h3>
+                <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200">
+                  응답 {answers.length}개
+                </span>
               </div>
-            </div>
-          )}
-
-          {/* Section 2: Common Questions (Non-Member Specific) */}
-          {commonQuestions.length > 0 && (
-            <div className="space-y-3">
-              <h4 className="font-bold text-slate-800 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded bg-blue-100 text-xs font-bold text-blue-700">2</span>
-                전체 보고 내용
-              </h4>
-              <div className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-6">
-                {commonQuestions.map((q) => {
-                  const ans = getAnswer(q.id);
-                  return (
-                    <div key={q.id} className="rounded-lg bg-white p-4 shadow-sm border border-slate-100">
-                      <p className="mb-2 text-sm font-semibold text-slate-500">{q.label}</p>
-                      <div className="text-slate-900">
-                        <AnswerCell question={q} value={ans?.value} />
+              <div className="divide-y divide-slate-100 max-h-[400px] overflow-y-auto">
+                {answers.map((ans, idx) => (
+                  <div key={idx} className="p-4 hover:bg-slate-50 transition-colors">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-slate-700 text-xs">
+                          {ans.submitter}
+                          {ans.targetMemberName && ans.targetMemberName !== ans.submitter && (
+                            <span className="text-slate-400 font-normal ml-1">
+                              (대상: {ans.targetMemberName})
+                            </span>
+                          )}
+                        </span>
                       </div>
+                      <span className="text-[10px] text-slate-400">
+                        {ans.date ? format(new Date(ans.date), 'yyyy.MM.dd HH:mm') : '-'}
+                      </span>
                     </div>
-                  );
-                })}
+                    <div className="text-sm text-slate-600 leading-relaxed">
+                      {q.inputType === 'BOOLEAN' || q.inputType === 'WORSHIP_ATTENDANCE' || q.inputType === 'SCHEDULE_ATTENDANCE' ? (
+                        <span className={`font-bold ${ans.value === 'true' ? 'text-blue-600' : 'text-slate-400'}`}>
+                          {ans.value === 'true' ? '참석/예' : '결석/아니오'}
+                        </span>
+                      ) : (
+                        Array.isArray(ans.value) ? ans.value.join(', ') : String(ans.value)
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {answers.length === 0 && (
+                  <div className="p-8 text-center text-slate-400 text-sm italic">응답이 없습니다.</div>
+                )}
               </div>
             </div>
-          )}
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderIndividual = () => {
+    if (filteredSubmissions.length === 0) return <div className="p-8 text-center text-slate-500">응답이 없습니다.</div>;
+
+    // Ensure index is valid after filtering
+    const safeIndex = Math.min(Math.max(0, currentSubmissionIndex), filteredSubmissions.length - 1);
+    const submission = filteredSubmissions[safeIndex];
+
+    if (!submission) return <div className="p-8 text-center text-slate-500">선택된 응답이 없습니다.</div>;
+
+    return (
+      <div className="max-w-3xl mx-auto py-8 px-4">
+        <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-slate-200 shadow-sm sticky top-20 z-10">
+          <div className="flex items-center gap-4">
+             <button 
+               onClick={() => setCurrentSubmissionIndex(Math.max(0, safeIndex - 1))}
+               disabled={safeIndex === 0}
+               className="p-1 hover:bg-slate-100 rounded disabled:opacity-30 transition-colors"
+             >
+               <ChevronLeft className="h-6 w-6" />
+             </button>
+             <span className="text-sm font-medium min-w-[60px] text-center">
+               {safeIndex + 1} / {filteredSubmissions.length}
+             </span>
+             <button 
+               onClick={() => setCurrentSubmissionIndex(Math.min(filteredSubmissions.length - 1, safeIndex + 1))}
+               disabled={safeIndex === filteredSubmissions.length - 1}
+               className="p-1 hover:bg-slate-100 rounded disabled:opacity-30 transition-colors"
+             >
+               <ChevronRight className="h-6 w-6" />
+             </button>
+          </div>
+          <div className="text-sm text-slate-600 flex items-center gap-2">
+            <User className="h-4 w-4" />
+            <span className="font-bold">{submission.submitterName}</span>
+            <span className="text-slate-300">|</span>
+            <span className="text-xs">{submission.submitDate ? format(new Date(submission.submitDate), 'yyyy.MM.dd HH:mm') : ''}</span>
+          </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4 bg-slate-50 rounded-b-2xl">
-          <button
-             onClick={() => alert('반려 처리되었습니다.')}
-             className="rounded-lg border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50"
-          >
-            반려하기
-          </button>
-          <button
-             onClick={() => alert('승인 처리되었습니다.')}
-             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 shadow-sm"
-          >
-            승인하기
-          </button>
+        <DynamicFormRenderer
+          template={template!}
+          answers={submission.answers.reduce((acc, curr) => {
+            acc[curr.questionId] = curr.value;
+            return acc;
+          }, {} as Record<number, any>)}
+          onChange={() => {}} // Read-only
+          readOnly={true}
+          members={mockMembers} // For display purposes
+        />
+      </div>
+    );
+  };
+
+  if (loadingTemplate) {
+    return <div className="flex h-screen items-center justify-center">로딩 중...</div>;
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      {/* 1. Top Navigation Bar */}
+      <div className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
+        <div className="flex items-center justify-between px-4 py-2 sm:px-6">
+          <div className="flex items-center gap-4">
+            <button onClick={() => navigate('/manage/reports')} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-bold text-slate-900">{template?.title || '제목 없음'}</span>
+                {saveStatus === 'saving' && <span className="text-xs text-slate-400">저장 중...</span>}
+                {saveStatus === 'saved' && <span className="text-xs text-slate-400">모든 변경사항이 저장됨</span>}
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+             <button
+                onClick={handleOpenDateSettings}
+                className="p-2 rounded-full text-slate-600 hover:bg-slate-100 tooltip-trigger"
+                title="설정 (기간/카테고리)"
+             >
+                <Calendar className="h-5 w-5" />
+             </button>
+             <button
+                onClick={handleOpenAccessSettings}
+                className="p-2 rounded-full text-slate-600 hover:bg-slate-100 tooltip-trigger"
+                title="접근 권한 설정"
+             >
+                <Lock className="h-5 w-5" />
+             </button>
+             
+             {/* Active/Inactive Toggle */}
+             <div className="flex items-center gap-2 px-2">
+               <button
+                  onClick={handleToggleActive}
+                  className={`p-2 rounded-full hover:bg-slate-100 tooltip-trigger ${template?.isActive ? 'text-blue-600' : 'text-slate-400'}`}
+                  title={template?.isActive ? "게시 중단" : "게시하기"}
+               >
+                  {template?.isActive ? <StopCircle className="h-5 w-5" /> : <PlayCircle className="h-5 w-5" />}
+               </button>
+             </div>
+
+             <button
+                onClick={handleOpenPreview}
+                className="p-2 rounded-full text-slate-600 hover:bg-slate-100 tooltip-trigger"
+                title="미리보기"
+             >
+                <Eye className="h-5 w-5" />
+             </button>
+             <button
+                onClick={handleCopyForm}
+                className="p-2 rounded-full text-slate-600 hover:bg-slate-100 tooltip-trigger"
+                title="양식 복사"
+             >
+                <Copy className="h-5 w-5" />
+             </button>
+             <button
+                onClick={handleDeleteForm}
+                className="p-2 rounded-full text-rose-500 hover:bg-rose-50 tooltip-trigger"
+                title="양식 삭제"
+             >
+                <Trash2 className="h-5 w-5" />
+             </button>
+             <button
+                onClick={copyLink}
+                className="hidden sm:flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-semibold"
+             >
+                <Share2 className="h-4 w-4" />
+                보내기
+             </button>
+          </div>
         </div>
+        
+        {/* Tabs */}
+        <div className="flex justify-center border-t border-slate-100">
+           <div className="flex gap-8">
+             <button
+               onClick={() => setActiveTab('questions')}
+               className={`py-3 px-2 text-sm font-medium border-b-2 transition-colors ${
+                 activeTab === 'questions' 
+                   ? 'border-blue-600 text-blue-600' 
+                   : 'border-transparent text-slate-500 hover:text-slate-700'
+               }`}
+             >
+               질문
+             </button>
+             <button
+               onClick={() => setActiveTab('responses')}
+               className={`py-3 px-2 text-sm font-medium border-b-2 transition-colors ${
+                 activeTab === 'responses' 
+                   ? 'border-blue-600 text-blue-600' 
+                   : 'border-transparent text-slate-500 hover:text-slate-700'
+               }`}
+             >
+               응답
+               {submissions.length > 0 && (
+                 <span className="ml-1.5 bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full text-xs">
+                   {submissions.length}
+                 </span>
+               )}
+             </button>
+           </div>
+        </div>
+      </div>
+
+      {/* 2. Main Content Area */}
+      <div className="flex-1 overflow-y-auto">
+        {activeTab === 'questions' && (
+          <div className="h-full">
+            <FormBuilder 
+              ref={formBuilderRef}
+              initialTemplate={template || undefined}
+              onSave={async () => {}} // Not used with auto-save
+              onCancel={() => navigate('/manage/reports')}
+              hideHeader={true}
+              onDataChange={handleDataChange}
+            />
+          </div>
+        )}
+
+        {activeTab === 'responses' && (
+          <div className="max-w-5xl mx-auto w-full px-4 py-6">
+             {/* Response Summary Header */}
+             <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+               <div>
+                 <h2 className="text-2xl font-bold text-slate-900">{filteredSubmissions.length}개의 응답</h2>
+                 {template?.category === 'CELL_REPORT' && (
+                    <div className="mt-2 flex items-center gap-2">
+                       <Calendar className="h-4 w-4 text-slate-400" />
+                       <select
+                         value={selectedTargetDate}
+                         onChange={(e) => setSelectedTargetDate(e.target.value)}
+                         className="text-sm border-none bg-slate-50 rounded px-2 py-1 focus:ring-0 cursor-pointer"
+                       >
+                         <option value="ALL">전체 기간</option>
+                         {availableDates.map(date => (
+                           <option key={date} value={date}>{date}</option>
+                         ))}
+                       </select>
+                    </div>
+                 )}
+               </div>
+               <div className="flex gap-2">
+                 <button 
+                   onClick={handleExportExcel}
+                   className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
+                 >
+                   <Download className="h-4 w-4" />
+                   Excel 다운로드
+                 </button>
+               </div>
+             </div>
+
+             {/* Sub Tabs */}
+             <div className="mb-6 flex gap-4 border-b border-slate-200">
+                <button
+                  onClick={() => setResponseSubTab('summary')}
+                  className={`pb-2 text-sm font-medium transition-colors ${
+                    responseSubTab === 'summary' 
+                      ? 'border-b-2 border-slate-900 text-slate-900' 
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  요약
+                </button>
+                <button
+                  onClick={() => setResponseSubTab('question')}
+                  className={`pb-2 text-sm font-medium transition-colors ${
+                    responseSubTab === 'question' 
+                      ? 'border-b-2 border-slate-900 text-slate-900' 
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  질문 보기
+                </button>
+                <button
+                  onClick={() => setResponseSubTab('individual')}
+                  className={`pb-2 text-sm font-medium transition-colors ${
+                    responseSubTab === 'individual' 
+                      ? 'border-b-2 border-slate-900 text-slate-900' 
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  개별 보기
+                </button>
+             </div>
+
+             {responseSubTab === 'summary' && renderSummary()}
+             {responseSubTab === 'question' && renderByQuestion()}
+             {responseSubTab === 'individual' && renderIndividual()}
+          </div>
+        )}
       </div>
     </div>
   );
-}
-
-function AnswerCell({ question, value }: { question: FormQuestion; value?: string }) {
-  if (value === undefined || value === null) return <span className="text-slate-300">-</span>;
-
-  if (question.inputType === 'BOOLEAN') {
-    return value === 'true' ? (
-      <div className="flex items-center justify-center w-full">
-         <CheckCircle className="h-5 w-5 text-emerald-500" />
-      </div>
-    ) : (
-      <div className="flex items-center justify-center w-full">
-         <X className="h-5 w-5 text-slate-300" />
-      </div>
-    );
-  }
-
-  return <span className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{value}</span>;
 }

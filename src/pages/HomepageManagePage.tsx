@@ -1,6 +1,8 @@
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
- import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { toast } from 'react-hot-toast'
+import { useConfirm } from '../contexts/ConfirmContext'
 import {
   getUsers,
   updateUserStatus,
@@ -11,6 +13,8 @@ import {
   getSlidesAdmin,
   createSlide,
   deleteSlide,
+  updateSlide,
+  reorderSlides,
   getYoutubeConfigAdmin,
   updateYoutubeConfig,
   type Slide,
@@ -24,6 +28,7 @@ import { uploadFiles, getFileUrl } from '../services/albumService'
 type TabType = 'users' | 'slides' | 'youtube'
 
 function HomepageManagePage() {
+  const { confirm } = useConfirm()
   const [activeTab, setActiveTab] = useState<TabType>('users')
   
   // 사용자 관리
@@ -46,6 +51,8 @@ function HomepageManagePage() {
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [isUploading, setIsUploading] = useState(false)
+  const [editingSlideId, setEditingSlideId] = useState<number | null>(null)
+  const [openSlideMenuId, setOpenSlideMenuId] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   // 유튜브 링크 관리
@@ -63,6 +70,7 @@ function HomepageManagePage() {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setOpenMenuUserId(null)
+        setOpenSlideMenuId(null)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -80,7 +88,7 @@ function HomepageManagePage() {
       setUsers(data)
     } catch (error) {
       console.error('사용자 목록 불러오기 실패:', error)
-      alert('사용자 목록을 불러오는데 실패했습니다.')
+      toast.error('사용자 목록을 불러오는데 실패했습니다.')
     } finally {
       setIsLoadingUsers(false)
     }
@@ -100,7 +108,7 @@ function HomepageManagePage() {
       setSlides(data)
     } catch (error) {
       console.error('슬라이드 목록 불러오기 실패:', error)
-      alert('슬라이드 목록을 불러오는데 실패했습니다.')
+      toast.error('슬라이드 목록을 불러오는데 실패했습니다.')
     } finally {
       setIsLoadingSlides(false)
     }
@@ -122,7 +130,7 @@ function HomepageManagePage() {
       }
     } catch (error) {
       console.error('유튜브 링크 불러오기 실패:', error)
-      alert('유튜브 링크를 불러오는데 실패했습니다.')
+      toast.error('유튜브 링크를 불러오는데 실패했습니다.')
     } finally {
       setIsLoadingYoutube(false)
     }
@@ -135,16 +143,24 @@ function HomepageManagePage() {
   }, [activeTab, loadYoutubeLinks])
 
   const handleUpdateStatus = async (userId: number, newStatus: UserStatus) => {
-    if (!confirm(`사용자 상태를 '${getStatusLabel(newStatus)}'(으)로 변경하시겠습니까?`)) return
+    const isConfirmed = await confirm({
+      title: '상태 변경',
+      message: `사용자 상태를 '${getStatusLabel(newStatus)}'(으)로 변경하시겠습니까?`,
+      type: 'warning',
+      confirmText: '변경',
+      cancelText: '취소'
+    })
+
+    if (!isConfirmed) return
 
     try {
       await updateUserStatus(userId, newStatus)
-      alert('사용자 상태가 변경되었습니다.')
+      toast.success('사용자 상태가 변경되었습니다.')
       loadUsers()
       setOpenMenuUserId(null)
     } catch (error) {
       console.error('상태 변경 실패:', error)
-      alert('상태 변경에 실패했습니다.')
+      toast.error('상태 변경에 실패했습니다.')
     }
   }
 
@@ -207,13 +223,12 @@ function HomepageManagePage() {
       const uploadResults = await uploadFiles([file], 'homepage')
       const uploadedUrl = uploadResults[0].url
       
-      // 3. 전체 URL 생성 및 적용
-      const fullUrl = getFileUrl(uploadedUrl)
-      setNewSlideUrl(fullUrl)
+      // 3. URL 적용 (상대 경로로 저장)
+      setNewSlideUrl(uploadedUrl)
       
     } catch (error) {
       console.error('이미지 업로드 실패:', error)
-      alert('이미지 업로드에 실패했습니다.')
+      toast.error('이미지 업로드에 실패했습니다.')
     } finally {
       setIsUploading(false)
       // input 초기화 (같은 파일 다시 선택 가능하도록)
@@ -397,17 +412,44 @@ function HomepageManagePage() {
     setNewSlideTextElements(newSlideTextElements.filter((el) => el.id !== id))
   }
 
+  const handleEditSlide = (slide: Slide) => {
+    setEditingSlideId(slide.id)
+    // 타입 변환 (대문자 -> 소문자)
+    const type = slide.type === 'IMAGE' ? 'image' : slide.type === 'TEXT' ? 'text' : slide.type
+    setNewSlideType(type)
+    setNewSlideUrl(slide.url || '')
+    setNewSlideLinkUrl(slide.linkUrl || '')
+    setNewSlideTitle(slide.title || '')
+    setNewSlideSubtitle(slide.subtitle || '')
+    setNewSlideBackgroundColor(slide.backgroundColor || '#1e293b')
+    setNewSlideTextElements(slide.textElements || [])
+    
+    setOpenSlideMenuId(null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingSlideId(null)
+    setNewSlideUrl('')
+    setNewSlideLinkUrl('')
+    setNewSlideTitle('')
+    setNewSlideSubtitle('')
+    setNewSlideBackgroundColor('#1e293b')
+    setNewSlideTextElements([])
+    setNewSlideType('text') // 기본값으로 리셋
+  }
+
   const handleAddSlide = async () => {
     if (newSlideType === 'image' && !newSlideUrl.trim()) {
-      alert('이미지 URL을 입력해주세요.')
+      toast.error('이미지 URL을 입력해주세요.')
       return
     }
     if (newSlideType === 'text' && newSlideTextElements.length === 0) {
-      alert('최소 하나의 텍스트 요소를 추가해주세요.')
+      toast.error('최소 하나의 텍스트 요소를 추가해주세요.')
       return
     }
     if (newSlideType === 'text' && newSlideTextElements.some(el => !el.text.trim())) {
-      alert('모든 텍스트 요소의 내용을 입력해주세요.')
+      toast.error('모든 텍스트 요소의 내용을 입력해주세요.')
       return
     }
 
@@ -415,58 +457,91 @@ function HomepageManagePage() {
       const slideData: SlideRequestDto = {
         type: newSlideType,
         url: newSlideType === 'image' ? newSlideUrl : undefined,
-        linkUrl: newSlideType === 'image' ? newSlideLinkUrl : undefined,
-        title: newSlideType === 'image' ? newSlideTitle : undefined,
-        subtitle: newSlideType === 'image' ? newSlideSubtitle : undefined,
-        backgroundColor: newSlideType === 'text' ? newSlideBackgroundColor : undefined,
+        linkUrl: newSlideLinkUrl,
+        title: newSlideTitle,
+        subtitle: newSlideType === 'image' ? undefined : undefined, // 부제목 필드 사용 안함
+        backgroundColor: newSlideBackgroundColor,
         textElements: newSlideType === 'text' ? newSlideTextElements : undefined,
       }
 
-      await createSlide(slideData)
-      alert('슬라이드가 추가되었습니다.')
+      if (editingSlideId) {
+        await updateSlide(editingSlideId, slideData)
+        toast.success('슬라이드가 수정되었습니다.')
+      } else {
+        await createSlide(slideData)
+        toast.success('슬라이드가 추가되었습니다.')
+      }
       
       // 목록 새로고침
       loadSlides()
       
       // 폼 초기화
-      setNewSlideUrl('')
-      setNewSlideLinkUrl('')
-      setNewSlideTitle('')
-      setNewSlideSubtitle('')
-      setNewSlideBackgroundColor('#1e293b')
-      setNewSlideTextElements([])
+      handleCancelEdit()
     } catch (error) {
-      console.error('슬라이드 추가 실패:', error)
-      alert('슬라이드 추가에 실패했습니다.')
+      console.error(editingSlideId ? '슬라이드 수정 실패:' : '슬라이드 추가 실패:', error)
+      toast.error(editingSlideId ? '슬라이드 수정에 실패했습니다.' : '슬라이드 추가에 실패했습니다.')
     }
   }
 
   const handleRemoveSlide = async (id: number) => {
-    if (!confirm('이 슬라이드를 삭제하시겠습니까?')) return
+    const isConfirmed = await confirm({
+      title: '슬라이드 삭제',
+      message: '이 슬라이드를 삭제하시겠습니까?',
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소'
+    })
+
+    if (!isConfirmed) return
 
     try {
       await deleteSlide(id)
-      alert('슬라이드가 삭제되었습니다.')
+      toast.success('슬라이드가 삭제되었습니다.')
       loadSlides()
     } catch (error) {
       console.error('슬라이드 삭제 실패:', error)
-      alert('슬라이드 삭제에 실패했습니다.')
+      toast.error('슬라이드 삭제에 실패했습니다.')
     }
   }
 
   const handleSaveYoutubeLinks = async () => {
     if (!youtubeLinks.liveUrl.trim() || !youtubeLinks.playlistUrl.trim()) {
-      alert('모든 링크를 입력해주세요.')
+      toast.error('모든 링크를 입력해주세요.')
       return
     }
 
     try {
       await updateYoutubeConfig(youtubeLinks)
-      alert('유튜브 링크가 저장되었습니다.')
+      toast.success('유튜브 링크가 저장되었습니다.')
       loadYoutubeLinks()
     } catch (error) {
       console.error('유튜브 링크 저장 실패:', error)
-      alert('유튜브 링크 저장에 실패했습니다.')
+      toast.error('유튜브 링크 저장에 실패했습니다.')
+    }
+  }
+
+  const handleMoveSlide = async (index: number, direction: 'up' | 'down') => {
+    if (direction === 'up' && index === 0) return
+    if (direction === 'down' && index === slides.length - 1) return
+
+    const newSlides = [...slides]
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+    
+    // Swap
+    const temp = newSlides[index]
+    newSlides[index] = newSlides[targetIndex]
+    newSlides[targetIndex] = temp
+
+    // Optimistic update
+    setSlides(newSlides)
+
+    try {
+      const slideIds = newSlides.map(slide => slide.id)
+      await reorderSlides(slideIds)
+    } catch (error) {
+      console.error('슬라이드 순서 변경 실패:', error)
+      toast.error('슬라이드 순서 변경에 실패했습니다.')
+      loadSlides() // Revert on error
     }
   }
 
@@ -656,7 +731,9 @@ function HomepageManagePage() {
 
               {/* 슬라이드 추가 폼 */}
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <h3 className="mb-3 text-sm font-semibold text-slate-900">새 슬라이드 추가</h3>
+                <h3 className="mb-3 text-sm font-semibold text-slate-900">
+                  {editingSlideId ? '슬라이드 수정' : '새 슬라이드 추가'}
+                </h3>
                 <div className="space-y-4">
                   {/* 슬라이드 타입 선택 */}
                   <div>
@@ -693,6 +770,29 @@ function HomepageManagePage() {
                   {newSlideType === 'image' && (
                     <>
                       <div>
+                        <label className="block text-xs font-medium text-slate-700">제목 (선택)</label>
+                        <input
+                          type="text"
+                          value={newSlideTitle}
+                          onChange={(e) => setNewSlideTitle(e.target.value)}
+                          placeholder="슬라이드 제목"
+                          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700">클릭 시 이동할 링크 (선택)</label>
+                        <input
+                          type="url"
+                          value={newSlideLinkUrl}
+                          onChange={(e) => setNewSlideLinkUrl(e.target.value)}
+                          placeholder="https://example.com 또는 /schedules 등"
+                          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <p className="mt-1 text-xs text-slate-500">
+                          슬라이드 클릭 시 이동할 링크를 입력하세요. 외부 URL 또는 내부 경로 모두 가능합니다.
+                        </p>
+                      </div>
+                      <div>
                         <label className="block text-xs font-medium text-slate-700">
                           이미지 파일 또는 URL <span className="text-red-500">*</span>
                         </label>
@@ -702,7 +802,8 @@ function HomepageManagePage() {
                             value={newSlideUrl}
                             onChange={(e) => setNewSlideUrl(e.target.value)}
                             placeholder="https://example.com/image.jpg"
-                            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            readOnly={newSlideUrl.startsWith('/files/')}
+                            className={`flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${newSlideUrl.startsWith('/files/') ? 'bg-slate-100 text-slate-500' : ''}`}
                           />
                           <input
                             type="file"
@@ -725,6 +826,42 @@ function HomepageManagePage() {
                         </p>
                       </div>
                       <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-2">
+                          배경 색상 <span className="text-red-500">*</span>
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="color"
+                            value={newSlideBackgroundColor}
+                            onChange={(e) => setNewSlideBackgroundColor(e.target.value)}
+                            className="h-10 w-20 cursor-pointer rounded border border-slate-300"
+                          />
+                          <input
+                            type="text"
+                            value={newSlideBackgroundColor}
+                            onChange={(e) => setNewSlideBackgroundColor(e.target.value)}
+                            placeholder="#1e293b"
+                            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* 텍스트 슬라이드 전용 필드 */}
+                  {newSlideType === 'text' && (
+                    <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700">제목 (관리용)</label>
+                        <input
+                          type="text"
+                          value={newSlideTitle}
+                          onChange={(e) => setNewSlideTitle(e.target.value)}
+                          placeholder="관리용 제목 (목록에서 확인용)"
+                          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
                         <label className="block text-xs font-medium text-slate-700">클릭 시 이동할 링크 (선택)</label>
                         <input
                           type="url"
@@ -734,35 +871,9 @@ function HomepageManagePage() {
                           className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                         <p className="mt-1 text-xs text-slate-500">
-                          이미지 클릭 시 이동할 링크를 입력하세요. 외부 URL 또는 내부 경로 모두 가능합니다.
+                          슬라이드 클릭 시 이동할 링크를 입력하세요. 외부 URL 또는 내부 경로 모두 가능합니다.
                         </p>
                       </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-700">제목 (선택)</label>
-                        <input
-                          type="text"
-                          value={newSlideTitle}
-                          onChange={(e) => setNewSlideTitle(e.target.value)}
-                          placeholder="슬라이드 제목"
-                          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-700">부제목 (선택)</label>
-                        <input
-                          type="text"
-                          value={newSlideSubtitle}
-                          onChange={(e) => setNewSlideSubtitle(e.target.value)}
-                          placeholder="슬라이드 부제목"
-                          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {/* 텍스트 슬라이드 전용 필드 */}
-                  {newSlideType === 'text' && (
-                    <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4">
                       <div>
                         <label className="block text-xs font-medium text-slate-700 mb-2">
                           배경 색상 <span className="text-red-500">*</span>
@@ -1038,7 +1149,7 @@ function HomepageManagePage() {
                           style={{ backgroundColor: newSlideBackgroundColor }}
                         >
                           <img
-                            src={newSlideUrl}
+                            src={getFileUrl(newSlideUrl)}
                             alt="미리보기"
                             className="h-full w-full object-contain"
                             draggable={false}
@@ -1078,12 +1189,22 @@ function HomepageManagePage() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={handleAddSlide}
-                    className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
-                  >
-                    슬라이드 추가
-                  </button>
+                  <div className="flex gap-2">
+                    {editingSlideId && (
+                      <button
+                        onClick={handleCancelEdit}
+                        className="w-full rounded-lg bg-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-300"
+                      >
+                        취소
+                      </button>
+                    )}
+                    <button
+                      onClick={handleAddSlide}
+                      className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                    >
+                      {editingSlideId ? '슬라이드 수정' : '슬라이드 추가'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1096,19 +1217,50 @@ function HomepageManagePage() {
                   </div>
                 ) : (
                   <div className="grid gap-4 sm:grid-cols-2">
-                    {slides.map((slide) => (
+                    {slides.map((slide, index) => (
                       <div
                         key={slide.id}
                         className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
                       >
                         <div className="relative h-40 w-full bg-slate-100">
+                          {/* 순서 표시 및 변경 버튼 */}
+                          <div className="absolute left-2 top-2 z-10 flex items-center gap-1 rounded-full bg-black/50 px-2 py-1 text-white backdrop-blur-sm">
+                            <span className="mr-1 text-xs font-bold">{index + 1}</span>
+                            <div className="flex flex-col gap-0.5">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleMoveSlide(index, 'up')
+                                }}
+                                disabled={index === 0}
+                                className="flex h-3 w-3 items-center justify-center rounded bg-white/20 hover:bg-white/40 disabled:opacity-30"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="m18 15-6-6-6 6"/>
+                                </svg>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleMoveSlide(index, 'down')
+                                }}
+                                disabled={index === slides.length - 1}
+                                className="flex h-3 w-3 items-center justify-center rounded bg-white/20 hover:bg-white/40 disabled:opacity-30"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="m6 9 6 6 6-6"/>
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+
                           {slide.type === 'image' || slide.type === 'IMAGE' ? (
                             <div 
                               className="relative h-full w-full"
                               style={{ backgroundColor: slide.backgroundColor || '#1e293b' }}
                             >
                               <img
-                                src={slide.url}
+                                src={getFileUrl(slide.url)}
                                 alt="슬라이드"
                                 className="h-full w-full object-contain"
                               />
@@ -1137,17 +1289,47 @@ function HomepageManagePage() {
                               ))}
                             </div>
                           )}
-                          <div className="absolute right-2 top-2">
+                          <div className="absolute right-2 top-2 z-10">
                             <button
-                              onClick={() => handleRemoveSlide(slide.id)}
-                              className="rounded-full bg-white/80 p-1.5 text-red-600 hover:bg-white"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setOpenSlideMenuId(openSlideMenuId === slide.id ? null : slide.id)
+                              }}
+                              className="rounded-full bg-white/80 p-1.5 text-slate-600 hover:bg-white transition shadow-sm"
                             >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M3 6h18"></path>
-                                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-                                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="1" />
+                                <circle cx="12" cy="5" r="1" />
+                                <circle cx="12" cy="19" r="1" />
                               </svg>
                             </button>
+
+                            {openSlideMenuId === slide.id && (
+                              <div 
+                                className="absolute right-0 top-full mt-1 w-32 origin-top-right rounded-lg border border-slate-200 bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-20"
+                              >
+                                <div className="py-1">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleEditSlide(slide)
+                                    }}
+                                    className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+                                  >
+                                    수정
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleRemoveSlide(slide.id)
+                                    }}
+                                    className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-slate-100"
+                                  >
+                                    삭제
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="p-3">
@@ -1159,12 +1341,10 @@ function HomepageManagePage() {
                               <span className="text-xs text-blue-600">🔗 링크 있음</span>
                             )}
                           </div>
-                          {(slide.type === 'image' || slide.type === 'IMAGE') && (
-                            <div className="mt-2 space-y-0.5">
-                              {slide.title && <p className="truncate text-sm font-medium text-slate-900">{slide.title}</p>}
-                              {slide.subtitle && <p className="truncate text-xs text-slate-500">{slide.subtitle}</p>}
-                            </div>
-                          )}
+                          <div className="mt-2 space-y-0.5">
+                            {slide.title && <p className="truncate text-sm font-medium text-slate-900">{slide.title}</p>}
+                            {slide.subtitle && <p className="truncate text-xs text-slate-500">{slide.subtitle}</p>}
+                          </div>
                         </div>
                       </div>
                     ))}

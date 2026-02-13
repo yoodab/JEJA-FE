@@ -6,10 +6,20 @@
 const TOKEN_KEY = 'accessToken'
 const REFRESH_TOKEN_KEY = 'refreshToken'
 const USER_ROLE_KEY = 'userRole'
+const MEMBER_ROLES_KEY = 'memberRoles'
 const IS_LOGGED_IN_KEY = 'isLoggedIn'
 
-// 관리자 역할 목록
-export const MANAGER_ROLES = ['ROLE_ADMIN', 'ROLE_PASTOR', 'ROLE_EXECUTIVE'] as const
+// 관리자 역할 목록 (시스템 권한 및 특정 직분)
+export const MANAGER_ROLES = [
+  'ROLE_ADMIN', 
+  'ROLE_PASTOR', 
+  'ROLE_MANAGER', 
+  'ROLE_EXECUTIVE', 
+  'ROLE_TEAM_LEADER',
+  'EXECUTIVE',
+  'TEAM_LEADER',
+  'MANAGER'
+] as const
 
 export type ManagerRole = (typeof MANAGER_ROLES)[number]
 
@@ -72,6 +82,26 @@ export function getUserRole(): string | null {
 }
 
 /**
+ * 교인 직분 목록 저장
+ */
+export function setMemberRoles(roles: string[]): void {
+  localStorage.setItem(MEMBER_ROLES_KEY, JSON.stringify(roles))
+}
+
+/**
+ * 교인 직분 목록 조회
+ */
+export function getMemberRoles(): string[] {
+  const roles = localStorage.getItem(MEMBER_ROLES_KEY)
+  if (!roles) return []
+  try {
+    return JSON.parse(roles)
+  } catch {
+    return []
+  }
+}
+
+/**
  * 로그인 상태 저장
  */
 export function setLoggedIn(isLoggedIn: boolean): void {
@@ -92,22 +122,32 @@ export function isLoggedIn(): boolean {
  */
 export function isManager(): boolean {
   const role = getUserRole()
-  if (!role) {
-    if (import.meta.env.DEV) {
-      console.warn('isManager: role이 없습니다')
-    }
-    return false
-  }
+  const memberRoles = getMemberRoles()
   
-  // 백엔드에서 'ADMIN', 'PASTOR', 'EXECUTIVE' 형식으로 올 수도 있으므로
-  // 'ROLE_' 접두사가 없으면 추가하여 비교
-  const normalizedRole = role.startsWith('ROLE_') ? role : `ROLE_${role}`
-  const isManagerRole = MANAGER_ROLES.includes(normalizedRole as ManagerRole)
+  // 시스템 역할 정규화
+  const normalizedRole = role ? (role.startsWith('ROLE_') ? role : `ROLE_${role}`) : null
+  
+  // 직분 목록 정규화
+  const normalizedMemberRoles = memberRoles.map(r => r.startsWith('ROLE_') ? r : `ROLE_${r}`)
+  
+  // 모든 권한 합치기
+  const allRoles = [
+    ...(role ? [role] : []),
+    ...(normalizedRole ? [normalizedRole] : []),
+    ...memberRoles,
+    ...normalizedMemberRoles
+  ]
+  
+  // 대소문자 구분 없이 비교하기 위해 모두 대문자로 변환하여 비교
+  const isManagerRole = allRoles.some(r => 
+    MANAGER_ROLES.some(m => m.toUpperCase() === r.toUpperCase())
+  )
   
   if (import.meta.env.DEV) {
     console.log('isManager 체크:', {
       originalRole: role,
-      normalizedRole,
+      memberRoles,
+      allRoles,
       isManagerRole,
       availableRoles: MANAGER_ROLES,
     })
@@ -123,17 +163,21 @@ export function clearAuth(): void {
   removeToken()
   removeRefreshToken()
   localStorage.removeItem(USER_ROLE_KEY)
+  localStorage.removeItem(MEMBER_ROLES_KEY)
   localStorage.removeItem(IS_LOGGED_IN_KEY)
 }
 
 /**
  * 인증 정보 일괄 설정
  */
-export function setAuth(token: string, role?: string, refreshToken?: string): void {
+export function setAuth(token: string, role?: string, refreshToken?: string, memberRoles?: string[]): void {
   setToken(token)
   setLoggedIn(true)
   if (role) {
     setUserRole(role)
+  }
+  if (memberRoles) {
+    setMemberRoles(memberRoles)
   }
   if (refreshToken) {
     setRefreshToken(refreshToken)

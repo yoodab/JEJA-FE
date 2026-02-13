@@ -50,6 +50,7 @@ export interface FormAccess {
   accessType: AccessType;
   targetType: TargetType;
   targetValue?: string; // "ROLE_LEADER", "1", "ALL" etc.
+  targetName?: string; // Frontend display only (e.g. Member Name, Club Name)
 }
 
 export interface FormQuestion {
@@ -65,6 +66,7 @@ export interface FormQuestion {
   linkedWorshipCategory?: WorshipCategory; // 출석 자동 연동 타겟
   linkedScheduleId?: number; // 특정 일정 참석여부 조사용 일정 ID
   linkedScheduleDate?: string; // 특정 날짜 (반복 일정 대응, YYYY-MM-DD)
+  imageUrl?: string; // 질문에 포함된 이미지 URL
   
   // Frontend Only
   linkedSchedules?: {id: number, title: string, startDate: string, questionId?: number}[]; 
@@ -75,7 +77,10 @@ export interface FormSubmission {
   templateId: number;
   submitterName: string; // 순장 이름 (예: "윤다빈")
   submitDate: string;    // 실제 제출일 (예: "2026-01-10")
+  submitTime: string;    // 실제 제출일시 (예: "2026-01-10T10:00:00")
   targetSundayDate?: string; // 보고서 해당 주일 (예: "2026-01-11")
+  targetCellName?: string;  // 순 이름 (예: "다빈순")
+  targetCellId?: number;    // 순 ID (예: 1)
   status: SubmissionStatus;
   answers: FormAnswer[];
 }
@@ -93,6 +98,17 @@ export interface ClubSubmissionResponse {
   submitterName: string;
   submitDate: string;
   status: SubmissionStatus;
+}
+
+export interface MySubmissionResponse {
+  submissionId: number;
+  templateId: number;
+  templateTitle: string;
+  submitterName: string;
+  submitTime: string;
+  targetSundayDate?: string;
+  status: SubmissionStatus;
+  targetCellName?: string;
 }
 
 export interface SubmissionDetailResponse {

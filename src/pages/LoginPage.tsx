@@ -16,6 +16,8 @@ function LoginPage() {
     setIsLoading(true)
     try {
       await login({ loginId, password })
+      // 로그인 성공 시 스토리지 이벤트 발생시켜 헤더 업데이트 강제
+      window.dispatchEvent(new Event('storage'))
       // 로그인 성공 시 일반 유저 메인으로 이동
       navigate('/user-dashboard', { replace: true })
     } catch (err: unknown) {

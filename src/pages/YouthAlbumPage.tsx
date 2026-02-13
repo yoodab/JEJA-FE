@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
+import { useConfirm } from '../contexts/ConfirmContext'
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
 import { isManager } from '../utils/auth'
@@ -16,6 +18,7 @@ import {
 
 function YouthAlbumPage() {
   const navigate = useNavigate()
+  const { confirm } = useConfirm()
   const [albums, setAlbums] = useState<AlbumListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -61,7 +64,7 @@ function YouthAlbumPage() {
 
   const handleCreateAlbum = async () => {
     if (!newAlbumTitle.trim()) {
-      alert('앨범 제목을 입력해주세요.')
+      toast.error('앨범 제목을 입력해주세요.')
       return
     }
     
@@ -72,7 +75,7 @@ function YouthAlbumPage() {
         readPermission: newReadPermission,
         writePermission: newWritePermission,
       })
-      alert('앨범이 생성되었습니다.')
+      toast.success('앨범이 생성되었습니다.')
       setIsCreateModalOpen(false)
       setNewAlbumTitle('')
       setNewAlbumDate('')
@@ -85,13 +88,13 @@ function YouthAlbumPage() {
       }
     } catch (error) {
       console.error('앨범 생성 실패:', error)
-      alert('앨범 생성에 실패했습니다.')
+      toast.error('앨범 생성에 실패했습니다.')
     }
   }
 
   const handleUpdateAlbum = async () => {
     if (!editAlbumTitle.trim()) {
-      alert('앨범 제목을 입력해주세요.')
+      toast.error('앨범 제목을 입력해주세요.')
       return
     }
     if (!editingAlbumId) return
@@ -103,28 +106,33 @@ function YouthAlbumPage() {
         readPermission: editReadPermission,
         writePermission: editWritePermission,
       })
-      alert('앨범이 수정되었습니다.')
+      toast.success('앨범이 수정되었습니다.')
       setIsEditModalOpen(false)
       setEditingAlbumId(null)
       loadAlbums()
     } catch (error) {
       console.error('앨범 수정 실패:', error)
-      alert('앨범 수정에 실패했습니다.')
+      toast.error('앨범 수정에 실패했습니다.')
     }
   }
 
   const handleDeleteAlbum = async (albumId: number, title: string) => {
-    if (!confirm(`"${title}" 앨범을 삭제하시겠습니까?`)) {
-      return
-    }
+    const isConfirmed = await confirm({
+      title: '앨범 삭제',
+      message: `"${title}" 앨범을 삭제하시겠습니까?`,
+      type: 'danger',
+      confirmText: '삭제'
+    })
+
+    if (!isConfirmed) return
 
     try {
       await deleteAlbum(albumId)
-      alert('앨범이 삭제되었습니다.')
+      toast.success('앨범이 삭제되었습니다.')
       loadAlbums()
     } catch (error) {
       console.error('앨범 삭제 실패:', error)
-      alert('앨범 삭제에 실패했습니다.')
+      toast.error('앨범 삭제에 실패했습니다.')
     }
   }
 

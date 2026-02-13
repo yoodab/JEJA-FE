@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Editor } from '@toast-ui/react-editor'
+import toast from 'react-hot-toast'
+import { useConfirm } from '../contexts/ConfirmContext'
 import '@toast-ui/editor/dist/toastui-editor.css'
 import colorSyntax from '@toast-ui/editor-plugin-color-syntax'
 import 'tui-color-picker/dist/tui-color-picker.css'
@@ -14,6 +16,7 @@ interface RichTextEditorProps {
 
 export default function RichTextEditor({ value, onChange, height = '400px' }: RichTextEditorProps) {
   const editorRef = useRef<Editor>(null)
+  const { confirm } = useConfirm()
   const isUpdatingRef = useRef(false)
   // 리사이즈 중인지 추적하는 ref 추가 (컴포넌트 레벨)
   const isResizingRef = useRef(false)
@@ -199,10 +202,19 @@ export default function RichTextEditor({ value, onChange, height = '400px' }: Ri
     
     if (!editorRect) return null
 
-    const handleDelete = (e: React.MouseEvent) => {
+    const handleDelete = async (e: React.MouseEvent) => {
       e.stopPropagation()
       e.preventDefault()
-      if (window.confirm('이미지를 삭제하시겠습니까?')) {
+      
+      const isConfirmed = await confirm({
+        title: '이미지 삭제',
+        message: '이미지를 삭제하시겠습니까?',
+        type: 'danger',
+        confirmText: '삭제',
+        cancelText: '취소'
+      })
+
+      if (isConfirmed) {
         // 단순하고 확실한 방법: DOM 제거 후 상태 동기화
         img.remove()
         
@@ -360,7 +372,7 @@ export default function RichTextEditor({ value, onChange, height = '400px' }: Ri
               callback(imageUrl, '이미지')
             }
             reader.onerror = () => {
-              alert('이미지 업로드에 실패했습니다.')
+              toast.error('이미지 업로드에 실패했습니다.')
             }
             reader.readAsDataURL(blob)
           },

@@ -1,47 +1,122 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import UserHeader from '../components/UserHeader';
 import Footer from '../components/Footer';
-import { getFormSubmission } from '../services/formService';
-import type { FormSubmission } from '../types/form';
-import { ChevronLeft, Calendar, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { getFormSubmission, getLastSubmission, getTemplateDetail } from '../services/formService';
+import { getCellDetail, getMyCell } from '../services/cellService';
+import type { FormSubmission, FormTemplate } from '../types/form';
+import { DynamicFormRenderer } from '../components/forms/DynamicFormRenderer';
+import { ChevronLeft, Calendar, Clock, CheckCircle, AlertCircle, Edit3, User, Users } from 'lucide-react';
 
 function ReportViewPage() {
   const { submissionId } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   
   const [submission, setSubmission] = useState<FormSubmission | null>(null);
+  const [template, setTemplate] = useState<FormTemplate | null>(null);
+  const [answers, setAnswers] = useState<any>({});
+  const [displayMembers, setDisplayMembers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const templateIdParam = searchParams.get('templateId');
+  const date = searchParams.get('date');
+  
+  const handleEdit = () => {
+    if (!submission) return;
+    navigate(`/reports/write/${submission.templateId}?submissionId=${submission.id}`);
+  };
   
   useEffect(() => {
-    const fetchSubmission = async () => {
-      if (!submissionId) return;
+    const fetchData = async () => {
+      setLoading(true);
       try {
-        setLoading(true);
-        const data = await getFormSubmission(Number(submissionId));
-        setSubmission(data);
+        let currentTemplateId = templateIdParam ? parseInt(templateIdParam) : undefined;
+        let subData: FormSubmission | null = null;
+
+        // 1. Fetch submission first if we have submissionId or templateIdParam + date
+        if (submissionId) {
+          subData = await getFormSubmission(Number(submissionId));
+          setSubmission(subData);
+          if (!currentTemplateId) {
+            currentTemplateId = subData.templateId;
+          }
+        } else if (templateIdParam && date) {
+          subData = await getLastSubmission(Number(templateIdParam), date);
+          setSubmission(subData);
+        }
+
+        // 2. Fetch template
+        if (currentTemplateId) {
+          const tmplData = await getTemplateDetail(currentTemplateId);
+          setTemplate(tmplData);
+
+          if (subData) {
+            // Transform answers for DynamicFormRenderer
+            const newAnswers: Record<string, any> = {};
+            if (tmplData.type === 'PERSONAL') {
+              subData.answers.forEach(item => {
+                newAnswers[item.questionId] = item.value;
+              });
+            } else {
+              // GROUP
+              subData.answers.forEach(ans => {
+                const memberName = ans.targetMemberName || 'COMMON';
+                if (!newAnswers[memberName]) {
+                  newAnswers[memberName] = {};
+                }
+                newAnswers[memberName][ans.questionId] = ans.value;
+              });
+            }
+            setAnswers(newAnswers);
+
+            // 3. Fetch cell members if it's a GROUP form
+            if (tmplData.type === 'GROUP') {
+              try {
+                let cellDetail = null;
+                if (subData.targetCellId) {
+                  cellDetail = await getCellDetail(subData.targetCellId);
+                } else if (tmplData.category === 'CELL_REPORT') {
+                  // Fallback for missing targetCellId: try to get current user's cell
+                  try {
+                    const myCell = await getMyCell();
+                    cellDetail = await getCellDetail(myCell.cellId);
+                  } catch (e) {
+                    console.warn('Failed to fetch fallback cell members:', e);
+                  }
+                }
+
+                if (cellDetail) {
+                  const allMembers = [];
+                  if (cellDetail.leaderName) allMembers.push(cellDetail.leaderName);
+                  if (cellDetail.members) {
+                    allMembers.push(...cellDetail.members.map(m => m.name));
+                  }
+                  
+                  const membersFromAnswers = Object.keys(newAnswers).filter(m => m !== 'COMMON');
+                  const combinedMembers = Array.from(new Set([...allMembers, ...membersFromAnswers]));
+                  setDisplayMembers(combinedMembers);
+                } else {
+                  const membersFromAnswers = Object.keys(newAnswers).filter(m => m !== 'COMMON');
+                  setDisplayMembers(membersFromAnswers);
+                }
+              } catch (error) {
+                console.error('Failed to fetch cell members for view:', error);
+                const membersFromAnswers = Object.keys(newAnswers).filter(m => m !== 'COMMON');
+                setDisplayMembers(membersFromAnswers);
+              }
+            }
+          }
+        }
       } catch (error) {
-        console.error('Failed to fetch submission:', error);
+        console.error('Failed to fetch data:', error);
       } finally {
         setLoading(false);
       }
     };
     
-    fetchSubmission();
-  }, [submissionId]);
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'APPROVED':
-        return <span className="flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-sm font-bold text-blue-700"><CheckCircle className="h-4 w-4" /> 승인됨</span>;
-      case 'PENDING':
-        return <span className="flex items-center gap-1 rounded-full bg-yellow-100 px-3 py-1 text-sm font-bold text-yellow-700"><Clock className="h-4 w-4" /> 대기중</span>;
-      case 'REJECTED':
-        return <span className="flex items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-sm font-bold text-red-700"><AlertCircle className="h-4 w-4" /> 반려됨</span>;
-      default:
-        return <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-600">{status}</span>;
-    }
-  };
+    fetchData();
+  }, [submissionId, templateIdParam, date]);
 
   if (loading) {
     return (
@@ -51,124 +126,108 @@ function ReportViewPage() {
     );
   }
 
-  if (!submission) {
+  if (!template) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p>보고서를 찾을 수 없습니다.</p>
+        <div className="text-center">
+          <p className="mb-4 text-slate-500">양식을 찾을 수 없습니다.</p>
+          <button
+            onClick={() => navigate('/my-reports')}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-white"
+          >
+            목록으로 돌아가기
+          </button>
+        </div>
       </div>
     );
   }
 
-  // Group answers by member (if any)
-  const groupedAnswers: Record<string, typeof submission.answers> = {};
-  const commonAnswers: typeof submission.answers = [];
+  const isExpired = submission?.submitTime ? (new Date().getTime() - new Date(submission.submitTime).getTime()) > (7 * 24 * 60 * 60 * 1000) : false;
+  const canEdit = submission && submission.status === 'PENDING' && !isExpired;
 
-  submission.answers.forEach(ans => {
-    if (ans.targetMemberName) {
-      if (!groupedAnswers[ans.targetMemberName]) {
-        groupedAnswers[ans.targetMemberName] = [];
-      }
-      groupedAnswers[ans.targetMemberName].push(ans);
-    } else {
-      commonAnswers.push(ans);
-    }
-  });
-
-  const hasGroupedAnswers = Object.keys(groupedAnswers).length > 0;
+  // Use displayMembers if available, otherwise fallback to keys in answers
+  const submittedMembers = template?.type === 'GROUP' 
+    ? (displayMembers.length > 0 ? displayMembers : Object.keys(answers).filter(m => m !== 'COMMON'))
+    : [];
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-      <div className="mx-auto max-w-6xl space-y-6">
+      <div className="mx-auto max-w-4xl space-y-6">
         <UserHeader />
         
         {/* Header */}
         <div className="flex items-center gap-4">
           <button 
             onClick={() => navigate(-1)}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm hover:bg-slate-50"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm hover:bg-slate-50 transition-colors"
           >
             <ChevronLeft className="h-6 w-6 text-slate-600" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold">보고서 결과</h1>
-            <p className="text-sm text-slate-500">{submission.submitDate} 제출</p>
+            <h1 className="text-2xl font-bold text-slate-800">{template.title} 조회</h1>
+            {submission && <p className="text-sm text-slate-500 mt-1">{submission.submitDate} 제출됨</p>}
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          {/* Metadata */}
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-lg bg-slate-50 p-4">
+        <div className="rounded-2xl border border-slate-100 bg-white p-6 sm:p-8 shadow-xl shadow-slate-200/50">
+          {/* Metadata Grid */}
+          <div className="mb-10 grid grid-cols-1 gap-4 rounded-xl bg-slate-50 p-6 border border-slate-100 sm:grid-cols-3">
             <div className="space-y-1">
-              <p className="text-sm font-medium text-slate-500">제출자</p>
-              <p className="font-bold text-slate-900">{submission.submitterName}</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">제출자</p>
+              <div className="flex items-center gap-2 font-bold text-slate-900">
+                <User className="h-4 w-4 text-slate-400" />
+                {submission?.submitterName || '미제출'}
+              </div>
             </div>
-            {submission.targetSundayDate && (
+
+            {submission?.targetCellName && (
               <div className="space-y-1">
-                <p className="text-sm font-medium text-slate-500">보고서 기준일</p>
-                <div className="flex items-center gap-1 font-bold text-slate-900">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">소속 순</p>
+                <div className="flex items-center gap-2 font-bold text-slate-900">
+                  <Users className="h-4 w-4 text-purple-500" />
+                  {submission.targetCellName}
+                </div>
+              </div>
+            )}
+
+            {submission?.targetSundayDate && (
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">보고서 기준일</p>
+                <div className="flex items-center gap-2 font-bold text-slate-900">
                   <Calendar className="h-4 w-4 text-blue-500" />
                   {submission.targetSundayDate}
                 </div>
               </div>
             )}
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-slate-500">상태</p>
-              <div>{getStatusBadge(submission.status)}</div>
-            </div>
           </div>
 
-          {/* Form Content */}
+          {/* Form Content - Use DynamicFormRenderer in readOnly mode */}
           <div className="space-y-8">
-            {/* Common Answers (or Personal Report Answers) */}
-            {commonAnswers.length > 0 && (
-              <div className="space-y-6">
-                {hasGroupedAnswers && <h3 className="text-lg font-bold text-slate-800">공통 질문</h3>}
-                {commonAnswers.map((ans, idx) => (
-                  <div key={idx} className="space-y-2">
-                    <label className="block text-sm font-bold text-slate-700">
-                      Q. {ans.questionLabel || `질문 ${ans.questionId}`}
-                    </label>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-slate-800">
-                      {ans.value}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Grouped Answers (for Group Reports) */}
-            {hasGroupedAnswers && (
-              <div className="space-y-8">
-                {Object.entries(groupedAnswers).map(([memberName, answers]) => (
-                  <div key={memberName} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <h3 className="mb-4 border-b border-slate-100 pb-2 text-lg font-bold text-blue-600">
-                      {memberName}
-                    </h3>
-                    <div className="space-y-6">
-                      {answers.map((ans, idx) => (
-                        <div key={idx} className="space-y-2">
-                          <label className="block text-sm font-bold text-slate-700">
-                            Q. {ans.questionLabel || `질문 ${ans.questionId}`}
-                          </label>
-                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-slate-800">
-                            {ans.value}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <DynamicFormRenderer
+              template={template}
+              answers={answers}
+              onChange={() => {}} // No-op for readOnly
+              members={submittedMembers}
+              readOnly={true}
+            />
           </div>
 
-          <div className="mt-8 flex justify-end border-t border-slate-100 pt-6">
+          <div className="mt-12 flex flex-col sm:flex-row justify-center items-center gap-4 border-t border-slate-100 pt-8">
             <button
               onClick={() => navigate('/my-reports')}
-              className="rounded-lg bg-slate-100 px-6 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200"
+              className="w-full sm:w-auto rounded-xl bg-slate-100 px-8 py-3 text-sm font-bold text-slate-600 hover:bg-slate-200 transition-colors"
             >
               목록으로 돌아가기
             </button>
+            {canEdit && (
+              <button
+                onClick={handleEdit}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-8 py-3 text-sm font-bold text-white hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
+              >
+                <Edit3 className="h-4 w-4" />
+                수정하기
+              </button>
+            )}
           </div>
         </div>
         

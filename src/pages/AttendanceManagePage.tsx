@@ -1,5 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import axios from 'axios'
+import { toast } from 'react-hot-toast'
+import { useConfirm } from '../contexts/ConfirmContext'
 import {
   getAttendanceSheet,
   checkInByAdmin,
@@ -16,7 +19,14 @@ import { getCells, getUnassignedMembers, type Cell } from '../services/cellServi
 import { getMembers } from '../services/memberService'
 import { scheduleService } from '../services/scheduleService'
 import { formatPhoneNumber } from '../utils/format'
-import type { Schedule, WorshipCategory } from '../types/schedule'
+import type {
+  Schedule,
+  WorshipCategory,
+  ScheduleType,
+  SharingScope,
+  RecurrenceRule,
+  CreateScheduleRequest,
+} from '../types/schedule'
 import type { Member } from '../types/member'
 
 type TabType = 'check' | 'confirmation'
@@ -28,9 +38,42 @@ interface CellColumn {
   members: Member[]
 }
 
+interface ScheduleFormData {
+  title: string
+  startDate: string // YYYY-MM-DD
+  endDate: string // YYYY-MM-DD
+  startTime: string // HH:mm
+  endTime: string // HH:mm
+  type: ScheduleType
+  location: string
+  content: string
+  recurrenceRule: RecurrenceRule
+  recurrenceEndDate: string // YYYY-MM-DD
+  sharingScope: SharingScope
+  worshipCategory?: string
+  createAlbum: boolean
+}
+
+const initialFormData: ScheduleFormData = {
+  title: '',
+  startDate: '',
+  endDate: '',
+  startTime: '10:00',
+  endTime: '11:00',
+  type: 'MEETING',
+  location: '',
+  content: '',
+  recurrenceRule: 'NONE',
+  recurrenceEndDate: '',
+  sharingScope: 'LOGGED_IN_USERS',
+  worshipCategory: undefined,
+  createAlbum: false,
+}
+
 function AttendanceManagePage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const { confirm } = useConfirm()
 
   const [activeTab, setActiveTab] = useState<TabType>('check')
   const [activeSubTab, setActiveSubTab] = useState<SubTabType>('OVERVIEW')
@@ -38,181 +81,142 @@ function AttendanceManagePage() {
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     return searchParams.get('date') || new Date().toISOString().split('T')[0]
   })
-  const [offering, setOffering] = useState<number>(0)
 
   const [allSchedules, setAllSchedules] = useState<Schedule[]>([])
   const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null)
   const [schedulesLoading, setSchedulesLoading] = useState(false)
   const [schedulesError, setSchedulesError] = useState<string | null>(null)
 
-  const [attendanceSheet, setAttendanceSheet] =
-    useState<AttendanceSheetResponseDto | null>(null)
-  const [attendanceModeOverride, setAttendanceModeOverride] =
-    useState<'GENERAL' | null>(null)
-  const [attendedMemberIds, setAttendedMemberIds] = useState<Set<number>>(new Set())
+  // 출석 데이터 상태
+  const [attendanceSheet, setAttendanceSheet] = useState<AttendanceSheetResponseDto | null>(null)
   const [sheetLoading, setSheetLoading] = useState(false)
   const [sheetError, setSheetError] = useState<string | null>(null)
+  const [attendedMemberIds, setAttendedMemberIds] = useState<Set<number>>(new Set())
+  const [isSavingAttendance, setIsSavingAttendance] = useState(false)
+  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [attendanceModeOverride, setAttendanceModeOverride] = useState<'GENERAL' | 'PARTICIPANT' | null>(null)
 
+  // 멤버 및 순 데이터 상태
   const [cells, setCells] = useState<Cell[]>([])
   const [unassignedMembers, setUnassignedMembers] = useState<Member[]>([])
   const [membersLoading, setMembersLoading] = useState(false)
   const [membersError, setMembersError] = useState<string | null>(null)
+  const [newcomerList, setNewcomerList] = useState<Member[]>([])
+  const [visibleMemberIds, setVisibleMemberIds] = useState<Set<number> | null>(() => {
+    const saved = localStorage.getItem('visible_member_ids')
+    return saved ? new Set(JSON.parse(saved)) : null
+  })
 
-  const [isSavingAttendance, setIsSavingAttendance] = useState(false)
-  const [saveMessage, setSaveMessage] = useState<{
-    type: 'success' | 'error'
-    text: string
-  } | null>(null)
-
-  const [visibleMemberIds, setVisibleMemberIds] = useState<Set<number> | null>(null)
-  const [isListManageOpen, setIsListManageOpen] = useState(false)
-  const [listManageSelection, setListManageSelection] = useState<Set<number>>(
-    new Set(),
-  )
-
-  const [isNewcomerModalOpen, setIsNewcomerModalOpen] = useState(false)
-  const [newNewcomerName, setNewNewcomerName] = useState('')
-  const [newNewcomerGender, setNewNewcomerGender] = useState<'MALE' | 'FEMALE'>('MALE')
-  const [isNewcomerSaving, setIsNewcomerSaving] = useState(false)
-
+  // 통계 관련 상태
+  const [periodStats, setPeriodStats] = useState<AttendanceStatisticsResponseDto | null>(null)
+  const [periodLoading, setPeriodLoading] = useState(false)
+  const [periodError, setPeriodError] = useState<string | null>(null)
   const [dateRangeStart, setDateRangeStart] = useState<string>(() => {
-    const date = new Date()
-    date.setMonth(date.getMonth() - 6)
-    return date.toISOString().split('T')[0]
+    const d = new Date()
+    d.setMonth(d.getMonth() - 1)
+    return d.toISOString().split('T')[0]
   })
   const [dateRangeEnd, setDateRangeEnd] = useState<string>(() => {
     return new Date().toISOString().split('T')[0]
   })
-
-  const [filterScheduleTypes, setFilterScheduleTypes] = useState<
-    ('WORSHIP' | 'EVENT' | 'MEETING')[]
-  >([])
+  const [filterScheduleTypes, setFilterScheduleTypes] = useState<string[]>([])
   const [filterWorshipCategories, setFilterWorshipCategories] = useState<string[]>([])
-  const [worshipCategories, setWorshipCategories] = useState<WorshipCategory[]>([])
 
-  const [statSelectedSchedule, setStatSelectedSchedule] = useState<{
-    id: number
-    name: string
-  } | null>(null)
-  const [isStatListOpen, setIsStatListOpen] = useState(false)
-  const [statAttendanceList, setStatAttendanceList] = useState<AttendanceRecordDto[]>([])
-  const [statListLoading, setStatListLoading] = useState(false)
-
-  const handleStatPointClick = async (
-    scheduleId: number,
-    scheduleName: string,
-    dateStr: string,
-  ) => {
-    setStatSelectedSchedule({ id: scheduleId, name: scheduleName })
-    setIsStatListOpen(true)
-    setStatListLoading(true)
-    try {
-      const sheet = await getAttendanceSheet(scheduleId, dateStr)
-      const sorted = sheet.records
-        .filter((r) => r.attended)
-        .sort((a, b) => a.name.localeCompare(b.name))
-      setStatAttendanceList(sorted)
-    } catch (err) {
-      console.error(err)
-      alert('출석 명단을 불러오는데 실패했습니다.')
-    } finally {
-      setStatListLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const categories = await scheduleService.getWorshipCategories()
-        setWorshipCategories(categories)
-      } catch (err) {
-        console.error('Failed to fetch worship categories:', err)
-      }
-    }
-    fetchCategories()
-  }, [])
-
-  const [periodStats, setPeriodStats] = useState<AttendanceStatisticsResponseDto | null>(
-    null,
-  )
-  const [periodLoading, setPeriodLoading] = useState(false)
-  const [periodError, setPeriodError] = useState<string | null>(null)
-
-  const [memberStats, setMemberStatsState] = useState<MemberAttendanceStatResponseDto[]>(
-    [],
-  )
+  // 인원별 통계 상태
+  const [memberStats, setMemberStatsState] = useState<MemberAttendanceStatResponseDto[]>([])
   const [memberStatsLoading, setMemberStatsLoading] = useState(false)
   const [memberStatsError, setMemberStatsError] = useState<string | null>(null)
   const [memberSearchQuery, setMemberSearchQuery] = useState('')
-  const [newcomerList, setNewcomerList] = useState<Member[]>([])
 
   // 명단 관리 모달 상태
-  const [memberManageMode, setMemberManageMode] = useState<'ADD' | 'REMOVE' | null>(null)
-  const [showMemberManageModal, setShowMemberManageModal] = useState(false)
-  const [availableMembers, setAvailableMembers] = useState<Member[]>([])
-  const [selectedMemberIdsForManage, setSelectedMemberIdsForManage] = useState<number[]>([])
-  const [memberSearchKeyword, setMemberSearchKeyword] = useState('')
-  const [memberListLoading, setMemberListLoading] = useState(false)
+  const [isListManageOpen, setIsListManageOpen] = useState(false)
+  const [listManageSelection, setListManageSelection] = useState<Set<number>>(new Set())
 
-  useEffect(() => {
-    const stored = localStorage.getItem('visible_member_ids')
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as number[]
-        setVisibleMemberIds(new Set(parsed))
-      } catch {
-        setVisibleMemberIds(null)
-      }
-    } else {
-      setVisibleMemberIds(null)
+  // 새신자 추가 모달 상태
+  const [isNewcomerModalOpen, setIsNewcomerModalOpen] = useState(false)
+  const [newNewcomerName, setNewNewcomerName] = useState('')
+  const [newNewcomerGender, setNewNewcomerGender] = useState<'MALE' | 'FEMALE' | 'NONE'>('MALE')
+  const [isNewcomerSaving, setIsNewcomerSaving] = useState(false)
+
+  // 멤버 관리(참가자 출석부) 모달 상태
+  const [showMemberManageModal, setShowMemberManageModal] = useState(false)
+  const [memberManageMode, setMemberManageMode] = useState<'ADD' | 'REMOVE'>('ADD')
+  const [memberSearchKeyword, setMemberSearchKeyword] = useState('')
+  const [availableMembers, setAvailableMembers] = useState<Member[]>([])
+  const [memberListLoading, setMemberListLoading] = useState(false)
+  const [selectedMemberIdsForManage, setSelectedMemberIdsForManage] = useState<number[]>([])
+
+  // 일정 생성 모달 상태
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [scheduleFormData, setScheduleFormData] = useState<ScheduleFormData>(initialFormData)
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false)
+  const [worshipCategories, setWorshipCategories] = useState<WorshipCategory[]>([])
+
+  // 통계 상세 명단 모달 상태
+  const [isStatListOpen, setIsStatListOpen] = useState(false)
+  const [statSelectedSchedule, setStatSelectedSchedule] = useState<{ id: number; name: string; date: string } | null>(null)
+  const [statAttendanceList, setStatAttendanceList] = useState<AttendanceRecordDto[]>([])
+  const [statListLoading, setStatListLoading] = useState(false)
+
+  const fetchWorshipCategories = useCallback(async () => {
+    try {
+      const categories = await scheduleService.getWorshipCategories()
+      setWorshipCategories(categories)
+    } catch (err) {
+      console.error('Failed to fetch worship categories:', err)
     }
   }, [])
 
   useEffect(() => {
-    let cancelled = false
-    const loadSchedules = async () => {
-      setSchedulesLoading(true)
-      setSchedulesError(null)
-      try {
-        const date = new Date(selectedDate)
-        const year = date.getFullYear()
-        const month = date.getMonth() + 1
-        const data = await scheduleService.getAdminSchedules(year, month)
-        if (cancelled) return
-        setAllSchedules(data)
-        const filtered = data.filter(
-          (schedule) => schedule.startDate.slice(0, 10) === selectedDate,
-        )
-        
-        const paramScheduleId = searchParams.get('scheduleId')
-        const targetId = paramScheduleId ? Number(paramScheduleId) : null
+    fetchWorshipCategories()
+  }, [fetchWorshipCategories])
 
-        setSelectedScheduleId((prev) => {
-          if (targetId && filtered.some((s) => s.scheduleId === targetId)) {
-            return targetId
-          }
-          if (prev && filtered.some((s) => s.scheduleId === prev)) {
-            return prev
-          }
-          return filtered.length > 0 ? filtered[0].scheduleId : null
-        })
-      } catch (error) {
-        if (!cancelled) {
-          console.error(error)
-          setSchedulesError('일정을 불러오는데 실패했습니다.')
-          alert('일정을 불러오는데 실패했습니다.')
+  const fetchSchedules = useCallback(async (cancelled: boolean) => {
+    setSchedulesLoading(true)
+    setSchedulesError(null)
+    try {
+      const date = new Date(selectedDate)
+      const year = date.getFullYear()
+      const month = date.getMonth() + 1
+      const data = await scheduleService.getAdminSchedules(year, month)
+      if (cancelled) return
+      setAllSchedules(data)
+      const filtered = data.filter(
+        (schedule) => schedule.startDate?.slice(0, 10) === selectedDate,
+      )
+
+      const paramScheduleId = searchParams.get('scheduleId')
+      const targetId = paramScheduleId ? Number(paramScheduleId) : null
+
+      setSelectedScheduleId((prev) => {
+        if (targetId && filtered.some((s) => s.scheduleId === targetId)) {
+          return targetId
         }
-      } finally {
-        if (!cancelled) {
-          setSchedulesLoading(false)
+        if (prev && filtered.some((s) => s.scheduleId === prev)) {
+          return prev
         }
+        return filtered.length > 0 ? filtered[0].scheduleId : null
+      })
+    } catch (error) {
+      if (!cancelled) {
+        console.error(error)
+        setSchedulesError('일정을 불러오는데 실패했습니다.')
+        toast.error('일정을 불러오는데 실패했습니다.')
+      }
+    } finally {
+      if (!cancelled) {
+        setSchedulesLoading(false)
       }
     }
-    loadSchedules()
+  }, [selectedDate, searchParams])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchSchedules(cancelled)
     return () => {
       cancelled = true
     }
-  }, [selectedDate, searchParams])
+  }, [fetchSchedules])
 
   const loadAttendanceAndMembers = useCallback(
     async (scheduleId: number, dateStr: string) => {
@@ -267,7 +271,7 @@ function AttendanceManagePage() {
         console.error(error)
         setSheetError('출석 명단을 불러오는데 실패했습니다.')
         setMembersError('순 데이터를 불러오는데 실패했습니다.')
-        alert('출석 명단 또는 순 데이터를 불러오는데 실패했습니다.')
+        toast.error('출석 명단 또는 순 데이터를 불러오는데 실패했습니다.')
       } finally {
         setSheetLoading(false)
         setMembersLoading(false)
@@ -320,7 +324,7 @@ function AttendanceManagePage() {
         if (!cancelled) {
           console.error(error)
           setPeriodError('통계를 불러오는데 실패했습니다.')
-          alert('통계를 불러오는데 실패했습니다.')
+          toast.error('통계를 불러오는데 실패했습니다.')
         }
       } finally {
         if (!cancelled) {
@@ -358,7 +362,7 @@ function AttendanceManagePage() {
         if (!cancelled) {
           console.error(error)
           setMemberStatsError('인원별 통계를 불러오는데 실패했습니다.')
-          alert('인원별 통계를 불러오는데 실패했습니다.')
+          toast.error('인원별 통계를 불러오는데 실패했습니다.')
         }
       } finally {
         if (!cancelled) {
@@ -375,7 +379,7 @@ function AttendanceManagePage() {
   const schedulesForSelectedDate = useMemo(
     () =>
       allSchedules.filter(
-        (schedule) => schedule.startDate.slice(0, 10) === selectedDate,
+        (schedule) => schedule.startDate?.slice(0, 10) === selectedDate,
       ),
     [allSchedules, selectedDate],
   )
@@ -491,7 +495,7 @@ function AttendanceManagePage() {
 
   const handleSaveAttendance = async () => {
     if (!selectedScheduleId) {
-      alert('일정을 먼저 선택해주세요.')
+      toast.error('일정을 먼저 선택해주세요.')
       return
     }
     if (attendedMemberIds.size === 0) {
@@ -516,12 +520,7 @@ function AttendanceManagePage() {
       setTimeout(() => setSaveMessage(null), 5000)
     } catch (error) {
       console.error(error)
-      setSaveMessage({
-        type: 'error',
-        text: '출석 저장에 실패했습니다. 다시 시도해주세요.',
-      })
-      alert('출석 저장에 실패했습니다.')
-      setTimeout(() => setSaveMessage(null), 3000)
+      toast.error('출석 저장에 실패했습니다. 다시 시도해주세요.')
     } finally {
       setIsSavingAttendance(false)
     }
@@ -606,11 +605,11 @@ function AttendanceManagePage() {
 
   const handleSaveNewcomer = async () => {
     if (!newNewcomerName.trim()) {
-      alert('이름을 입력해주세요.')
+      toast.error('이름을 입력해주세요.')
       return
     }
     if (!selectedScheduleId) {
-      alert('일정을 먼저 선택해주세요.')
+      toast.error('일정을 먼저 선택해주세요.')
       return
     }
     setIsNewcomerSaving(true)
@@ -648,7 +647,7 @@ function AttendanceManagePage() {
       setIsNewcomerModalOpen(false)
     } catch (error) {
       console.error(error)
-      alert('새신자 등록에 실패했습니다. 다시 시도해주세요.')
+      toast.error('새신자 등록에 실패했습니다. 다시 시도해주세요.')
     } finally {
       setIsNewcomerSaving(false)
     }
@@ -717,7 +716,7 @@ function AttendanceManagePage() {
         }
       } catch (err) {
         console.error('Failed to fetch members:', err)
-        alert('멤버 목록을 불러오는데 실패했습니다.')
+        toast.error('멤버 목록을 불러오는데 실패했습니다.')
       } finally {
         setMemberListLoading(false)
       }
@@ -773,14 +772,14 @@ function AttendanceManagePage() {
           selectedIds,
           selectedDate,
         )
-        alert('명단이 추가되었습니다.')
+        toast.success('명단이 추가되었습니다.')
       } else {
         await scheduleService.removeScheduleAttendees(
           selectedScheduleId,
           selectedIds,
           selectedDate,
         )
-        alert('명단에서 삭제되었습니다.')
+        toast.success('명단에서 삭제되었습니다.')
       }
 
       // 성공 후 데이터 갱신
@@ -788,8 +787,92 @@ function AttendanceManagePage() {
       setShowMemberManageModal(false)
     } catch (err) {
       console.error(err)
-      const message = err instanceof Error ? err.message : '요청 처리에 실패했습니다.'
-      alert(message)
+      let errorMessage = '요청 처리에 실패했습니다.'
+      if (axios.isAxiosError(err)) {
+        errorMessage = err.response?.data?.message || err.message || errorMessage
+      } else if (err instanceof Error) {
+        errorMessage = err.message
+      }
+      toast.error(errorMessage)
+    }
+  }
+
+  const handleStatPointClick = useCallback(async (scheduleId: number, name: string, date: string) => {
+    setStatSelectedSchedule({ id: scheduleId, name, date })
+    setIsStatListOpen(true)
+    setStatListLoading(true)
+    try {
+      const data = await getAttendanceSheet(scheduleId, date)
+      setStatAttendanceList(data.records.filter((r) => r.attended))
+    } catch (err) {
+      console.error(err)
+      toast.error('명단을 불러오는데 실패했습니다.')
+    } finally {
+      setStatListLoading(false)
+    }
+  }, [])
+
+  const handleCreateSchedule = () => {
+    setScheduleFormData({
+      ...initialFormData,
+      startDate: selectedDate,
+      endDate: selectedDate,
+      startTime: '10:00',
+      endTime: '11:00',
+    })
+    setShowScheduleModal(true)
+  }
+
+  const handleSaveSchedule = async () => {
+    if (
+      !scheduleFormData.title ||
+      !scheduleFormData.startDate ||
+      !scheduleFormData.endDate ||
+      !scheduleFormData.startTime ||
+      !scheduleFormData.endTime
+    ) {
+      toast.error('제목, 날짜, 시간을 모두 입력해주세요.')
+      return
+    }
+
+    const startDate = `${scheduleFormData.startDate}T${scheduleFormData.startTime}:00`
+    const endDate = `${scheduleFormData.endDate}T${scheduleFormData.endTime}:00`
+
+    const requestData: CreateScheduleRequest = {
+      title: scheduleFormData.title,
+      content: scheduleFormData.content,
+      startDate,
+      endDate,
+      type: scheduleFormData.type,
+      location: scheduleFormData.location,
+      sharingScope: scheduleFormData.sharingScope,
+      worshipCategory:
+        scheduleFormData.type === 'WORSHIP'
+          ? scheduleFormData.worshipCategory
+          : undefined,
+      recurrenceRule: scheduleFormData.recurrenceRule,
+      recurrenceEndDate:
+        scheduleFormData.recurrenceRule !== 'NONE'
+          ? scheduleFormData.recurrenceEndDate
+          : undefined,
+      createAlbum: scheduleFormData.createAlbum,
+    }
+
+    setIsSavingSchedule(true)
+    try {
+      const newScheduleId = await scheduleService.createSchedule(requestData)
+      toast.success('일정이 생성되었습니다.')
+      setShowScheduleModal(false)
+
+      // 생성된 일정의 상세 정보를 가져와서 목록에 추가
+      const newSchedule = await scheduleService.getScheduleDetail(newScheduleId)
+      setAllSchedules((prev) => [...prev, newSchedule])
+      setSelectedScheduleId(newScheduleId)
+    } catch (err) {
+      console.error(err)
+      toast.error('일정 저장 중 오류가 발생했습니다.')
+    } finally {
+      setIsSavingSchedule(false)
     }
   }
 
@@ -894,18 +977,6 @@ function AttendanceManagePage() {
                       <span className="text-sm font-bold text-slate-900">
                         {attendanceCount}명
                       </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-slate-700">헌금</span>
-                      <input
-                        type="number"
-                        value={offering}
-                        onChange={(e) => setOffering(Number(e.target.value))}
-                        step={1000}
-                        min={0}
-                        className="w-32 rounded-lg border border-slate-300 px-3 py-2 text-sm text-right"
-                        placeholder="0"
-                      />
                     </div>
                     <button
                       type="button"
@@ -1025,7 +1096,7 @@ function AttendanceManagePage() {
                         type="button"
                         onClick={() => {
                           if (!selectedScheduleId) {
-                            alert('일정을 먼저 선택해주세요.')
+                            toast.error('일정을 먼저 선택해주세요.')
                             return
                           }
                           setIsNewcomerModalOpen(true)
@@ -1040,8 +1111,17 @@ function AttendanceManagePage() {
               </div>
 
               {!selectedScheduleId && (
-                <div className="py-16 text-center text-sm text-slate-500">
-                  선택한 날짜에 출석 체크 가능한 일정이 없습니다.
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <p className="mb-4 text-sm text-slate-500">
+                    선택한 날짜에 출석 체크 가능한 일정이 없습니다.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleCreateSchedule}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                  >
+                    + 일정 만들기
+                  </button>
                 </div>
               )}
 
@@ -1381,7 +1461,7 @@ function AttendanceManagePage() {
 
             {activeSubTab === 'OVERVIEW' && (
               <div className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-2">
                   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <p className="text-xs font-medium text-slate-500">평균 출석</p>
                     <p className="mt-2 text-2xl font-bold text-slate-900">
@@ -1411,15 +1491,6 @@ function AttendanceManagePage() {
                       ) : (
                         '-'
                       )}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <p className="text-xs font-medium text-slate-500">총 헌금액</p>
-                    <p className="mt-2 text-2xl font-bold text-emerald-600">
-                      ₩
-                      {periodStats
-                        ? periodStats.summary.totalOffering.toLocaleString('ko-KR')
-                        : '-'}
                     </p>
                   </div>
                 </div>
@@ -1564,7 +1635,7 @@ function AttendanceManagePage() {
                             points.push(`${x},${y}`)
                             circles.push(
                               <g
-                                key={stat.scheduleId || `${stat.date}-${index}`}
+                                key={`stat-point-${stat.scheduleId || 'no-id'}-${index}`}
                                 onClick={() =>
                                   stat.scheduleId &&
                                   handleStatPointClick(
@@ -1603,8 +1674,6 @@ function AttendanceManagePage() {
                                   {stat.scheduleName ? `\n${stat.scheduleName}` : ''}
                                   {'\n'}
                                   출석: {stat.count}명
-                                  {'\n'}
-                                  헌금: ₩{stat.offering.toLocaleString('ko-KR')}
                                 </title>
                               </g>,
                             )
@@ -1636,7 +1705,7 @@ function AttendanceManagePage() {
                           const x = 50 + index * 100
                           return (
                             <g
-                              key={stat.scheduleId || `${stat.date}-${index}`}
+                              key={`stat-label-${stat.scheduleId || 'no-id'}-${index}`}
                               onClick={() =>
                                 stat.scheduleId &&
                                 handleStatPointClick(
@@ -2164,6 +2233,200 @@ function AttendanceManagePage() {
           </div>
         )}
       </div>
+      {/* 일정 추가 모달 */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto">
+            <h3 className="mb-4 text-lg font-semibold text-slate-900">새 일정 만들기</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">제목</label>
+                <input
+                  type="text"
+                  value={scheduleFormData.title}
+                  onChange={(e) => setScheduleFormData({ ...scheduleFormData, title: e.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="일정 제목"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-700">시작 날짜</label>
+                  <input
+                    type="date"
+                    value={scheduleFormData.startDate}
+                    onChange={(e) => setScheduleFormData({ ...scheduleFormData, startDate: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-700">종료 날짜</label>
+                  <input
+                    type="date"
+                    value={scheduleFormData.endDate}
+                    onChange={(e) => setScheduleFormData({ ...scheduleFormData, endDate: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-700">시작 시간</label>
+                  <input
+                    type="time"
+                    value={scheduleFormData.startTime}
+                    onChange={(e) => setScheduleFormData({ ...scheduleFormData, startTime: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-700">종료 시간</label>
+                  <input
+                    type="time"
+                    value={scheduleFormData.endTime}
+                    onChange={(e) => setScheduleFormData({ ...scheduleFormData, endTime: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-700">유형</label>
+                  <select
+                    value={scheduleFormData.type}
+                    onChange={(e) => setScheduleFormData({ ...scheduleFormData, type: e.target.value as ScheduleType })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    <option value="WORSHIP">예배</option>
+                    <option value="EVENT">행사</option>
+                    <option value="MEETING">모임</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-700">공개 범위</label>
+                  <select
+                    value={scheduleFormData.sharingScope}
+                    onChange={(e) => setScheduleFormData({ ...scheduleFormData, sharingScope: e.target.value as SharingScope })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    <option value="PUBLIC">전체 공개</option>
+                    <option value="LOGGED_IN_USERS">로그인 회원</option>
+                    <option value="PRIVATE">비공개</option>
+                  </select>
+                </div>
+              </div>
+
+              {scheduleFormData.type === 'WORSHIP' && (
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-700">예배 카테고리</label>
+                  <select
+                    value={scheduleFormData.worshipCategory || ""}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setScheduleFormData((prev) => ({ 
+                        ...prev, 
+                        worshipCategory: value === "" ? undefined : value
+                      }))
+                    }}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">선택하세요</option>
+                    {worshipCategories.map((cat) => (
+                      <option key={cat.code} value={cat.code}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">장소</label>
+                <input
+                  type="text"
+                  value={scheduleFormData.location}
+                  onChange={(e) => setScheduleFormData({ ...scheduleFormData, location: e.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="예: 본당, 소예배실"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">설명</label>
+                <textarea
+                  value={scheduleFormData.content}
+                  onChange={(e) => setScheduleFormData({ ...scheduleFormData, content: e.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  rows={3}
+                  placeholder="일정 상세 설명"
+                />
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="mb-3">
+                  <label className="mb-1 block text-xs font-semibold text-slate-700">반복</label>
+                  <select
+                    value={scheduleFormData.recurrenceRule}
+                    onChange={(e) => setScheduleFormData({ ...scheduleFormData, recurrenceRule: e.target.value as RecurrenceRule })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    <option value="NONE">반복 없음</option>
+                    <option value="DAILY">매일</option>
+                    <option value="WEEKLY">매주</option>
+                    <option value="MONTHLY">매월</option>
+                    <option value="YEARLY">매년</option>
+                  </select>
+                </div>
+                {scheduleFormData.recurrenceRule !== 'NONE' && (
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">반복 종료일</label>
+                    <input
+                      type="date"
+                      value={scheduleFormData.recurrenceEndDate}
+                      onChange={(e) => setScheduleFormData({ ...scheduleFormData, recurrenceEndDate: e.target.value })}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3">
+                <input
+                  type="checkbox"
+                  id="createAlbum"
+                  checked={scheduleFormData.createAlbum}
+                  onChange={(e) => setScheduleFormData({ ...scheduleFormData, createAlbum: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="createAlbum" className="text-sm font-medium text-slate-700">
+                  이 일정의 앨범도 함께 생성하기
+                </label>
+              </div>
+
+              <div className="mt-6 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowScheduleModal(false)}
+                  className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveSchedule}
+                  disabled={isSavingSchedule}
+                  className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isSavingSchedule ? '저장 중...' : '저장'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

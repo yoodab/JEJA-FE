@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
+import { toast } from "react-hot-toast";
+import { useConfirm } from "../contexts/ConfirmContext";
 import UserHeader from "../components/UserHeader";
 import Footer from "../components/Footer";
 import { getBoardPostById, getBoardPosts, getBoards, deleteBoardPost, type Board } from "../services/boardService";
@@ -21,11 +23,14 @@ interface BoardPost {
   id: number;
   title: string;
   author: string;
+  authorProfileImage?: string;
   createdAt: string;
   views: number;
   comments: number;
+  commentList?: CommentResponse[];
   content: string;
   isNotice?: boolean;
+  isPrivate?: boolean;
   likeCount?: number;
   isLiked?: boolean;
   attachmentUrl?: string;
@@ -42,6 +47,7 @@ function BoardDetailPage() {
   }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { confirm } = useConfirm();
   const [commentText, setCommentText] = useState("");
   const [comments, setComments] = useState<CommentResponse[]>([]);
   const [showMenu, setShowMenu] = useState(false);
@@ -57,6 +63,7 @@ function BoardDetailPage() {
   const [nextPost, setNextPost] = useState<{ id: number; title: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const viewIncrementedRef = useRef<string | null>(null);
 
   const commentsPerPage = 5;
   const isYouthNotice = location.pathname.includes('/youth-notices');
@@ -104,6 +111,18 @@ function BoardDetailPage() {
 
       try {
         let apiBoardId = boardType;
+        const currentPostId = String(idNum);
+
+        // sessionStorage를 사용하여 세션 내 중복 조회수 증가 방지 (StrictMode 및 리마운트 대응)
+        const sessionKey = `viewed_post_${currentPostId}`;
+        const alreadyViewed = sessionStorage.getItem(sessionKey);
+
+        let shouldIncrement = false;
+        if (!alreadyViewed && viewIncrementedRef.current !== currentPostId) {
+          shouldIncrement = true;
+          sessionStorage.setItem(sessionKey, 'true');
+          viewIncrementedRef.current = currentPostId;
+        }
 
         // 1. 게시판 정보 로드 (공지사항이 아닌 경우)
         if (!isYouthNotice && boardType) {
@@ -112,14 +131,17 @@ function BoardDetailPage() {
             // id 또는 boardId가 일치하는지 확인
             const currentBoard = boards.find(b => 
               String(b.id) === String(boardType) || 
-              (b.boardId && String(b.boardId) === String(boardType))
+              (b.boardId && String(b.boardId) === String(boardType)) ||
+              (b.boardKey && String(b.boardKey) === String(boardType))
             );
             if (currentBoard) {
               setBoard(currentBoard);
-              if (currentBoard.boardId) {
-                apiBoardId = currentBoard.boardId;
+              if (currentBoard.boardKey) {
+                apiBoardId = currentBoard.boardKey;
+              } else if (currentBoard.boardId) {
+                apiBoardId = String(currentBoard.boardId);
               } else if (currentBoard.id) {
-                apiBoardId = currentBoard.id;
+                apiBoardId = String(currentBoard.id);
               }
             }
           } catch (e) {
@@ -130,24 +152,28 @@ function BoardDetailPage() {
         // 2. 게시글 로드
         if (isYouthNotice) {
           // 공지사항 API 호출
-          const notice = await getNoticeById(idNum);
+          if (shouldIncrement) viewIncrementedRef.current = currentPostId;
+          const notice = await getNoticeById(idNum, shouldIncrement);
+          
           // Notice 타입을 BoardPost 타입으로 변환
           setPost({
             id: notice.postId,
             title: notice.title,
             content: notice.content,
             author: notice.authorName,
+            authorProfileImage: notice.authorProfileImage,
             createdAt: notice.createdAt,
             views: notice.viewCount,
             comments: notice.commentCount,
             isNotice: notice.notice,
+            isPrivate: notice.isPrivate,
             likeCount: notice.likeCount,
             isLiked: notice.liked,
             attachmentUrl: notice.attachmentUrl,
             attachmentName: notice.attachmentName,
           });
           setComments(notice.comments || []);
-
+          
           // 이전/다음 글 조회
           try {
             const { notices } = await getNotices({ size: 100 });
@@ -163,9 +189,12 @@ function BoardDetailPage() {
           }
         } else if (apiBoardId) {
           // 게시판 API 호출
-          const apiPost = await getBoardPostById(apiBoardId, idNum);
+          if (shouldIncrement) viewIncrementedRef.current = currentPostId;
+          const apiPost = await getBoardPostById(apiBoardId, idNum, shouldIncrement);
+          
           setPost(apiPost);
-
+          setComments(apiPost.commentList || []);
+          
           // 이전/다음 글 조회
           try {
             const { posts } = await getBoardPosts(apiBoardId, { size: 100 });
@@ -200,8 +229,8 @@ function BoardDetailPage() {
 
   if ((!boardType && !isYouthNotice) || !id) {
     return (
-      <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-        <div className="mx-auto max-w-6xl space-y-6">
+      <div className="flex flex-col min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
+        <div className="flex-grow mx-auto w-full max-w-6xl space-y-6">
           <UserHeader />
           <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
             <p className="text-lg font-semibold text-slate-600">
@@ -214,6 +243,8 @@ function BoardDetailPage() {
               메인으로 돌아가기
             </button>
           </div>
+        </div>
+        <div className="mx-auto w-full max-w-6xl mt-10">
           <Footer />
         </div>
       </div>
@@ -223,12 +254,14 @@ function BoardDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-        <div className="mx-auto max-w-6xl space-y-6">
+      <div className="flex flex-col min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
+        <div className="flex-grow mx-auto w-full max-w-6xl space-y-6">
           <UserHeader />
           <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
             <p className="text-lg font-semibold text-slate-600">로딩 중...</p>
           </div>
+        </div>
+        <div className="mx-auto w-full max-w-6xl mt-10">
           <Footer />
         </div>
       </div>
@@ -237,8 +270,8 @@ function BoardDetailPage() {
 
   if (error || !post) {
     return (
-      <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-        <div className="mx-auto max-w-6xl space-y-6">
+      <div className="flex flex-col min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
+        <div className="flex-grow mx-auto w-full max-w-6xl space-y-6">
           <UserHeader />
           <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
             <p className="text-lg font-semibold text-slate-600">
@@ -259,6 +292,8 @@ function BoardDetailPage() {
               목록으로 돌아가기
             </button>
           </div>
+        </div>
+        <div className="mx-auto w-full max-w-6xl mt-10">
           <Footer />
         </div>
       </div>
@@ -301,16 +336,18 @@ function BoardDetailPage() {
     if (!idNum) return;
     try {
       if (isYouthNotice) {
-        const notice = await getNoticeById(idNum);
+        const notice = await getNoticeById(idNum, false);
         setPost({
           id: notice.postId,
           title: notice.title,
           content: notice.content,
           author: notice.authorName,
+          authorProfileImage: notice.authorProfileImage,
           createdAt: notice.createdAt,
           views: notice.viewCount,
           comments: notice.commentCount,
           isNotice: notice.notice,
+          isPrivate: notice.isPrivate,
           likeCount: notice.likeCount,
           isLiked: notice.liked,
           attachmentUrl: notice.attachmentUrl,
@@ -319,17 +356,9 @@ function BoardDetailPage() {
         setComments(notice.comments || []);
       } else if (boardType) {
         // 게시판 refresh
-        const apiPost = await getBoardPostById(boardType, idNum);
+        const apiPost = await getBoardPostById(boardType, idNum, false);
         setPost(apiPost);
-        // 댓글은 별도 API가 없다면 post에 포함되어 있다고 가정하거나 다시 로드
-        // 현재 API 구조상 getBoardPostById가 댓글을 포함하는지 확인 필요
-        // 만약 댓글이 별도라면 여기서 로드해야 함. 
-        // 기존 코드에서는 getBoardPostById가 댓글을 포함하지 않을 수도 있지만, 
-        // noticeService를 사용하여 댓글을 관리하는 것으로 보임 (createComment 등).
-        // 하지만 createComment는 noticeId 기반일 수 있음. 
-        // 일단 noticeService의 댓글 기능이 게시판에도 통합되어 있다고 가정.
-        // 만약 통합되지 않았다면 추가 수정 필요. 
-        // 여기서는 기존 로직 유지.
+        setComments(apiPost.commentList || []);
       }
     } catch (error) {
       console.error("Failed to refresh post:", error);
@@ -346,28 +375,28 @@ function BoardDetailPage() {
             : "border-b border-slate-100 py-6 last:border-0"
         }`}
       >
-        <div className="flex gap-4 group">
-          {/* 아바타 */}
-          <div className="flex-shrink-0">
-            <div className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white shadow-sm ${
-              ['bg-blue-500', 'bg-emerald-500', 'bg-violet-500', 'bg-amber-500', 'bg-rose-500'][comment.authorName.length % 5]
-            }`}>
-              {comment.authorName.charAt(0)}
-            </div>
-          </div>
-
+        <div className="group">
           <div className="flex-1 min-w-0">
             {/* 헤더 */}
             <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-slate-900 text-sm">
+              <div className="flex items-center gap-2.5">
+                {comment.authorProfileImage ? (
+                  <img src={comment.authorProfileImage} alt={comment.authorName} className="h-8 w-8 rounded-full object-cover border border-slate-50" />
+                ) : (
+                  <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center border border-slate-50">
+                    <svg className="h-4 w-4 text-slate-400" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                    </svg>
+                  </div>
+                )}
+                <div>
+                  <span className="font-bold text-slate-900 text-sm block">
                     {comment.authorName}
                   </span>
+                  <span className="text-xs text-slate-400 mt-0.5 block">
+                    {formatDateTime(comment.createdAt)}
+                  </span>
                 </div>
-                <span className="text-xs text-slate-400 mt-0.5 block">
-                  {formatDateTime(comment.createdAt)}
-                </span>
               </div>
               
               {/* 더보기 메뉴 */}
@@ -453,10 +482,10 @@ function BoardDetailPage() {
                 <button 
                   onClick={() => handleToggleCommentLike(comment.commentId)}
                   className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
-                    comment.liked ? 'text-red-500' : 'text-slate-400 hover:text-red-500'
+                    isCommentLiked(comment) ? 'text-red-500' : 'text-slate-400 hover:text-red-500'
                   }`}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${comment.liked ? "fill-current" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${isCommentLiked(comment) ? "fill-current" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                   </svg>
                   <span>{comment.likeCount > 0 ? comment.likeCount : '좋아요'}</span>
@@ -525,7 +554,7 @@ function BoardDetailPage() {
       await refreshPost();
     } catch (error) {
       console.error("Failed to create comment:", error);
-      alert("댓글 작성에 실패했습니다.");
+      toast.error("댓글 작성에 실패했습니다.");
     }
   };
 
@@ -539,19 +568,27 @@ function BoardDetailPage() {
       await refreshPost();
     } catch (error) {
       console.error("Failed to create reply:", error);
-      alert("답글 작성에 실패했습니다.");
+      toast.error("답글 작성에 실패했습니다.");
     }
   };
 
   const handleDeleteComment = async (commentId: number) => {
-    if (!window.confirm("댓글을 삭제하시겠습니까?")) return;
+    const isConfirmed = await confirm({
+      title: "댓글 삭제",
+      message: "댓글을 삭제하시겠습니까?",
+      type: "danger",
+      confirmText: "삭제",
+      cancelText: "취소",
+    });
+
+    if (!isConfirmed) return;
 
     try {
       await deleteComment(commentId);
       await refreshPost();
     } catch (error) {
       console.error("Failed to delete comment:", error);
-      alert("댓글 삭제에 실패했습니다.");
+      toast.error("댓글 삭제에 실패했습니다.");
     }
   };
 
@@ -565,7 +602,7 @@ function BoardDetailPage() {
       await refreshPost();
     } catch (error) {
       console.error("Failed to update comment:", error);
-      alert("댓글 수정에 실패했습니다.");
+      toast.error("댓글 수정에 실패했습니다.");
     }
   };
 
@@ -579,6 +616,37 @@ function BoardDetailPage() {
     }
   };
 
+  const handleDeletePost = async () => {
+    setShowMenu(false);
+    if (!idNum) return;
+
+    const isConfirmed = await confirm({
+      title: "게시글 삭제",
+      message: "정말로 이 게시글을 삭제하시겠습니까?",
+      type: "danger",
+      confirmText: "삭제",
+      cancelText: "취소",
+    });
+
+    if (!isConfirmed) return;
+
+    try {
+      if (isYouthNotice) {
+        await deleteNotice(idNum);
+        toast.success("삭제되었습니다.");
+        navigate("/youth-notices");
+      } else if (boardType) {
+        const targetId = board?.boardId || boardType;
+        await deleteBoardPost(targetId, idNum);
+        toast.success("삭제되었습니다.");
+        navigate(`/boards/${boardType}`);
+      }
+    } catch (error) {
+      console.error("Failed to delete post:", error);
+      toast.error("게시글 삭제에 실패했습니다.");
+    }
+  };
+
   const handleToggleCommentLike = async (commentId: number) => {
     try {
       await toggleCommentLike(commentId);
@@ -588,9 +656,13 @@ function BoardDetailPage() {
     }
   };
 
+  const isCommentLiked = (comment: CommentResponse) => {
+    return comment.liked || comment.isLiked;
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="flex flex-col min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
+      <div className="flex-grow mx-auto w-full max-w-6xl space-y-6">
         <UserHeader />
 
         {/* 헤더 */}
@@ -624,6 +696,11 @@ function BoardDetailPage() {
                   <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-semibold text-white">
                     공지
                   </span>
+                )}
+                {post.isPrivate && (
+                  <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
                 )}
                 <h2 className="text-xl font-bold text-slate-900">{post.title}</h2>
               </div>
@@ -673,26 +750,7 @@ function BoardDetailPage() {
                         )}
                         {post.canDelete && (
                           <button
-                            onClick={async () => {
-                              setShowMenu(false)
-                              if (idNum && confirm('정말 삭제하시겠습니까?')) {
-                                try {
-                                  if (isYouthNotice) {
-                                    await deleteNotice(idNum)
-                                    alert('삭제되었습니다.')
-                                    navigate('/youth-notices')
-                                  } else if (boardType) {
-                                    const targetId = board?.boardId || boardType
-                                    await deleteBoardPost(targetId, idNum)
-                                    alert('삭제되었습니다.')
-                                    navigate(`/boards/${boardType}`)
-                                  }
-                                } catch (error) {
-                                  console.error("Failed to delete post:", error)
-                                  alert('게시글 삭제에 실패했습니다.')
-                                }
-                              }
-                            }}
+                            onClick={handleDeletePost}
                             className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 last:rounded-b-lg"
                           >
                             삭제
@@ -704,10 +762,24 @@ function BoardDetailPage() {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-4 text-sm text-slate-600">
-              <span>작성자: {post.author}</span>
-              <span>{formatDateTime(post.createdAt)}</span>
-              <span>조회 {post.views}</span>
+            <div className="flex items-center gap-3 mt-4">
+              {post.authorProfileImage ? (
+                <img src={post.authorProfileImage} alt={post.author} className="h-10 w-10 rounded-full object-cover border border-slate-100" />
+              ) : (
+                <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-100">
+                  <svg className="h-6 w-6 text-slate-400" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                  </svg>
+                </div>
+              )}
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-slate-900">{post.author}</span>
+                <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                  <span>{formatDateTime(post.createdAt)}</span>
+                  <span className="text-slate-300">•</span>
+                  <span>조회 {post.views}</span>
+                </div>
+              </div>
             </div>
             {/* 첨부파일 표시 */}
             {post.attachmentUrl && (
@@ -743,7 +815,7 @@ function BoardDetailPage() {
                   : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300"
               }`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill={post.isLiked ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${post.isLiked ? "text-red-500 fill-current" : ""}`} fill={post.isLiked ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
               </svg>
               <span>좋아요 {post.likeCount || 0}</span>
@@ -862,7 +934,9 @@ function BoardDetailPage() {
             </button>
           </div>
         </div>
+      </div>
 
+      <div className="mx-auto w-full max-w-6xl mt-10">
         <Footer />
       </div>
     </div>

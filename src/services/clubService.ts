@@ -30,9 +30,7 @@ export const deleteClub = async (clubId: number): Promise<void> => {
 }
 
 export const addClubMember = async (clubId: number, memberId: number): Promise<void> => {
-  await api.post(`/api/clubs/${clubId}/members`, memberId, {
-    headers: { 'Content-Type': 'application/json' }
-  })
+  await api.post(`/api/clubs/${clubId}/members`, { memberId })
 }
 
 export const removeClubMember = async (clubId: number, memberId: number): Promise<void> => {
@@ -40,7 +38,5 @@ export const removeClubMember = async (clubId: number, memberId: number): Promis
 }
 
 export const changeClubLeader = async (clubId: number, newLeaderId: number): Promise<void> => {
-  await api.patch(`/api/clubs/${clubId}/leader`, newLeaderId, {
-    headers: { 'Content-Type': 'application/json' }
-  })
+  await api.patch(`/api/clubs/${clubId}/leader`, { newLeaderId })
 }

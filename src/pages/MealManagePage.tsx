@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getMembers } from '../services/memberService'
+import { toast } from 'react-hot-toast'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { getMeals, addMealStock, consumeMealTicket, updateMeal, deleteMeal, type MealHistoryItem } from '../services/mealService'
-import type { Member } from '../types/member'
 
 function MealManagePage() {
   const navigate = useNavigate()
-  const [teamMembers, setTeamMembers] = useState<Member[]>([])
+  const { confirm } = useConfirm()
   
   // Data from Server
   const [currentStock, setCurrentStock] = useState(0)
@@ -14,7 +14,6 @@ function MealManagePage() {
 
   // Forms
   const [mealForm, setMealForm] = useState({
-    userId: '',
     place: '',
     count: 1
   })
@@ -37,7 +36,6 @@ function MealManagePage() {
   const [selectedItem, setSelectedItem] = useState<MealHistoryItem | null>(null)
   const [updateForm, setUpdateForm] = useState({
     date: '',
-    targetName: '',
     note: '',
     amount: 0
   })
@@ -47,61 +45,50 @@ function MealManagePage() {
     try {
       const data = await getMeals()
       console.log('API Response Data:', data) // 디버깅용 로그
-      setCurrentStock(data.currentStock || 0)
-      setHistory(data.history || [])
+      if (data) {
+        setCurrentStock(data.currentStock || 0)
+        setHistory(data.history || [])
+      } else {
+        console.warn('식권 데이터가 비어 있습니다.')
+        setHistory([])
+      }
     } catch (error) {
       console.error('식권 데이터 로드 실패:', error)
       setHistory([])
     }
   }, [])
 
-  // Initial Load
   useEffect(() => {
-    const init = async () => {
-      await loadData()
-    }
-    init()
-    
-    const fetchTeamMembers = async () => {
-      try {
-        const response = await getMembers({ page: 0, size: 1000 })
-        setTeamMembers(response.content)
-      } catch (error) {
-        console.error('팀원 목록 로드 실패:', error)
-      }
-    }
-    fetchTeamMembers()
+    loadData()
   }, [loadData])
 
   // Handlers
   const handleAddMealTicket = async () => {
-    if (!mealForm.userId || !mealForm.place) {
-      alert('대상자와 사용처를 모두 입력해주세요.')
+    if (!mealForm.place) {
+      toast.error('사용처를 입력해주세요.')
       return
     }
     
-    const user = teamMembers.find(m => m.memberId.toString() === mealForm.userId)
-    if (!user) return
-
     try {
       await consumeMealTicket({
-        userName: user.name,
+        userName: '-',
         place: mealForm.place,
         count: mealForm.count
       })
       
       await loadData()
-      setMealForm({ userId: '', place: '', count: 1 })
+      setMealForm({ place: '', count: 1 })
       setShowUsageModal(false)
+      toast.success('식권 사용이 등록되었습니다.')
     } catch (error) {
       console.error('식권 사용 등록 실패:', error)
-      alert('식권 사용 등록 중 오류가 발생했습니다.')
+      toast.error('식권 사용 등록 중 오류가 발생했습니다.')
     }
   }
 
   const handleAddStock = async () => {
     if (stockForm.amount <= 0) {
-      alert('추가할 수량을 올바르게 입력해주세요.')
+      toast.error('추가할 수량을 올바르게 입력해주세요.')
       return
     }
 
@@ -114,9 +101,10 @@ function MealManagePage() {
       await loadData()
       setStockForm({ amount: 10, note: '' })
       setShowStockModal(false)
+      toast.success('식권 재고가 추가되었습니다.')
     } catch (error) {
       console.error('재고 추가 실패:', error)
-      alert('재고 추가 중 오류가 발생했습니다.')
+      toast.error('재고 추가 중 오류가 발생했습니다.')
     }
   }
 
@@ -140,7 +128,6 @@ function MealManagePage() {
     setSelectedItem(item)
     setUpdateForm({
       date: item.date,
-      targetName: item.targetName || '',
       note: item.note || '',
       amount: Math.abs(item.amount)
     })
@@ -157,14 +144,14 @@ function MealManagePage() {
   const handleUpdateSubmit = async () => {
     if (!selectedItem) return
     if (updateForm.amount <= 0) {
-      alert('수량은 0보다 커야 합니다.')
+      toast.error('수량은 0보다 커야 합니다.')
       return
     }
 
     try {
       await updateMeal(selectedItem.id, {
         date: updateForm.date,
-        targetName: updateForm.targetName,
+        targetName: selectedItem.targetName || '-',
         note: updateForm.note,
         amount: updateForm.amount
       })
@@ -172,9 +159,10 @@ function MealManagePage() {
       await loadData()
       setShowUpdateModal(false)
       setSelectedItem(null)
+      toast.success('내역이 수정되었습니다.')
     } catch (error) {
       console.error('내역 수정 실패:', error)
-      alert('내역 수정 중 오류가 발생했습니다.')
+      toast.error('내역 수정 중 오류가 발생했습니다.')
     }
   }
 
@@ -186,9 +174,10 @@ function MealManagePage() {
       await loadData()
       setShowDeleteModal(false)
       setSelectedItem(null)
+      toast.success('내역이 삭제되었습니다.')
     } catch (error) {
       console.error('내역 삭제 실패:', error)
-      alert('내역 삭제 중 오류가 발생했습니다.')
+      toast.error('내역 삭제 중 오류가 발생했습니다.')
     }
   }
 
@@ -202,18 +191,21 @@ function MealManagePage() {
     .reduce((sum, item) => sum + Math.abs(item.amount), 0)
 
   // Filter logic
-  const filteredHistory = history || []
+  const filteredHistory = [...(history || [])].sort((a, b) => {
+    // 1. 날짜 기준 내림차순 (최신순)
+    if (b.date !== a.date) return b.date.localeCompare(a.date)
+    // 2. 날짜가 같으면 ID 기준 내림차순 (최신순)
+    return b.id - a.id
+  })
 
   // Calculate Balance for each item (Reverse calculation from currentStock)
-  // Assuming history is sorted by date descending (newest first)
+  // Assuming filteredHistory is sorted by newest first
   const historyWithBalance: (MealHistoryItem & { balance: number })[] = []
   let runningBalance = currentStock
-  
+
   for (const item of filteredHistory) {
     const balance = runningBalance
-    // Prepare balance for the next item (previous in time)
-    // If current item added stock (positive amount), previous balance was smaller: balance - amount
-    // If current item used stock (negative amount), previous balance was larger: balance - amount (minus negative is plus)
+    // 현재 항목의 변화량만큼 빼서 이전 잔고를 계산
     runningBalance = runningBalance - item.amount
     historyWithBalance.push({ ...item, balance })
   }
@@ -221,74 +213,80 @@ function MealManagePage() {
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <div className="flex items-center gap-3">
+        <header className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+          <div className="flex items-center gap-2 sm:gap-4">
             <button
               type="button"
               onClick={() => navigate(-1)}
-              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-50 transition-colors"
             >
-              ←
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
             </button>
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-xl">
+              <div className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-2xl bg-green-50 text-2xl shadow-inner">
                 🎫
               </div>
               <div>
-                <p className="text-base font-bold text-slate-900">식권 관리</p>
-                <p className="text-xs text-slate-500">식권 추가/사용 및 재고 현황 관리</p>
+                <h1 className="text-lg sm:text-xl font-black text-slate-900 leading-tight">식권 관리</h1>
+                <p className="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-wider">Inventory & History</p>
               </div>
             </div>
           </div>
-          {/* Optional: Add search input if desired, but sticking to existing design for now unless requested */}
         </header>
 
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           {/* 재고 현황 카드 */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="col-span-2 sm:col-span-1 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-3 text-3xl opacity-10 group-hover:scale-110 transition-transform">🎫</div>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">현재 보유 식권</p>
+              <div className="flex items-baseline gap-1">
+                <span className={`text-3xl font-black ${currentStock < 10 ? 'text-red-500' : 'text-slate-900'}`}>
+                  {currentStock}
+                </span>
+                <span className="text-sm font-bold text-slate-500">장</span>
+              </div>
+              {currentStock < 10 && (
+                <p className="mt-2 text-[10px] font-bold text-red-400 animate-pulse">재고가 부족합니다!</p>
+              )}
+            </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <p className="text-xs font-semibold text-slate-500">현재 보유 식권</p>
-              <p className={`text-2xl font-bold ${currentStock < 10 ? 'text-red-600' : 'text-slate-900'}`}>
-                {currentStock}장
-              </p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">총 입고</p>
+              <p className="text-xl font-black text-slate-700">{totalStock}<span className="text-xs ml-0.5 text-slate-400">장</span></p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-              <p className="text-xs font-semibold text-slate-500">총 입고 수량</p>
-              <p className="text-2xl font-bold text-slate-700">{totalStock}장</p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-              <p className="text-xs font-semibold text-slate-500">총 사용 수량</p>
-              <p className="text-2xl font-bold text-slate-700">{totalUsed}장</p>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">총 사용</p>
+              <p className="text-xl font-black text-slate-700">{totalUsed}<span className="text-xs ml-0.5 text-slate-400">장</span></p>
             </div>
           </div>
 
           {/* 액션 버튼 */}
-          <div className="flex justify-end gap-3">
+          <div className="flex flex-row justify-end gap-2 sm:gap-3">
             <button
               onClick={() => setShowStockModal(true)}
-              className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition-all hover:bg-green-700 active:scale-95"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 sm:px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-green-700 active:scale-95"
             >
-              <span>📥</span>
+              <span className="text-lg">📥</span>
               식권 추가
             </button>
             <button
               onClick={() => setShowUsageModal(true)}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition-all hover:bg-blue-700 active:scale-95"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 sm:px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-blue-700 active:scale-95"
             >
-              <span>📤</span>
+              <span className="text-lg">📤</span>
               식권 사용
             </button>
           </div>
 
           {/* 통합 거래 내역 */}
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="overflow-x-auto">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50">
                   <tr>
                     <th className="px-6 py-3 text-left font-semibold text-slate-700">일자</th>
                     <th className="px-6 py-3 text-left font-semibold text-slate-700">구분</th>
-                    <th className="px-6 py-3 text-left font-semibold text-slate-700">대상/담당</th>
                     <th className="px-6 py-3 text-left font-semibold text-slate-700">상세내용</th>
                     <th className="px-6 py-3 text-right font-semibold text-slate-700">추가</th>
                     <th className="px-6 py-3 text-right font-semibold text-slate-700">사용</th>
@@ -299,29 +297,26 @@ function MealManagePage() {
                 <tbody className="divide-y divide-slate-200">
                   {historyWithBalance.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
+                      <td colSpan={7} className="px-6 py-8 text-center text-slate-500">
                         내역이 없습니다.
                       </td>
                     </tr>
                   ) : (
                     historyWithBalance.map((item) => (
                       <tr key={item.id} className="hover:bg-slate-50">
-                        <td className="px-6 py-3 text-slate-600">{item.date}</td>
+                        <td className="px-6 py-3 text-slate-600 whitespace-nowrap">{item.date}</td>
                         <td className="px-6 py-3">
                           {item.category === 'STOCK' ? (
-                            <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
+                            <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
                               추가
                             </span>
                           ) : (
-                            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                            <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
                               사용
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-3 font-medium text-slate-900">
-                          {item.targetName}
-                        </td>
-                        <td className="px-6 py-3 text-slate-600">
+                        <td className="px-6 py-3 text-slate-600 max-w-[200px] truncate">
                           {item.note}
                         </td>
                         {/* 추가 (입고) */}
@@ -341,9 +336,9 @@ function MealManagePage() {
                           <button
                             type="button"
                             onClick={(e) => handleMenuClick(item.id, e)}
-                            className="p-1 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                            className="p-1 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
                           >
-                            <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 20 20">
+                            <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
                               <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
                             </svg>
                           </button>
@@ -354,11 +349,70 @@ function MealManagePage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile Card List View */}
+             <div className="block md:hidden divide-y divide-slate-100">
+               {historyWithBalance.length === 0 ? (
+                 <div className="px-4 py-12 text-center text-slate-500">
+                   <div className="text-4xl mb-3">📄</div>
+                   <p className="text-sm font-medium">내역이 없습니다.</p>
+                 </div>
+               ) : (
+                 historyWithBalance.map((item) => (
+                   <div key={item.id} className="p-4 active:bg-slate-50 transition-colors relative">
+                     <div className="flex items-start justify-between mb-3">
+                       <div className="flex flex-col gap-1">
+                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{item.date}</span>
+                         <div className="flex items-center gap-2">
+                            {item.category === 'STOCK' ? (
+                              <span className="inline-flex items-center rounded-lg bg-green-50 px-2 py-0.5 text-[10px] font-black text-green-600 border border-green-100 uppercase">
+                                추가
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-lg bg-slate-50 px-2 py-0.5 text-[10px] font-black text-slate-500 border border-slate-100 uppercase">
+                                사용
+                              </span>
+                            )}
+                           <p className="text-sm font-bold text-slate-800 line-clamp-1">
+                             {item.note || (item.category === 'STOCK' ? '식권 충전' : '식권 사용')}
+                           </p>
+                         </div>
+                       </div>
+                       <button
+                         type="button"
+                         onClick={(e) => handleMenuClick(item.id, e)}
+                         className="p-2 -mr-2 rounded-full text-slate-300 active:bg-slate-100 transition-colors"
+                       >
+                         <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                           <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                         </svg>
+                       </button>
+                     </div>
+
+                     <div className="flex items-center justify-between bg-slate-50/50 rounded-xl p-3 border border-slate-100">
+                       <div className="flex flex-col">
+                         <span className="text-[9px] text-slate-400 uppercase font-black tracking-widest mb-0.5">변동 수량</span>
+                         <span className={`text-sm font-black ${item.amount > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                           {item.amount > 0 ? `+${item.amount}` : item.amount}
+                         </span>
+                       </div>
+                       <div className="h-6 w-px bg-slate-200"></div>
+                       <div className="flex flex-col items-end">
+                         <span className="text-[9px] text-slate-400 uppercase font-black tracking-widest mb-0.5">최종 잔액</span>
+                         <span className="text-sm font-black text-slate-900">
+                           {item.balance}장
+                         </span>
+                       </div>
+                     </div>
+                   </div>
+                 ))
+               )}
+             </div>
           </div>
         </div>
 
         {/* Dropdown Menu Portal */}
-        {activeMenuId && listMenuPos && (
+        {activeMenuId !== null && listMenuPos && (
           <div
             className="fixed z-[100] w-40 rounded-lg border border-slate-200 bg-white shadow-xl"
             style={{
@@ -457,32 +511,17 @@ function MealManagePage() {
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-600 text-sm">
                   -
                 </span>
-                식권 사용 (팀원)
+                식권 사용
               </h3>
               <div className="space-y-4">
                 <div className="grid grid-cols-1 gap-4">
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-700">대상자 (팀원)</label>
-                    <select
-                      value={mealForm.userId}
-                      onChange={(e) => setMealForm({ ...mealForm, userId: e.target.value })}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                    >
-                      <option value="">대상자를 선택하세요</option>
-                      {teamMembers.map((member) => (
-                        <option key={member.memberId} value={member.memberId}>
-                          {member.name} ({member.phone})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-700">사용처</label>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">사용내용</label>
                     <input
                       type="text"
                       value={mealForm.place}
                       onChange={(e) => setMealForm({ ...mealForm, place: e.target.value })}
-                      placeholder="예: 카페, 식당"
+                      placeholder="예: 카페, 식당, 팀회식"
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     />
                   </div>
@@ -536,15 +575,6 @@ function MealManagePage() {
                       type="date"
                       value={updateForm.date}
                       onChange={(e) => setUpdateForm({ ...updateForm, date: e.target.value })}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-700">대상/담당</label>
-                    <input
-                      type="text"
-                      value={updateForm.targetName}
-                      onChange={(e) => setUpdateForm({ ...updateForm, targetName: e.target.value })}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     />
                   </div>

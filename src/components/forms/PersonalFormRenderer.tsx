@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { FormTemplate, NextActionType, QuestionOption } from '../../types/form';
 import { FormInput } from './FormInput';
 import { ChevronRight, ChevronLeft, Check } from 'lucide-react';
+import { getFileUrl } from '../../services/albumService';
 
 interface PersonalFormRendererProps {
   template: FormTemplate;
@@ -40,24 +41,32 @@ export const PersonalFormRenderer: React.FC<PersonalFormRendererProps> = ({
     // 1. 질문 기반 분기 (1순위)
     for (const q of currentQuestions) {
       if ((q.inputType === 'SINGLE_CHOICE' || q.inputType === 'MULTIPLE_CHOICE') && answers[q.id]) {
-        // optionsJson이 있는 경우만 처리
-        if (q.optionsJson) {
+        
+        let options: QuestionOption[] = [];
+        
+        // Priority: richOptions (from Builder/State) > optionsJson (from Backend)
+        if ((q as any).richOptions) {
+          options = (q as any).richOptions;
+        } else if (q.optionsJson) {
           try {
-            const options: QuestionOption[] = JSON.parse(q.optionsJson);
-            const answerVal = answers[q.id];
-            
-            // 답변과 일치하는 옵션 찾기
-            const selectedOption = options.find(o => o.label === answerVal);
-            
-            // nextAction이 설정되어 있다면 그 설정을 최우선으로 따름
-            if (selectedOption && selectedOption.nextAction) {
-              return { 
-                action: selectedOption.nextAction, 
-                targetIndex: selectedOption.targetSectionIndex 
-              };
-            }
+            options = JSON.parse(q.optionsJson);
           } catch (e) {
             console.error("Invalid optionsJson", e);
+          }
+        }
+
+        if (options.length > 0) {
+          const answerVal = answers[q.id];
+          
+          // 답변과 일치하는 옵션 찾기
+          const selectedOption = options.find(o => o.label === answerVal);
+          
+          // nextAction이 설정되어 있다면 그 설정을 최우선으로 따름
+          if (selectedOption && selectedOption.nextAction) {
+            return { 
+              action: selectedOption.nextAction, 
+              targetIndex: selectedOption.targetSectionIndex 
+            };
           }
         }
       }
@@ -65,6 +74,13 @@ export const PersonalFormRenderer: React.FC<PersonalFormRendererProps> = ({
 
     // 2. 섹션 기본 설정 (2순위)
     if (currentSection.defaultNextAction) {
+      // Special case: If action is CONTINUE and we are at the last section, treat as SUBMIT
+      if (currentSection.defaultNextAction === 'CONTINUE' && 
+          isLastSection && 
+          (currentSection.defaultTargetSectionIndex === null || currentSection.defaultTargetSectionIndex === undefined)) {
+        return { action: 'SUBMIT' };
+      }
+
       return { 
         action: currentSection.defaultNextAction, 
         targetIndex: currentSection.defaultTargetSectionIndex 
@@ -138,7 +154,7 @@ export const PersonalFormRenderer: React.FC<PersonalFormRendererProps> = ({
       {/* Progress Indicator (Only in Section Mode) */}
       {isSectionMode && (
         <div className="mb-6">
-          <div className="mb-2 flex items-center justify-between text-sm text-slate-500">
+          <div className="mb-4 flex items-center justify-between text-sm text-slate-500">
             <span>
               <span className="font-bold text-slate-900">Step {currentSectionIndex + 1}</span>
               {' / '}
@@ -146,16 +162,31 @@ export const PersonalFormRenderer: React.FC<PersonalFormRendererProps> = ({
             </span>
             <span>{Math.round(((currentSectionIndex + 1) / template.sections!.length) * 100)}%</span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+          <div className="mb-6 h-2 w-full overflow-hidden rounded-full bg-slate-100">
             <div
               className="h-full bg-blue-600 transition-all duration-300 ease-out"
               style={{ width: `${((currentSectionIndex + 1) / template.sections!.length) * 100}%` }}
             />
           </div>
+
           <div className="mt-4">
-             <h2 className="text-xl font-bold text-slate-900">{template.sections![currentSectionIndex].title}</h2>
-             {template.sections![currentSectionIndex].description && (
-                <p className="mt-1 text-sm text-slate-500">{template.sections![currentSectionIndex].description}</p>
+             {currentSectionIndex === 0 ? (
+                <div className="rounded-xl border border-t-[12px] border-slate-200 border-t-purple-700 bg-white p-6 shadow-sm">
+                   <h1 className="text-3xl font-bold text-slate-900">{template.title}</h1>
+                   {template.description && (
+                     <p className="mt-4 text-base text-slate-600 whitespace-pre-wrap">{template.description}</p>
+                   )}
+                </div>
+             ) : (
+                <div className="space-y-4">
+                   <h3 className="text-2xl font-bold text-slate-900 px-1">{template.title}</h3>
+                   <div className="rounded-xl bg-purple-700 p-4 text-white shadow-sm">
+                      <h2 className="text-xl font-bold">{template.sections![currentSectionIndex].title}</h2>
+                      {template.sections![currentSectionIndex].description && (
+                         <p className="mt-1 text-sm text-purple-100">{template.sections![currentSectionIndex].description}</p>
+                      )}
+                   </div>
+                </div>
              )}
           </div>
         </div>
@@ -167,6 +198,15 @@ export const PersonalFormRenderer: React.FC<PersonalFormRendererProps> = ({
           .sort((a, b) => a.orderIndex - b.orderIndex)
           .map((question) => (
             <div key={question.id} className="space-y-2">
+              {question.imageUrl && (
+                <div className="mb-2">
+                  <img 
+                    src={getFileUrl(question.imageUrl)} 
+                    alt={question.label} 
+                    className="max-h-60 rounded-lg border border-slate-200 object-contain"
+                  />
+                </div>
+              )}
               <label className="block text-sm font-semibold text-slate-700">
                 {question.label}
                 {question.required && <span className="ml-1 text-rose-500">*</span>}
@@ -199,25 +239,32 @@ export const PersonalFormRenderer: React.FC<PersonalFormRendererProps> = ({
           <div /> // Spacer
         )}
 
-        <button
-          onClick={handleNext}
-          className={`flex items-center gap-1 rounded-lg px-6 py-2 text-sm font-bold text-white shadow-sm
-            ${isSubmitStep 
-              ? 'bg-green-600 hover:bg-green-700' 
-              : 'bg-blue-600 hover:bg-blue-700'}`}
-        >
-          {isSubmitStep ? (
-            <>
-              <Check className="h-4 w-4" />
-              제출하기
-            </>
-          ) : (
-            <>
-              다음
-              <ChevronRight className="h-4 w-4" />
-            </>
-          )}
-        </button>
+        {!readOnly || !isSubmitStep ? (
+          <button
+            onClick={handleNext}
+            className={`flex items-center gap-1 rounded-lg px-6 py-2 text-sm font-bold text-white shadow-sm transition-colors
+              ${isSubmitStep 
+                ? 'bg-green-600 hover:bg-green-700' 
+                : 'bg-blue-600 hover:bg-blue-700'}`}
+          >
+            {isSubmitStep ? (
+              <>
+                <Check className="h-4 w-4" />
+                제출하기
+              </>
+            ) : (
+              <>
+                다음
+                <ChevronRight className="h-4 w-4" />
+              </>
+            )}
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 text-slate-400 text-sm font-medium italic">
+            <Check className="h-4 w-4" />
+            마지막 페이지입니다
+          </div>
+        )}
       </div>
     </div>
   );

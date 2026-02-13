@@ -10,6 +10,7 @@ export interface CreateMemberRequest {
   gender: string  // "MALE" | "FEMALE"
   memberStatus: string  // "NEWCOMER", "ACTIVE", "LONG_TERM_ABSENT", "MOVED", "GRADUATED"
   memberImageUrl?: string
+  isDuplicate?: boolean
 }
 
 // 수정 요청 DTO
@@ -68,6 +69,12 @@ export async function createMember(payload: CreateMemberRequest): Promise<number
   return response.data.data
 }
 
+// 새 멤버 대량 등록 - POST /api/members/batch
+export async function createMembersBatch(payload: CreateMemberRequest[]): Promise<number> {
+  const response = await api.post<ApiResponseForm<number>>('/api/members/batch', payload)
+  return response.data.data
+}
+
 // 멤버 정보 수정 - PUT /api/members/{memberId}
 export async function updateMember(memberId: number, payload: UpdateMemberRequest): Promise<void> {
   await api.put(`/api/members/${memberId}`, payload)
@@ -89,6 +96,19 @@ export async function uploadMembersFromExcel(file: File): Promise<void> {
       'Content-Type': 'multipart/form-data',
     },
   })
+}
+
+// 엑셀 미리보기 - POST /api/members/excel-preview
+export async function previewMembersFromExcel(file: File): Promise<CreateMemberRequest[]> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await api.post<ApiResponseForm<CreateMemberRequest[]>>('/api/members/excel-preview', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+  return response.data.data
 }
 
 // 이미지 업로드 - POST /api/files/upload?folder=member

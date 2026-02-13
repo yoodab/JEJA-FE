@@ -111,11 +111,15 @@ interface ClubSubmissionResponseDto {
 
 interface SubmissionDetailResponseDto {
   submissionId: number;
+  templateId: number;
   formTitle: string;
   submitDate: string;
+  submitTime: string;
   targetSundayDate?: string;
   status: SubmissionStatus;
   submitterName: string;
+  targetCellName?: string;
+  targetCellId?: number;
   items: QuestionAnswerDto[];
 }
 
@@ -141,14 +145,20 @@ export interface AvailableFormResponse {
   isActive: boolean;
   lastSubmitDate?: string;
   submitted: boolean;
+  selectableDates?: string[];
+  statusMessage?: string;
 }
 
 export interface MySubmissionResponse {
   submissionId: number;
+  templateId: number;
   templateTitle: string;
   submitterName: string;
-  submitDate: string;
+  submitTime: string;
+  targetSundayDate?: string;
+  targetCellName?: string;
   status: SubmissionStatus;
+  category: FormCategory;
 }
 
 const mapQuestion = (q: RawQuestionDto): FormQuestion => ({
@@ -191,13 +201,75 @@ export const getAvailableForms = async (): Promise<FormTemplate[]> => {
     questions: [], // Summary view doesn't need full questions
     // Additional fields for UI
     lastSubmitDate: dto.lastSubmitDate,
-    submitted: dto.submitted
-  } as FormTemplate & { lastSubmitDate?: string, submitted?: boolean }));
+    submitted: dto.submitted,
+    selectableDates: dto.selectableDates,
+    statusMessage: dto.statusMessage
+  } as FormTemplate & { 
+    lastSubmitDate?: string, 
+    submitted?: boolean, 
+    selectableDates?: string[], 
+    statusMessage?: string 
+  }));
 };
 
 export const getMySubmissions = async (): Promise<MySubmissionResponse[]> => {
   const response = await api.get<ApiResponseForm<MySubmissionResponse[]>>('/api/forms/submissions/my');
-  return response.data.data;
+  return response.data.data.map(dto => ({
+    submissionId: dto.submissionId,
+    templateId: dto.templateId,
+    templateTitle: dto.templateTitle,
+    submitterName: dto.submitterName || 'Unknown',
+    submitTime: dto.submitTime,
+    targetSundayDate: dto.targetSundayDate,
+    targetCellName: dto.targetCellName,
+    targetCellId: dto.targetCellId,
+    status: dto.status || 'PENDING',
+    category: dto.category
+  }));
+};
+
+export const getLastSubmission = async (templateId: number, date?: string, cellId?: number): Promise<FormSubmission | null> => {
+  try {
+    const params = new URLSearchParams({ templateId: templateId.toString() });
+    if (date) params.append('date', date);
+    if (cellId) params.append('cellId', cellId.toString());
+    const response = await api.get<ApiResponseForm<SubmissionDetailResponseDto>>(`/api/forms/submissions/last?${params.toString()}`);
+    const data = response.data.data;
+    
+    if (!data) return null;
+
+    // Flatten answers to match FormSubmission type
+    const answers: FormAnswer[] = [];
+    data.items.forEach(item => {
+      item.answers.forEach(ans => {
+        answers.push({
+          questionId: item.questionId,
+          questionLabel: item.label,
+          targetMemberName: ans.memberName || undefined,
+          value: ans.value
+        });
+      });
+    });
+
+    return {
+      id: data.submissionId,
+      templateId: templateId,
+      submitterName: data.submitterName || 'Unknown',
+      submitDate: data.submitDate,
+      submitTime: data.submitTime,
+      targetSundayDate: data.targetSundayDate,
+      targetCellName: data.targetCellName,
+      targetCellId: data.targetCellId,
+      status: data.status || 'PENDING',
+      answers
+    };
+  } catch (error) {
+    return null;
+  }
+};
+
+export const updateSubmission = async (submissionId: number, data: SubmissionRequest): Promise<void> => {
+  await api.put(`/api/forms/submissions/${submissionId}`, data);
 };
 
 export const getFormTemplates = async (): Promise<FormTemplate[]> => {
@@ -207,14 +279,9 @@ export const getFormTemplates = async (): Promise<FormTemplate[]> => {
     title: dto.title,
     description: dto.description,
     category: dto.category as FormCategory,
-    type: 'GROUP' as FormType, // Default or derived? Backend should provide. Assuming GROUP for now or derived from category.
-                   // Actually category CELL_REPORT implies GROUP.
-    isActive: true, // Backend AvailableFormResponseDto doesn't strictly imply isActive management status for admin list, 
-                    // but usually this list is for management. 
-                    // Wait, the Controller says getAllTemplates for ADMIN.
-                    // AdminFormDetailResponseDto might be different.
-                    // But here we are calling /api/admin/forms/templates.
-    questions: [], // Summary list doesn't have questions
+    type: (dto.category === 'CELL_REPORT' ? 'GROUP' : 'PERSONAL') as FormType,
+    isActive: dto.isActive,
+    questions: [],
     startDate: dto.startDate,
     endDate: dto.endDate
   } as FormTemplate));
@@ -224,15 +291,29 @@ export const getTemplateDetail = async (id: number): Promise<FormTemplate> => {
   const response = await api.get<ApiResponseForm<RawFormDetailDto>>(`/api/forms/templates/${id}`);
   const data = response.data.data;
   
+  // 섹션에 있는 질문들을 모두 평탄화하여 questions 배열에 추가
+  const questions = data.questions ? data.questions.map(mapQuestion) : [];
+  if (data.sections) {
+    data.sections.forEach(s => {
+      if (s.questions) {
+        s.questions.forEach(q => {
+          if (!questions.find(existing => existing.id === q.id)) {
+            questions.push(mapQuestion(q));
+          }
+        });
+      }
+    });
+  }
+  
   return {
     id: (data.templateId || data.id)!,
     title: data.title,
     description: data.description,
     category: data.category as FormCategory,
     type: (data.type || (data.category === 'CELL_REPORT' ? 'GROUP' : 'PERSONAL')) as FormType,
-    isActive: data.isActive!,
+    isActive: (data.isActive ?? data.active)!,
     targetClubId: data.targetClubId,
-    questions: data.questions ? data.questions.map(mapQuestion) : [],
+    questions: questions,
     sections: data.sections ? data.sections.map(mapSection) : [],
     startDate: data.startDate,
     endDate: data.endDate
@@ -243,6 +324,20 @@ export const getFormTemplate = async (id: number): Promise<FormTemplate> => {
   const response = await api.get<ApiResponseForm<RawFormDetailDto>>(`/api/admin/forms/templates/${id}`);
   const data = response.data.data;
   
+  // 섹션에 있는 질문들을 모두 평탄화하여 questions 배열에 추가
+  const questions = data.questions ? data.questions.map(mapQuestion) : [];
+  if (data.sections) {
+    data.sections.forEach(s => {
+      if (s.questions) {
+        s.questions.forEach(q => {
+          if (!questions.find(existing => existing.id === q.id)) {
+            questions.push(mapQuestion(q));
+          }
+        });
+      }
+    });
+  }
+  
   return {
     id: (data.templateId || data.id)!,
     title: data.title,
@@ -251,7 +346,7 @@ export const getFormTemplate = async (id: number): Promise<FormTemplate> => {
     type: (data.type || (data.category === 'CELL_REPORT' ? 'GROUP' : 'PERSONAL')) as FormType,
     isActive: (data.isActive ?? data.active)!, // Handle both isActive and active
     targetClubId: data.targetClubId,
-    questions: data.questions ? data.questions.map(mapQuestion) : [],
+    questions: questions,
     sections: data.sections ? data.sections.map(mapSection) : [],
     startDate: data.startDate,
     endDate: data.endDate,
@@ -270,6 +365,21 @@ export const getTemplateByClubId = async (clubId: number): Promise<FormTemplate 
     if (!response.data.data) return null;
     
     const data = response.data.data;
+    
+    // 섹션에 있는 질문들을 모두 평탄화하여 questions 배열에 추가
+    const questions = data.questions ? data.questions.map(mapQuestion) : [];
+    if (data.sections) {
+      data.sections.forEach(s => {
+        if (s.questions) {
+          s.questions.forEach(q => {
+            if (!questions.find(existing => existing.id === q.id)) {
+              questions.push(mapQuestion(q));
+            }
+          });
+        }
+      });
+    }
+
     return {
       id: (data.templateId || data.id)!,
       title: data.title,
@@ -278,7 +388,7 @@ export const getTemplateByClubId = async (clubId: number): Promise<FormTemplate 
       type: (data.type || (data.category === 'CELL_REPORT' ? 'GROUP' : 'PERSONAL')) as FormType,
       isActive: (data.isActive ?? data.active)!,
       targetClubId: data.targetClubId,
-      questions: data.questions ? data.questions.map(mapQuestion) : [],
+      questions: questions,
       sections: data.sections ? data.sections.map(mapSection) : [],
       startDate: data.startDate,
       endDate: data.endDate,
@@ -313,36 +423,41 @@ export const getFormSubmissions = async (templateId: number): Promise<FormSubmis
 };
 
 export const getFormSubmission = async (submissionId: number): Promise<FormSubmission> => {
-  const response = await api.get<ApiResponseForm<SubmissionDetailResponseDto>>(`/api/admin/forms/submissions/${submissionId}`);
-  const data = response.data.data;
+  const response = await api.get<ApiResponseForm<SubmissionDetailResponseDto>>(`/api/forms/submissions/${submissionId}`);
+  const dto = response.data.data;
   
-  // Flatten answers
-  const answers: FormAnswer[] = [];
-  data.items.forEach(item => {
-    item.answers.forEach(ans => {
-      answers.push({
+  return {
+    id: dto.submissionId,
+    templateId: dto.templateId,
+    submitterName: dto.submitterName || 'Unknown',
+    submitDate: dto.submitDate,
+    submitTime: dto.submitTime,
+    targetSundayDate: dto.targetSundayDate,
+    targetCellName: dto.targetCellName,
+    targetCellId: dto.targetCellId,
+    status: dto.status || 'PENDING',
+    answers: dto.items.flatMap(item => {
+      if (item.answers.length === 0) {
+        return [{
+          questionId: item.questionId,
+          questionLabel: item.label,
+          value: '', // 빈 값으로 표시
+          targetMemberName: undefined
+        }];
+      }
+      return item.answers.map(ans => ({
         questionId: item.questionId,
         questionLabel: item.label,
-        targetMemberName: ans.memberName || undefined,
-        value: ans.value
-      });
-    });
-  });
-
-  return {
-    id: data.submissionId,
-    templateId: 0, // Not available in detail response
-    submitterName: data.submitterName || 'Unknown',
-    submitDate: data.submitDate,
-    targetSundayDate: data.targetSundayDate,
-    status: data.status || 'PENDING',
-    answers
+        value: ans.value,
+        targetMemberName: ans.memberName || undefined
+      }));
+    })
   };
 };
 
-export const createFormTemplate = async (template: Partial<FormTemplate>): Promise<FormTemplate> => {
-  const response = await api.post<ApiResponseForm<FormTemplate>>('/api/forms/templates', template);
-  return response.data.data;
+export const createFormTemplate = async (template: Partial<FormTemplate>): Promise<{ id: number }> => {
+  const response = await api.post<ApiResponseForm<number>>('/api/forms/templates', template);
+  return { id: response.data.data };
 };
 
 export const updateFormTemplate = async (id: number, template: Partial<FormTemplate>): Promise<FormTemplate> => {

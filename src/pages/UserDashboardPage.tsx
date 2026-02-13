@@ -62,7 +62,19 @@ function UserDashboardPage() {
   const [latestAlbums, setLatestAlbums] = useState<AlbumListItem[]>([]);
   const [latestSchedules, setLatestSchedules] = useState<Schedule[]>([]);
   const [slides, setSlides] = useState<Slide[]>([]);
-  const [availableForms, setAvailableForms] = useState<FormTemplate[]>([]);
+  const [availableForms, setAvailableForms] = useState<(FormTemplate & { 
+    submitted?: boolean;
+    selectableDates?: string[];
+  })[]>([]);
+
+  const unsubmittedCount = availableForms
+    .filter(f => !f.submitted)
+    .reduce((acc, f) => {
+      if (f.category === 'CELL_REPORT' && f.selectableDates && f.selectableDates.length > 0) {
+        return acc + f.selectableDates.length;
+      }
+      return acc + 1;
+    }, 0);
 
   const nextSlide = useCallback(() => {
     if (slides.length === 0) return;
@@ -199,8 +211,8 @@ function UserDashboardPage() {
   const current = slides[activeIndex];
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="flex flex-col min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
+      <div className="flex-grow mx-auto w-full max-w-6xl space-y-6">
         <UserHeader
           isLoggedIn={isLoggedIn}
           userRole={userRole}
@@ -210,14 +222,25 @@ function UserDashboardPage() {
         <main className="space-y-6">
           {/* 상단 큰 사진 슬라이드 */}
         {(slides.length > 0 && current) ? (
-          <section className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-900/80 shadow-lg">
+          <section 
+            className={`group relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-900/80 shadow-lg ${current.linkUrl ? 'cursor-pointer' : ''}`}
+            onClick={() => {
+              if (current.linkUrl) {
+                if (current.linkUrl.startsWith('http')) {
+                  window.open(current.linkUrl, '_blank', 'noopener,noreferrer');
+                } else {
+                  navigate(current.linkUrl);
+                }
+              }
+            }}
+          >
             <div 
               className="relative h-52 w-full sm:h-72"
-              style={{ backgroundColor: (current.type === 'image' ) ? current.backgroundColor || '#1e293b' : current.backgroundColor }}
+              style={{ backgroundColor: (current.type === 'image' || current.type === 'IMAGE') ? current.backgroundColor || '#1e293b' : current.backgroundColor }}
             >
-              {(current.type === 'image' ) ? (
+              {(current.type === 'image' || current.type === 'IMAGE') ? (
                 <img
-                  src={current.url}
+                  src={getFileUrl(current.url)}
                   alt={current.title || '슬라이드'}
                   className="h-full w-full object-contain"
                 />
@@ -244,7 +267,8 @@ function UserDashboardPage() {
               )}
             </div>
 
-            {/* 텍스트 오버레이 (이미지 타입이고 제목/부제목이 있을 때만 표시) */}
+            {/* 텍스트 오버레이 (이미지 타입이고 제목/부제목이 있을 때만 표시) - 사용하지 않음 (관리용 제목만 사용) */}
+            {/* 
             {(current.type === 'image' || current.type === 'IMAGE') && (current.title || current.subtitle) && (
               <div className="pointer-events-none absolute inset-0 flex flex-col justify-center bg-black/20 px-6 py-6 sm:px-10">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-200">
@@ -262,20 +286,27 @@ function UserDashboardPage() {
                 )}
               </div>
             )}
+            */}
 
             {/* 좌우 화살표 */}
             {slides.length > 1 && (
               <>
                 <button
                   type="button"
-                  onClick={prevSlide}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    prevSlide();
+                  }}
                   className="absolute left-3 top-1/2 z-10 flex -translate-y-1/2 items-center justify-center rounded-full p-2 text-white shadow-sm transition-all duration-300 hover:bg-black/20 md:opacity-0 md:group-hover:opacity-100"
                 >
                   <span className="text-3xl drop-shadow-md">‹</span>
                 </button>
                 <button
                   type="button"
-                  onClick={nextSlide}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    nextSlide();
+                  }}
                   className="absolute right-3 top-1/2 z-10 flex -translate-y-1/2 items-center justify-center rounded-full p-2 text-white shadow-sm transition-all duration-300 hover:bg-black/20 md:opacity-0 md:group-hover:opacity-100"
                 >
                   <span className="text-3xl drop-shadow-md">›</span>
@@ -290,7 +321,10 @@ function UserDashboardPage() {
                   <button
                     key={index}
                     type="button"
-                    onClick={() => setActiveIndex(index)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveIndex(index);
+                    }}
                     className={`h-2 w-2 rounded-full transition ${
                       index === activeIndex ? "bg-white" : "bg-white/40"
                     }`}
@@ -429,7 +463,7 @@ function UserDashboardPage() {
                     작성가능 보고서
                   </span>
                   <span className="text-sm font-bold text-blue-600">
-                    {availableForms.length}개
+                    {unsubmittedCount}개
                   </span>
                 </div>
               </div>
@@ -564,23 +598,17 @@ function UserDashboardPage() {
                     };
                     const typeLabel = typeMap[schedule.type] || schedule.type;
 
-                    // 교인 전용 일정인지 확인 (배경색 구분)
-                    const isMemberSchedule = schedule.sharingScope === 'LOGGED_IN_USERS';
-
                     return (
                       <div
                         key={schedule.scheduleId}
-                        className={`w-full rounded-lg border px-3 py-2 text-left ${
-                          isMemberSchedule 
-                            ? 'border-amber-200 bg-amber-50' 
-                            : 'border-slate-200 bg-slate-50'
-                        }`}
+                        onClick={() => navigate(`/schedules?scheduleId=${schedule.scheduleId}&date=${schedule.startDate.split('T')[0]}`)}
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left cursor-pointer hover:bg-slate-100 transition-colors"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 overflow-hidden min-w-0">
                               <span
-                                className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                                className={`flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
                                   schedule.type === "WORSHIP"
                                     ? "bg-blue-100 text-blue-700"
                                     : schedule.type === "EVENT"
@@ -590,14 +618,9 @@ function UserDashboardPage() {
                               >
                                 {typeLabel}
                               </span>
-                              <span className="text-[10px] font-semibold text-slate-900">
+                              <span className="text-[10px] font-semibold text-slate-900 truncate min-w-0">
                                 {schedule.title}
                               </span>
-                              {isMemberSchedule && (
-                                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">
-                                  교인전용
-                                </span>
-                              )}
                             </div>
                             <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-500">
                               <span>{dateStr}</span>
@@ -619,7 +642,9 @@ function UserDashboardPage() {
           </div>
         </section>
         </main>
+      </div>
 
+      <div className="mx-auto w-full max-w-6xl mt-10">
         <Footer />
       </div>
     </div>

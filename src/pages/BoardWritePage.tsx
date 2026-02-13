@@ -1,18 +1,22 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
 import RichTextEditor from '../components/RichTextEditor'
 import { createNotice } from '../services/noticeService'
 import { createBoardPost, getBoards } from '../services/boardService'
+import { useConfirm } from '../contexts/ConfirmContext'
 
 function BoardWritePage() {
   const { boardType } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
+  const { confirm } = useConfirm()
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isPrivate, setIsPrivate] = useState(false)
   const [boardName, setBoardName] = useState('')
   const [apiBoardId, setApiBoardId] = useState<string | null>(null)
 
@@ -28,17 +32,21 @@ function BoardWritePage() {
       if (boardType) {
         try {
           const boards = await getBoards()
-          // id 또는 boardId가 일치하는지 확인
+          // id, boardId 또는 boardKey가 일치하는지 확인
           const board = boards.find(b => 
             String(b.id) === String(boardType) || 
-            (b.boardId && String(b.boardId) === String(boardType))
+            (b.boardId && String(b.boardId) === String(boardType)) ||
+            (b.boardKey && String(b.boardKey) === String(boardType))
           )
           if (board) {
             setBoardName(board.name)
-            if (board.boardId) {
-              setApiBoardId(board.boardId)
+            // API 호출 시 사용할 식별자로 boardKey를 우선 사용
+            if (board.boardKey) {
+              setApiBoardId(board.boardKey)
+            } else if (board.boardId) {
+              setApiBoardId(String(board.boardId))
             } else if (board.id) {
-              setApiBoardId(board.id)
+              setApiBoardId(String(board.id))
             }
           }
         } catch (error) {
@@ -55,7 +63,7 @@ function BoardWritePage() {
     const hasImage = content.includes('<img')
     
     if (!title.trim() || (!textContent && !hasImage)) {
-      alert('제목과 내용을 입력해주세요.')
+      toast.error('제목과 내용을 입력해주세요.')
       return
     }
 
@@ -69,7 +77,7 @@ function BoardWritePage() {
           content: content.trim(),
           notice: false,
         })
-        alert('글이 작성되었습니다.')
+        toast.success('글이 작성되었습니다.')
         navigate(`/youth-notices/${noticeId}`)
       } else if (boardType) {
         // 게시판 작성
@@ -77,11 +85,12 @@ function BoardWritePage() {
         const postId = await createBoardPost(targetId, {
           title: title.trim(),
           content: content.trim(),
+          isPrivate: isPrivate,
         })
-        alert('글이 작성되었습니다.')
+        toast.success('글이 작성되었습니다.')
         navigate(`/boards/${boardType}/${postId}`)
       } else {
-        alert('게시판 정보를 찾을 수 없습니다.')
+        toast.error('게시판 정보를 찾을 수 없습니다.')
         setIsSubmitting(false)
       }
     } catch (error: unknown) {
@@ -89,13 +98,21 @@ function BoardWritePage() {
       const err = error as { response?: { data?: { message?: string } }, message?: string }
       const errorMessage =
         err?.response?.data?.message || err?.message || '글 작성 중 오류가 발생했습니다.'
-      alert(errorMessage)
+      toast.error(errorMessage)
       setIsSubmitting(false)
     }
   }
 
-  const handleCancel = () => {
-    if (confirm('작성 중인 내용이 사라집니다. 정말 취소하시겠습니까?')) {
+  const handleCancel = async () => {
+    const isConfirmed = await confirm({
+      title: '작성 취소',
+      message: '작성 중인 내용이 사라집니다. 정말 취소하시겠습니까?',
+      type: 'warning',
+      confirmText: '확인',
+      cancelText: '취소',
+    })
+
+    if (isConfirmed) {
       if (isYouthNotice) {
         navigate('/youth-notices')
       } else {
@@ -141,6 +158,21 @@ function BoardWritePage() {
                 className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
               />
             </div>
+
+            {!isYouthNotice && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="isPrivate"
+                  checked={isPrivate}
+                  onChange={(e) => setIsPrivate(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="isPrivate" className="text-sm font-medium text-slate-700 cursor-pointer">
+                  비밀글로 작성하기 (작성자와 목사님만 볼 수 있습니다)
+                </label>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">

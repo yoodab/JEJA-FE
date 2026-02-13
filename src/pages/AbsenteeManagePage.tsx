@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { formatPhoneNumber } from '../utils/format'
 import {
   type CareMember,
@@ -25,6 +27,7 @@ type TabType = 'ALL' | 'NEEDS_ATTENTION' | 'LONG_TERM_ABSENCE' | 'ATTENDED'
 
 function AbsenteeManagePage() {
   const navigate = useNavigate()
+  const { confirm } = useConfirm()
   const [activeTab, setActiveTab] = useState<TabType>('ALL')
   const [members, setMembers] = useState<CareMember[]>([])
   const [filteredMembers, setFilteredMembers] = useState<CareMember[]>([])
@@ -45,13 +48,18 @@ function AbsenteeManagePage() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
-    alert('클립보드에 복사되었습니다.')
+    toast.success('클립보드에 복사되었습니다.')
   }
   
   // Completion Modal
   const [isCompletionModalOpen, setIsCompletionModalOpen] = useState(false)
   const [completionType, setCompletionType] = useState<'COMPLETED' | 'STOPPED'>('COMPLETED')
   const [completionNote, setCompletionNote] = useState('')
+
+  // Manager Assignment Modal
+  const [isManagerModalOpen, setIsManagerModalOpen] = useState(false)
+  const [managerInputId, setManagerInputId] = useState('')
+  const [assigningMemberId, setAssigningMemberId] = useState<number | null>(null)
 
   // Log Inputs
   const [newLogContent, setNewLogContent] = useState('')
@@ -135,7 +143,7 @@ function AbsenteeManagePage() {
       setMembers(data)
     } catch (error) {
       console.error('멤버 목록 로드 실패:', error)
-      alert('데이터를 불러오는데 실패했습니다.')
+      toast.error('데이터를 불러오는데 실패했습니다.')
     } finally {
       setLoading(false)
     }
@@ -146,13 +154,13 @@ function AbsenteeManagePage() {
     try {
       await updateCareSettings(settings)
       setIsSettingsOpen(false)
-      alert('설정이 저장되었습니다.')
+      toast.success('설정이 저장되었습니다.')
       // Reload data as settings might affect statuses
       loadMembers()
       loadSummary()
     } catch (error) {
       console.error('설정 저장 실패:', error)
-      alert('설정 저장에 실패했습니다.')
+      toast.error('설정 저장에 실패했습니다.')
     }
   }
 
@@ -165,14 +173,14 @@ function AbsenteeManagePage() {
       setIsBasicOpen(false)
     } catch (error) {
       console.error('멤버 상세 정보 로드 실패:', error)
-      alert('멤버 정보를 불러오는데 실패했습니다.')
+      toast.error('멤버 정보를 불러오는데 실패했습니다.')
     }
   }
 
   // Add Log
   const handleAddLog = async () => {
     if (!selectedMember || !newLogContent.trim()) {
-      alert('로그 내용을 입력해주세요.')
+      toast.error('로그 내용을 입력해주세요.')
       return
     }
 
@@ -185,7 +193,7 @@ function AbsenteeManagePage() {
       setNewLogMethod('전화')
     } catch (error) {
       console.error('로그 추가 실패:', error)
-      alert('로그 추가에 실패했습니다.')
+      toast.error('로그 추가에 실패했습니다.')
     }
   }
 
@@ -199,7 +207,7 @@ function AbsenteeManagePage() {
 
   const handleSaveEditLog = async (logId: number) => {
     if (!selectedMember || !editingLogContent.trim()) {
-      alert('로그 내용을 입력해주세요.')
+      toast.error('로그 내용을 입력해주세요.')
       return
     }
 
@@ -213,22 +221,32 @@ function AbsenteeManagePage() {
       setEditingLogMethod('전화')
     } catch (error) {
       console.error('로그 수정 실패:', error)
-      alert('로그 수정에 실패했습니다.')
+      toast.error('로그 수정에 실패했습니다.')
     }
   }
 
   const handleDeleteLog = async (logId: number) => {
     if (!selectedMember) return
-    if (!confirm('이 로그를 삭제하시겠습니까?')) return
+    
+    const isConfirmed = await confirm({
+      title: '로그 삭제',
+      message: '이 로그를 삭제하시겠습니까?',
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소'
+    })
+
+    if (!isConfirmed) return
 
     try {
       await deleteCareLog(selectedMember.currentInfo.memberId, logId)
       // Refresh detail
       const detail = await getCareMemberDetail(selectedMember.currentInfo.memberId)
       setSelectedMember(detail)
+      toast.success('로그가 삭제되었습니다.')
     } catch (error) {
       console.error('로그 삭제 실패:', error)
-      alert('로그 삭제에 실패했습니다.')
+      toast.error('로그 삭제에 실패했습니다.')
     }
   }
 
@@ -242,20 +260,20 @@ function AbsenteeManagePage() {
   const handleSubmitCompletion = async () => {
     if (!selectedMember) return
     if (!completionNote.trim()) {
-      alert('종료 사유를 입력해주세요.')
+      toast.error('종료 사유를 입력해주세요.')
       return
     }
 
     try {
       await completeCare(selectedMember.currentInfo.memberId, completionType, completionNote)
-      alert('케어가 종료되었습니다.')
+      toast.success('케어가 종료되었습니다.')
       setIsCompletionModalOpen(false)
       setIsSidePanelOpen(false)
       loadMembers()
       loadSummary()
     } catch (error) {
       console.error('케어 종료 실패:', error)
-      alert('케어 종료 처리에 실패했습니다.')
+      toast.error('케어 종료 처리에 실패했습니다.')
     }
   }
 
@@ -333,23 +351,32 @@ function AbsenteeManagePage() {
     setOpenMemberMenuId(memberId)
   }
 
-  const handleAssignManager = async (memberId: number) => {
-    const input = prompt('담당자 ID를 입력하세요')
-    if (!input) return
-    const newManagerId = parseInt(input, 10)
+  const handleAssignManager = (memberId: number) => {
+    setAssigningMemberId(memberId)
+    setManagerInputId('')
+    setIsManagerModalOpen(true)
+  }
+
+  const handleSubmitManager = async () => {
+    if (!assigningMemberId || !managerInputId.trim()) return
+    
+    const newManagerId = parseInt(managerInputId, 10)
     if (Number.isNaN(newManagerId)) {
-      alert('숫자 ID를 입력해주세요.')
+      toast.error('숫자 ID를 입력해주세요.')
       return
     }
+
     try {
-      await updateManager(memberId, newManagerId)
-      alert('담당자가 지정되었습니다.')
+      await updateManager(assigningMemberId, newManagerId)
+      toast.success('담당자가 지정되었습니다.')
+      setIsManagerModalOpen(false)
+      setAssigningMemberId(null)
       setOpenMemberMenuId(null)
       loadMembers()
       loadSummary()
     } catch (error) {
       console.error('담당자 지정 실패:', error)
-      alert('담당자 지정에 실패했습니다.')
+      toast.error('담당자 지정에 실패했습니다.')
     }
   }
 
@@ -1069,6 +1096,46 @@ function AbsenteeManagePage() {
                   className={`rounded-lg px-4 py-2 text-sm font-bold text-white shadow-sm ${completionType === 'COMPLETED' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-600 hover:bg-slate-700'}`}
                 >
                   확인
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Manager Assignment Modal */}
+        {isManagerModalOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setIsManagerModalOpen(false)}>
+            <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 rounded-t-2xl">
+                <h3 className="text-lg font-semibold text-slate-900">담당자 지정</h3>
+                <button onClick={() => setIsManagerModalOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-slate-700">담당자 ID</label>
+                  <input
+                    type="text"
+                    value={managerInputId}
+                    onChange={(e) => setManagerInputId(e.target.value)}
+                    placeholder="담당자 ID를 입력하세요"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSubmitManager()
+                    }}
+                  />
+                  <p className="text-xs text-slate-500">지정할 담당자의 고유 ID(숫자)를 입력해주세요.</p>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 rounded-b-2xl">
+                <button onClick={() => setIsManagerModalOpen(false)} className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200">취소</button>
+                <button 
+                  onClick={handleSubmitManager} 
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-700"
+                >
+                  지정하기
                 </button>
               </div>
             </div>

@@ -7,9 +7,10 @@ import {
   isManager as checkIsManager,
   MANAGER_ROLES,
 } from "../utils/auth";
-import { getClubs } from "../services/clubService";
+import { getClubs, getMyClubs } from "../services/clubService";
 import { getBoards, type Board } from "../services/boardService";
 import type { Club } from "../types/club";
+import { ClubType } from "../types/club";
 
 type UserHeaderProps = {
   isLoggedIn?: boolean;
@@ -28,8 +29,15 @@ function UserHeader({
   const [isBoardMenuOpen, setIsBoardMenuOpen] = useState(false);
   const [isTeamMenuOpen, setIsTeamMenuOpen] = useState(false);
   const [isMyInfoMenuOpen, setIsMyInfoMenuOpen] = useState(false);
+  const [isManageMenuOpen, setIsManageMenuOpen] = useState(false);
   const [teams, setTeams] = useState<Club[]>([]);
+  const [myTeams, setMyTeams] = useState<Club[]>([]);
+  const [isOtherTeamsExpanded, setIsOtherTeamsExpanded] = useState(false);
   const [boards, setBoards] = useState<Board[]>([]);
+
+  // 소속 팀과 소속되지 않은 팀 분류
+  const myTeamList = teams.filter(t => myTeams.some(mt => String(mt.id) === String(t.id)));
+  const otherTeamList = teams.filter(t => !myTeams.some(mt => String(mt.id) === String(t.id)));
 
   const teamMenuTimer = useRef<NodeJS.Timeout | null>(null);
   const boardMenuTimer = useRef<NodeJS.Timeout | null>(null);
@@ -93,8 +101,16 @@ function UserHeader({
   useEffect(() => {
     const fetchTeams = async () => {
       try {
-        const data = await getClubs();
-        setTeams(data);
+        const [allClubs, myClubs] = await Promise.all([
+          getClubs(),
+          getMyClubs()
+        ]);
+        if (import.meta.env.DEV) {
+          console.log('All Clubs:', allClubs);
+          console.log('My Clubs:', myClubs);
+        }
+        setTeams(allClubs);
+          setMyTeams(myClubs);
       } catch (error) {
         console.error("팀 목록 로드 실패:", error);
       }
@@ -117,11 +133,16 @@ function UserHeader({
 
   // 상위에서 전달된 상태가 있으면 우선 사용
   const isLoggedIn = propLoggedIn ?? localLoggedIn;
-  const userRole = propUserRole ?? localRole;
-  // 관리자 권한 확인 (userRole이 있으면 해당 역할로, 없으면 저장된 역할로 확인)
-  const isManager = userRole
-    ? MANAGER_ROLES.includes(userRole as (typeof MANAGER_ROLES)[number])
-    : checkIsManager();
+  
+  // 관리자 권한 확인 (localStorage의 모든 권한을 체크하는 checkIsManager 사용)
+  const isManager = checkIsManager();
+
+  // 디버깅을 위한 로그 추가
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      console.log('UserHeader isManager 권한 상태:', isManager);
+    }
+  }, [isManager]);
 
   const handleLoginLogout = () => {
     if (isLoggedIn) {
@@ -191,15 +212,6 @@ function UserHeader({
                       onMouseEnter={openTeamMenu}
                       onMouseLeave={closeTeamMenu}
                     >
-                      <button
-                        onClick={() => {
-                          navigate("/club");
-                          setIsTeamMenuOpen(false);
-                        }}
-                        className="w-full px-4 py-2 text-left text-sm font-semibold text-slate-900 hover:bg-slate-50 rounded-t-lg transition border-b border-slate-200"
-                      >
-                        전체 보기
-                      </button>
                       {teams.map((team) => (
                         <button
                           key={team.id}
@@ -320,34 +332,113 @@ function UserHeader({
                 <span>팀</span>
               </button>
               {isTeamMenuOpen && (
-                <div className="fixed left-0 right-0 bottom-[60px] bg-white rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.15)] z-50 border-t border-slate-100 animate-slide-up">
-                  <div className="flex items-center justify-between p-4 border-b border-slate-100 sticky top-0 bg-white">
+                <div className="fixed left-0 right-0 bottom-[60px] bg-white rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.15)] z-50 border-t border-slate-100 animate-slide-up max-h-[70vh] overflow-y-auto">
+                  <div className="flex items-center justify-between p-4 border-b border-slate-100 sticky top-0 bg-white z-10">
                     <span className="font-bold text-lg text-slate-900">팀 목록</span>
                     <button onClick={() => setIsTeamMenuOpen(false)} className="p-2 text-slate-400 hover:text-slate-600">
                       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
                   </div>
-                  <button
-                    onClick={() => {
-                      navigate("/club");
-                      setIsTeamMenuOpen(false);
-                    }}
-                    className="w-full px-4 py-3 text-left text-base font-medium text-slate-900 hover:bg-slate-50 transition border-b border-slate-50"
-                  >
-                    전체 보기
-                  </button>
-                  {teams.map((team) => (
-                    <button
-                      key={team.id}
-                      onClick={() => {
-                        navigate(`/club/${team.id}`);
-                        setIsTeamMenuOpen(false);
-                      }}
-                      className="w-full px-4 py-3 text-left text-base text-slate-700 hover:bg-slate-50 transition border-b border-slate-50 last:border-0"
-                    >
-                      {team.name}
-                    </button>
-                  ))}
+                  
+                  <div className="flex flex-col">
+                    {/* 내 팀 목록 */}
+                    {myTeamList.map((team) => (
+                      <div key={team.id} className="border-b border-slate-50">
+                        <div 
+                          className="flex items-center justify-between w-full px-4 py-3 bg-blue-50/30"
+                          onClick={() => {
+                            navigate(`/club/${team.id}`);
+                            setIsTeamMenuOpen(false);
+                          }}
+                        >
+                          <span className="text-base font-bold text-blue-600">
+                            {team.name} <span className="text-[10px] ml-1 bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full uppercase">My</span>
+                          </span>
+                        </div>
+
+                        <div className="px-4 pb-3 flex flex-col gap-1 bg-blue-50/30">
+                          <div className="flex flex-wrap gap-2 mt-1">
+                            {team.type === ClubType.NEW_BELIEVER && (
+                              <>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/manage/newcomers`);
+                                    setIsTeamMenuOpen(false);
+                                  }}
+                                  className="text-xs bg-white border border-blue-200 text-blue-600 px-3 py-1.5 rounded-lg shadow-sm font-semibold"
+                                >
+                                  새신자관리
+                                </button>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/manage/meal-tickets`);
+                                    setIsTeamMenuOpen(false);
+                                  }}
+                                  className="text-xs bg-white border border-blue-200 text-blue-600 px-3 py-1.5 rounded-lg shadow-sm font-semibold"
+                                >
+                                  식권관리
+                                </button>
+                              </>
+                            )}
+                            {team.type === ClubType.CONTENT && (
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/manage/group-formation`);
+                                  setIsTeamMenuOpen(false);
+                                }}
+                                className="text-xs bg-white border border-blue-200 text-blue-600 px-3 py-1.5 rounded-lg shadow-sm font-semibold"
+                              >
+                                조편성
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* 다른 팀 목록 (접이식) */}
+                    {otherTeamList.length > 0 && (
+                      <div className="border-b border-slate-50 last:border-0">
+                        <div 
+                          className="flex items-center justify-between w-full px-4 py-4 transition"
+                          onClick={() => setIsOtherTeamsExpanded(!isOtherTeamsExpanded)}
+                        >
+                          <span className="text-base text-slate-700 font-medium">다른 팀 보기</span>
+                          <svg 
+                            xmlns="http://www.w3.org/2000/svg" 
+                            width="20" height="20" 
+                            viewBox="0 0 24 24" fill="none" 
+                            stroke="currentColor" strokeWidth="2" 
+                            strokeLinecap="round" strokeLinejoin="round"
+                            className={`text-slate-400 transition-transform duration-200 ${isOtherTeamsExpanded ? 'rotate-180' : ''}`}
+                          >
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                          </svg>
+                        </div>
+
+                        {isOtherTeamsExpanded && (
+                          <div className="bg-slate-50/50 px-2 pb-2">
+                            {otherTeamList.map((team) => (
+                              <button
+                                key={team.id}
+                                onClick={() => {
+                                  navigate(`/club/${team.id}`);
+                                  setIsTeamMenuOpen(false);
+                                }}
+                                className="w-full px-4 py-3 text-left text-sm text-slate-600 hover:bg-slate-100 transition rounded-lg flex items-center justify-between"
+                              >
+                                <span>{team.name}</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300"><path d="M5 12h14"></path><polyline points="12 5 19 12 12 19"></polyline></svg>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -439,18 +530,54 @@ function UserHeader({
 
             {/* Manager Only: Youth Management */}
             {isManager && (
-              <button 
-                onClick={() => {
-                  navigate("/dashboard");
-                  setIsTeamMenuOpen(false);
-                  setIsBoardMenuOpen(false);
-                  setIsMyInfoMenuOpen(false); // Close other menu
-                }}
-                className="flex flex-col items-center gap-1 p-2 text-blue-600"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-                <span>관리</span>
-              </button>
+              <div className="relative">
+                <button 
+                  onClick={() => {
+                    setIsManageMenuOpen(!isManageMenuOpen);
+                    setIsTeamMenuOpen(false);
+                    setIsBoardMenuOpen(false);
+                    setIsMyInfoMenuOpen(false);
+                  }}
+                  className={`flex flex-col items-center gap-1 p-2 ${isManageMenuOpen ? 'text-blue-600' : 'text-blue-600'}`}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                  <span>관리</span>
+                </button>
+                {isManageMenuOpen && (
+                  <div className="fixed left-0 right-0 bottom-[60px] bg-white rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.15)] z-50 border-t border-slate-100 animate-slide-up">
+                    <div className="flex items-center justify-between p-4 border-b border-slate-100">
+                      <span className="font-bold text-lg text-slate-900">관리 메뉴</span>
+                      <button onClick={() => setIsManageMenuOpen(false)} className="p-2 text-slate-400 hover:text-slate-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => {
+                        navigate("/dashboard");
+                        setIsManageMenuOpen(false);
+                      }}
+                      className="w-full px-4 py-4 text-left text-base text-slate-700 hover:bg-slate-50 transition border-b border-slate-50 flex items-center gap-3"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                      </div>
+                      청년부 관리
+                    </button>
+                    <button
+                      onClick={() => {
+                        navigate("/homepage-manage");
+                        setIsManageMenuOpen(false);
+                      }}
+                      className="w-full px-4 py-4 text-left text-base text-slate-700 hover:bg-slate-50 transition flex items-center gap-3"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-fuchsia-100 flex items-center justify-center text-fuchsia-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                      </div>
+                      홈페이지 관리
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
