@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import styled from 'styled-components';
+import { toast } from 'react-hot-toast';
 import { getClubSubmissions } from '../../services/formService';
 import type { ClubSubmissionResponse } from '../../types/form';
 import { FaTimes } from 'react-icons/fa';
@@ -23,7 +24,7 @@ const SubmissionListModal: React.FC<SubmissionListModalProps> = ({ isOpen, onClo
       setSubmissions(data as unknown as ClubSubmissionResponse[]);
     } catch (error) {
       console.error('Failed to load submissions', error);
-      alert('신청 현황을 불러오는데 실패했습니다.');
+      toast.error('신청 현황을 불러오는데 실패했습니다.');
     } finally {
       setLoading(false);
     }

@@ -23,6 +23,11 @@ const processQuestions = (questions: FormQuestion[]): FormQuestion[] => {
   for (const q of sortedQuestions) {
     const updated = { ...q };
 
+    // Handle richOptions (from FormBuilder Preview) - Populate options for FormInput
+    if ((updated as any).richOptions && (!updated.options || updated.options.length === 0)) {
+      updated.options = ((updated as any).richOptions as any[]).map(o => o.label);
+    }
+
     // Parse optionsJson if options is missing
     if (updated.optionsJson && (!updated.options || updated.options.length === 0)) {
       try {
@@ -32,15 +37,6 @@ const processQuestions = (questions: FormQuestion[]): FormQuestion[] => {
           : [];
       } catch (e) {
         console.error('Failed to parse optionsJson', e);
-      }
-    }
-
-    // Restore UI types from Backend types (BOOLEAN + POST_CONFIRMATION -> WORSHIP/SCHEDULE)
-    if (updated.inputType === 'BOOLEAN') {
-      if (updated.syncType === 'POST_CONFIRMATION' && updated.linkedWorshipCategory) {
-        updated.inputType = 'WORSHIP_ATTENDANCE';
-      } else if (updated.syncType === 'PRE_REGISTRATION' && updated.linkedScheduleId) {
-        updated.inputType = 'SCHEDULE_ATTENDANCE';
       }
     }
 

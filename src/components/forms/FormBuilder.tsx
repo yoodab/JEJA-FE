@@ -1,9 +1,223 @@
-import { useState, useEffect } from 'react';
-import type { FormTemplate, FormQuestion, FormCategory, FormType, QuestionType, WorshipCategory, FormAccess, AccessType, TargetType, FormSection, NextActionType, AttendanceSyncType } from '../../types/form';
+import { useState, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
+import type { FormTemplate, FormQuestion, FormCategory, FormType, QuestionType, WorshipCategory, FormAccess, AccessType, TargetType, FormSection, NextActionType, AttendanceSyncType, QuestionOption } from '../../types/form';
 import type { Schedule } from '../../types/schedule';
+import type { Member } from '../../types/member';
+import type { Club } from '../../types/club';
 import { scheduleService } from '../../services/scheduleService';
-import { Plus, Trash2, Check, ChevronUp, ChevronDown, X, Eye, Layers, Calendar } from 'lucide-react';
+import { getMembers } from '../../services/memberService';
+import { getClubs } from '../../services/clubService';
+import { uploadFiles, getFileUrl } from '../../services/albumService';
+import { Plus, Trash2, Check, ChevronUp, ChevronDown, X, Eye, Layers, Calendar, Search, User, Users, MoreVertical, Circle, Copy, Image as ImageIcon, Lock } from 'lucide-react';
 import { DynamicFormRenderer } from './DynamicFormRenderer';
+import { mockMembers } from '../../data/mockData';
+import { toast } from 'react-hot-toast';
+import { useConfirm } from '../../contexts/ConfirmContext';
+
+// Localization Maps
+const ACCESS_TYPE_MAP: Record<AccessType, string> = {
+  RESPONDENT: '응답자 (제출 가능)',
+  MANAGER: '관리자 (수정/조회)'
+};
+
+const TARGET_TYPE_MAP: Record<TargetType, string> = {
+  ALL: '전체 (누구나)',
+  ROLE: '특정 역할',
+  USER: '특정 사용자',
+  CLUB: '특정 클럽',
+  GUEST: '비회원 (게스트)'
+};
+
+const ROLE_MAP: Record<string, string> = {
+  'ROLE_ADMIN': '관리자',
+  'ROLE_MANAGER': '운영진',
+  'ROLE_LEADER': '순장/리더',
+  'ROLE_MEMBER': '일반 성도',
+  'ROLE_NEWCOMER': '새가족'
+};
+
+const TargetSelectionModal = ({ 
+  isOpen, 
+  onClose, 
+  onConfirm,
+  type,
+  initialSelected
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  onConfirm: (selected: {id: string, name: string}[]) => void;
+  type: 'USER' | 'CLUB';
+  initialSelected: {id: string, name: string}[];
+}) => {
+  const [keyword, setKeyword] = useState('');
+  const [items, setItems] = useState<{id: string, name: string, subText?: string}[]>([]);
+  const [selected, setSelected] = useState<{id: string, name: string}[]>(initialSelected);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelected(initialSelected);
+      setKeyword('');
+      setItems([]);
+      setSearched(false);
+      
+      // For CLUB type, load all initially as they are few
+      if (type === 'CLUB') {
+        fetchClubs();
+      }
+    }
+  }, [isOpen]);
+
+  const fetchClubs = async () => {
+    setLoading(true);
+    try {
+      const result = await getClubs();
+      setItems(result.map(c => ({ id: c.id.toString(), name: c.name })));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearch = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (type === 'USER' && !keyword.trim()) return;
+    
+    setLoading(true);
+    try {
+      if (type === 'USER') {
+        const result = await getMembers({ keyword, size: 20 });
+        setItems(result.content.map(m => ({ 
+          id: m.memberId.toString(), 
+          name: m.name, 
+          subText: m.loginId || 'ID없음' 
+        })));
+        setSearched(true);
+      } else {
+        // Local filter for clubs
+        const result = await getClubs();
+        const filtered = result.filter(c => c.name.includes(keyword));
+        setItems(filtered.map(c => ({ id: c.id.toString(), name: c.name })));
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleSelection = (item: {id: string, name: string}) => {
+    setSelected(prev => {
+      const exists = prev.find(p => p.id === item.id);
+      if (exists) {
+        return prev.filter(p => p.id !== item.id);
+      } else {
+        return [...prev, item];
+      }
+    });
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white shadow-2xl flex flex-col max-h-[80vh]">
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+          <h3 className="font-bold text-slate-900">
+            {type === 'USER' ? '사용자 선택' : '클럽 선택'}
+          </h3>
+          <button onClick={onClose} className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4 flex-1 overflow-hidden flex flex-col">
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <input
+              type="text"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder={type === 'USER' ? "이름 검색..." : "클럽명 검색..."}
+              className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              autoFocus
+            />
+            <button 
+              type="submit" 
+              className="rounded-lg bg-slate-100 px-3 py-2 hover:bg-slate-200"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+          </form>
+
+          <div className="flex-1 overflow-y-auto min-h-[200px] border rounded-lg border-slate-100 p-2">
+            {loading ? (
+              <div className="flex h-full items-center justify-center">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600"></div>
+              </div>
+            ) : items.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-slate-500">
+                {searched ? '검색 결과가 없습니다.' : type === 'USER' ? '검색어를 입력하세요.' : '데이터가 없습니다.'}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {items.map(item => {
+                  const isSelected = selected.some(s => s.id === item.id);
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => toggleSelection(item)}
+                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                        isSelected ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={`flex h-5 w-5 items-center justify-center rounded border ${
+                          isSelected ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300 bg-white'
+                        }`}>
+                          {isSelected && <Check className="h-3 w-3" />}
+                        </div>
+                        <span className="font-medium">{item.name}</span>
+                        {item.subText && <span className="text-xs text-slate-400">({item.subText})</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          
+          <div className="text-xs text-slate-500 text-right">
+            {selected.length}개 선택됨
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 px-4 py-3 flex justify-end gap-2 bg-slate-50 rounded-b-xl">
+          <button
+            onClick={onClose}
+            className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200"
+          >
+            취소
+          </button>
+          <button
+            onClick={() => onConfirm(selected)}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 shadow-sm"
+          >
+            선택 완료
+          </button>
+        </div>
+      </div>
+      {/* Target Selection Modal */}
+      <TargetSelectionModal
+        isOpen={isSelectionModalOpen}
+        onClose={() => setIsSelectionModalOpen(false)}
+        onConfirm={handleModalConfirm}
+        type={targetTypeForModal}
+        initialSelected={selectedTargets}
+      />
+    </div>
+  );
+};
 
 const ScheduleManager = ({ 
   selectedSchedules,
@@ -45,7 +259,7 @@ const ScheduleManager = ({
     
     // Prevent duplicates
     if (selectedSchedules.some(s => s.id === schedule.scheduleId)) {
-      alert('이미 선택된 일정입니다.');
+      toast.error('이미 선택된 일정입니다.');
       return;
     }
 
@@ -121,7 +335,150 @@ const ScheduleManager = ({
   );
 };
 
-interface FormBuilderProps {
+const DateSettingsModal = ({
+  isOpen,
+  onClose,
+  startDate,
+  endDate,
+  setStartDate,
+  setEndDate,
+  category,
+  setCategory,
+  shouldHideCategory,
+  formType,
+  setFormType
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  startDate: string;
+  endDate: string;
+  setStartDate: (val: string) => void;
+  setEndDate: (val: string) => void;
+  category: FormCategory;
+  setCategory: (val: FormCategory) => void;
+  shouldHideCategory: boolean;
+  formType: FormType;
+  setFormType: (val: FormType) => void;
+  lockSettings?: boolean;
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-xl bg-white shadow-2xl flex flex-col animate-in fade-in zoom-in duration-200">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <h3 className="text-lg font-bold text-slate-900">설문 날짜 설정</h3>
+          <button onClick={onClose} className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+        
+        <div className="p-6 space-y-6">
+          <div className="grid grid-cols-2 gap-4">
+            {!shouldHideCategory && (
+              <div className="col-span-2">
+                <label className="mb-2 block text-sm font-semibold text-slate-900">
+                  카테고리
+                </label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as FormCategory)}
+                  disabled={lockSettings}
+                  className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-500"
+                >
+                  <option value="CELL_REPORT">셀 보고서</option>
+                  <option value="EVENT_APPLICATION">행사 신청서</option>
+                  <option value="CLUB_APPLICATION">팀/동아리 가입 신청서</option>
+                  <option value="SURVEY">설문조사</option>
+                  <option value="ETC">기타</option>
+                </select>
+                {lockSettings && <p className="mt-1 text-xs text-slate-400">* 이 신청서의 카테고리는 변경할 수 없습니다.</p>}
+              </div>
+            )}
+            <div className="col-span-2">
+              <label className="mb-2 block text-sm font-semibold text-slate-900">
+                설문 대상 타입
+              </label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setFormType('GROUP')}
+                  disabled={lockSettings}
+                  className={`flex-1 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                    formType === 'GROUP'
+                      ? 'border-blue-600 bg-blue-50 text-blue-600'
+                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                  } ${lockSettings && formType !== 'GROUP' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  순/팀 단위 (Group)
+                </button>
+                <button
+                  onClick={() => setFormType('PERSONAL')}
+                  disabled={lockSettings}
+                  className={`flex-1 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                    formType === 'PERSONAL'
+                      ? 'border-blue-600 bg-blue-50 text-blue-600'
+                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                  } ${lockSettings && formType !== 'PERSONAL' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  개인 단위 (Personal)
+                </button>
+              </div>
+              <p className="mt-1.5 text-xs text-slate-500">
+                {lockSettings 
+                  ? "* 이 신청서의 대상 타입은 변경할 수 없습니다."
+                  : "* 순 보고서는 '순 단위', 행사 신청 등은 '개인 단위'를 권장합니다."}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4 pt-2 border-t border-slate-100">
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-900">
+                시작 일시
+              </label>
+              <input
+                type="datetime-local"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-900">
+                종료 일시
+              </label>
+              <input
+                type="datetime-local"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+        
+        <div className="border-t border-slate-100 px-6 py-4 flex justify-end">
+          <button
+            onClick={onClose}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 shadow-sm"
+          >
+            확인
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export interface FormBuilderHandle {
+  saveForm: () => Promise<void>;
+  openAccessSettings: () => void;
+  openDateSettings: () => void;
+  openPreview: () => void;
+  getTemplateData: () => Partial<FormTemplate>;
+}
+
+export interface FormBuilderProps {
   initialTemplate?: FormTemplate;
   initialTitle?: string;
   initialCategory?: FormCategory;
@@ -135,23 +492,30 @@ interface FormBuilderProps {
   hideAccessControl?: boolean;
   excludedQuestionTypes?: QuestionType[];
   hideBasicInfo?: boolean;
+  hideHeader?: boolean;
+  onDataChange?: (data: Partial<FormTemplate>) => void;
+  lockSettings?: boolean;
 }
 
-export const FormBuilder = ({
-  initialTemplate,
-  initialTitle,
-  initialCategory,
-  initialFormType,
-  initialTargetClubId,
-  onSave,
-  onCancel,
-  isModal = false,
-  customTitle,
-  initialAccessList,
-  hideAccessControl = false,
-  excludedQuestionTypes = [],
-  hideBasicInfo = false
-}: FormBuilderProps) => {
+export const FormBuilder = forwardRef<FormBuilderHandle, FormBuilderProps>((props, ref) => {
+  const {
+    initialTemplate,
+    initialTitle,
+    initialCategory,
+    initialFormType,
+    initialTargetClubId,
+    onSave,
+    onCancel,
+    isModal = false,
+    customTitle,
+    initialAccessList,
+    hideAccessControl = false,
+    excludedQuestionTypes = [],
+    hideBasicInfo = false,
+    hideHeader = false,
+    onDataChange,
+    lockSettings = false
+  } = props;
 
   const [title, setTitle] = useState(initialTemplate?.title || initialTitle || '');
   const [description, setDescription] = useState(initialTemplate?.description || '');
@@ -162,6 +526,13 @@ export const FormBuilder = ({
   const [endDate, setEndDate] = useState(initialTemplate?.endDate ? initialTemplate.endDate.slice(0, 16) : '');
   const [isActive, setIsActive] = useState(initialTemplate?.isActive ?? true);
   
+  // New State for UI Refactor
+  const [isDateModalOpen, setIsDateModalOpen] = useState(false);
+  const [isTitleFocused, setIsTitleFocused] = useState(false);
+
+  // Category selection should be hidden for CELL_REPORT
+  const shouldHideCategory = category === 'CELL_REPORT';
+
   // Helper to parse JSON fields from backend and Group Schedule Questions
   const processQuestions = (questions: FormQuestion[]): FormQuestion[] => {
     const processed: FormQuestion[] = [];
@@ -173,23 +544,44 @@ export const FormBuilder = ({
     for (const q of sortedQuestions) {
       const updated = { ...q };
       
-      // Parse optionsJson if options is missing
-      if (updated.optionsJson && (!updated.options || updated.options.length === 0)) {
+      // Parse optionsJson if options is missing or for rich options
+      if (updated.optionsJson) {
         try {
           const parsed = JSON.parse(updated.optionsJson);
-          updated.options = Array.isArray(parsed) 
-            ? parsed.map((o: unknown) => typeof o === 'string' ? o : (o as { label: string }).label) 
-            : [];
+          if (Array.isArray(parsed)) {
+            // Check if it's Rich Options (QuestionOption[])
+            if (parsed.length > 0 && typeof parsed[0] === 'object') {
+              (updated as any).richOptions = parsed;
+              updated.options = parsed.map((o: any) => o.label);
+            } else {
+              // String array
+              updated.options = parsed;
+              (updated as any).richOptions = parsed.map((s: string) => ({ label: s }));
+            }
+          }
         } catch (e) {
           console.error('Failed to parse optionsJson', e);
         }
+      } else if (updated.options) {
+        // Legacy options array support
+        (updated as any).richOptions = updated.options.map(s => ({ label: s }));
       }
 
-      // Restore UI types from Backend types (BOOLEAN + POST_CONFIRMATION -> WORSHIP/SCHEDULE)
-      if (updated.inputType === 'BOOLEAN') {
-        if (updated.syncType === 'POST_CONFIRMATION' && updated.linkedWorshipCategory) {
+      // Restore UI types from Backend types (Legacy support for BOOLEAN + SyncType -> WORSHIP/SCHEDULE)
+      const worshipCategories = [
+        'SUNDAY_SERVICE_1', 'SUNDAY_SERVICE_2', 'SUNDAY_SERVICE_3',
+        'WEDNESDAY_SERVICE_1', 'WEDNESDAY_SERVICE_2',
+        'FRIDAY_PRAYER', 'DAWN_PRAYER', 'YOUTH_SERVICE', 'ETC'
+      ];
+
+      if (typeof updated.linkedWorshipCategory === 'number') {
+        updated.linkedWorshipCategory = worshipCategories[updated.linkedWorshipCategory] as any;
+      }
+      
+      if (updated.inputType === 'BOOLEAN' || updated.memberSpecific === true) {
+        if (updated.syncType === 'PRE_REGISTRATION' && updated.linkedWorshipCategory) {
           updated.inputType = 'WORSHIP_ATTENDANCE';
-        } else if (updated.syncType === 'PRE_REGISTRATION' && updated.linkedScheduleId) {
+        } else if (updated.syncType === 'POST_CONFIRMATION' && updated.linkedScheduleId) {
           updated.inputType = 'SCHEDULE_ATTENDANCE';
         }
       }
@@ -251,6 +643,37 @@ export const FormBuilder = ({
       questions: initialTemplate?.questions ? processQuestions(initialTemplate.questions) : []
     }];
   });
+
+  // Sync state from initialTemplate if it changes
+  const initialTemplateId = initialTemplate?.id;
+  useEffect(() => {
+    if (initialTemplate) {
+      setTitle(initialTemplate.title || '');
+      setDescription(initialTemplate.description || '');
+      setCategory(initialTemplate.category || 'CELL_REPORT');
+      setFormType(initialTemplate.type || 'GROUP');
+      setIsActive(initialTemplate.isActive ?? true);
+      setAccessList(initialTemplate.accessList || []);
+      
+      if (initialTemplate.sections && initialTemplate.sections.length > 0) {
+        setSections(initialTemplate.sections.map((s, index) => ({
+          ...s,
+          id: s.id || (Date.now() + index),
+          questions: processQuestions(s.questions)
+        })));
+      } else if (initialTemplate.questions) {
+        setSections([{
+          id: Date.now(),
+          title: '기본 섹션',
+          description: '',
+          orderIndex: 0,
+          defaultNextAction: 'CONTINUE' as NextActionType,
+          questions: processQuestions(initialTemplate.questions)
+        }]);
+      }
+    }
+  }, [initialTemplateId]); // Only run when ID changes, not on every object change
+
   const [accessList, setAccessList] = useState<FormAccess[]>(initialTemplate?.accessList || initialAccessList || []);
 
   const [isBasicInfoOpen, setIsBasicInfoOpen] = useState(true);
@@ -260,17 +683,106 @@ export const FormBuilder = ({
   // Access Form State
   const [newAccessType, setNewAccessType] = useState<AccessType>('RESPONDENT');
   const [newTargetType, setNewTargetType] = useState<TargetType>('ALL');
-  const [newTargetValue, setNewTargetValue] = useState('');
+  const [newTargetValue, setNewTargetValue] = useState(''); // For single value inputs (ROLE, etc)
+  const [selectedTargets, setSelectedTargets] = useState<{id: string, name: string}[]>([]); // For multi-select (USER, CLUB)
+  const [isSelectionModalOpen, setIsSelectionModalOpen] = useState(false);
+  const [targetTypeForModal, setTargetTypeForModal] = useState<'USER' | 'CLUB'>('USER');
+  const { confirm } = useConfirm();
+
+  // Question Focus & Image Upload
+  const [focusedQuestionId, setFocusedQuestionId] = useState<number | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [previewAnswers, setPreviewAnswers] = useState<any>({});
+  const [activeAccessTab, setActiveAccessTab] = useState<'RESPONDENT' | 'MANAGER'>('RESPONDENT');
+
+  // Auto-save trigger
+  useEffect(() => {
+    if (onDataChange) {
+      onDataChange(getTemplateData());
+    }
+  }, [title, description, category, formType, targetClubId, startDate, endDate, isActive, sections, accessList, onDataChange]);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, sectionId: number, questionId: number) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    try {
+      // 1. Upload file
+      const uploadResults = await uploadFiles(Array.from(files), 'form-question');
+      if (uploadResults && uploadResults.length > 0) {
+        const imageUrl = uploadResults[0].url;
+        
+        // 2. Update question with imageUrl
+        setSections(prev => prev.map(s => {
+          if (s.id === sectionId) {
+            return {
+              ...s,
+              questions: s.questions.map(q => {
+                if (q.id === questionId) {
+                  return { ...q, imageUrl };
+                }
+                return q;
+              })
+            };
+          }
+          return s;
+        }));
+      }
+    } catch (error) {
+      console.error('Image upload failed:', error);
+      toast.error('이미지 업로드에 실패했습니다.');
+    } finally {
+      // Clear input
+      e.target.value = '';
+    }
+  };
 
   const addAccessRule = () => {
-    const newRule: FormAccess = {
-      id: Date.now(),
-      accessType: newAccessType,
-      targetType: newTargetType,
-      targetValue: newTargetValue
-    };
-    setAccessList([...accessList, newRule]);
+    // 1. Handle Multi-select targets (USER, CLUB)
+    if (selectedTargets.length > 0 && (newTargetType === 'USER' || newTargetType === 'CLUB')) {
+      const newRules: FormAccess[] = selectedTargets.map(target => ({
+        id: Date.now() + Math.random(), // Ensure unique ID
+        accessType: activeAccessTab,
+        targetType: newTargetType,
+        targetValue: target.id,
+        targetName: target.name
+      }));
+      setAccessList([...accessList, ...newRules]);
+      setSelectedTargets([]);
+      setNewTargetValue('');
+      return;
+    }
+
+    // 2. Handle Single value targets (ROLE, ALL, GUEST, or manual input)
+    if (newTargetType !== 'USER' && newTargetType !== 'CLUB') {
+        const newRule: FormAccess = {
+          id: Date.now(),
+          accessType: activeAccessTab,
+          targetType: newTargetType,
+          targetValue: newTargetValue
+        };
+        setAccessList([...accessList, newRule]);
+        setNewTargetValue('');
+    }
+  };
+
+  const handleTargetTypeChange = (type: TargetType) => {
+    setNewTargetType(type);
     setNewTargetValue('');
+    setSelectedTargets([]);
+    
+    // Auto-open modal for USER/CLUB types
+    if (type === 'USER' || type === 'CLUB') {
+      setTargetTypeForModal(type);
+      // We don't open immediately here because we want user to click the button explicitly?
+      // Or should we reset selectedTargets? Yes, reset above.
+      // The user UI will now show a button to open modal.
+    }
+  };
+
+  const handleModalConfirm = (selected: {id: string, name: string}[]) => {
+    setSelectedTargets(selected);
+    setIsSelectionModalOpen(false);
   };
 
   const removeAccessRule = (id?: number) => {
@@ -284,17 +796,25 @@ export const FormBuilder = ({
       title: `섹션 ${sections.length + 1}`,
       description: '',
       orderIndex: sections.length,
+      defaultNextAction: 'CONTINUE',
       questions: []
     };
     setSections([...sections, newSection]);
   };
 
-  const removeSection = (sectionId: number) => {
+  const removeSection = async (sectionId: number) => {
     if (sections.length <= 1) {
-      alert('최소 1개의 섹션이 필요합니다.');
+      toast.error('최소 1개의 섹션이 필요합니다.');
       return;
     }
-    if (confirm('섹션을 삭제하시겠습니까? 포함된 질문도 모두 삭제됩니다.')) {
+    const isConfirmed = await confirm({
+      title: '섹션 삭제',
+      message: '섹션을 삭제하시겠습니까? 포함된 질문도 모두 삭제됩니다.',
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소'
+    });
+    if (isConfirmed) {
       setSections(sections.filter(s => s.id !== sectionId));
     }
   };
@@ -324,6 +844,7 @@ export const FormBuilder = ({
       }
       return s;
     }));
+    setFocusedQuestionId(newId);
   };
 
   const updateQuestion = (sectionId: number, questionId: number, updates: Partial<FormQuestion>) => {
@@ -336,22 +857,23 @@ export const FormBuilder = ({
               const updatedQ = { ...q, ...updates };
               
               // Reset special fields when switching types
-              if (updates.inputType && updates.inputType !== 'SCHEDULE_ATTENDANCE') {
-                updatedQ.linkedSchedules = [];
-                updatedQ.linkedScheduleId = undefined;
-                updatedQ.linkedScheduleDate = undefined;
-              }
-              
-              // Reset special fields when switching away from WORSHIP_ATTENDANCE
-              if (updates.inputType && updates.inputType !== 'WORSHIP_ATTENDANCE') {
-                updatedQ.linkedWorshipCategory = undefined;
-              }
+              if (updates.inputType) {
+                if (updates.inputType === 'WORSHIP_ATTENDANCE' || updates.inputType === 'SCHEDULE_ATTENDANCE') {
+                  updatedQ.syncType = 'POST_CONFIRMATION';
+                } else if (updates.inputType !== 'BOOLEAN') {
+                  // Only reset syncType if not switching to another syncable type
+                  updatedQ.syncType = 'NONE';
+                }
 
-              // Special handling for MemberSpecific
-              if (updates.memberSpecific === false) {
-                 if (updatedQ.inputType === 'WORSHIP_ATTENDANCE') {
-                   updatedQ.inputType = 'SHORT_TEXT';
-                 }
+                if (updates.inputType !== 'SCHEDULE_ATTENDANCE') {
+                  updatedQ.linkedSchedules = [];
+                  updatedQ.linkedScheduleId = undefined;
+                  updatedQ.linkedScheduleDate = undefined;
+                }
+                
+                if (updates.inputType !== 'WORSHIP_ATTENDANCE') {
+                  updatedQ.linkedWorshipCategory = undefined;
+                }
               }
               
               return updatedQ;
@@ -359,6 +881,26 @@ export const FormBuilder = ({
             return q;
           })
         };
+      }
+      return s;
+    }));
+  };
+
+  const duplicateQuestion = (sectionId: number, questionId: number) => {
+    const section = sections.find(s => s.id === sectionId);
+    if (!section) return;
+    const question = section.questions.find(q => q.id === questionId);
+    if (!question) return;
+
+    const newQuestion = {
+      ...question,
+      id: Date.now(),
+      orderIndex: section.questions.length + 1
+    };
+
+    setSections(sections.map(s => {
+      if (s.id === sectionId) {
+        return { ...s, questions: [...s.questions, newQuestion] };
       }
       return s;
     }));
@@ -437,62 +979,61 @@ export const FormBuilder = ({
 
   const handleSave = async () => {
     if (!title.trim()) {
-      alert('양식 제목을 입력해주세요.');
+      toast.error('양식 제목을 입력해주세요.');
       return;
     }
     
+    await saveFormInternal();
+  };
+
+  const handlePreview = () => {
+    const templateData = getTemplateData();
+    localStorage.setItem('formPreviewData', JSON.stringify(templateData));
+    window.open('/manage/forms/preview', '_blank');
+  };
+
+  const getTemplateData = (): Partial<FormTemplate> => {
     // Transform questions for saving: Split multi-schedule questions into individual questions
     const processedSections = sections.map(section => ({
       ...section,
       questions: section.questions.flatMap(q => {
-        // If it's a schedule attendance question with multiple linked schedules
-        if (q.inputType === 'SCHEDULE_ATTENDANCE' && q.linkedSchedules && q.linkedSchedules.length > 0) {
-          return q.linkedSchedules.map((schedule) => ({
-            ...q,
-            // Use original ID if available (for updates), otherwise 0 for new
-            id: schedule.questionId || 0, 
-            label: schedule.title, // Set label to schedule title
-            linkedScheduleId: schedule.id,
-            linkedScheduleDate: schedule.startDate,
-            // Remove frontend-only field
-            linkedSchedules: undefined,
-            // Map to Backend Types
-            inputType: 'BOOLEAN' as QuestionType,
-            syncType: 'PRE_REGISTRATION' as AttendanceSyncType
+        // Create a copy to avoid mutating the state
+        const updatedQ = { ...q };
+        const qAny = updatedQ as any;
+        
+        // Prepare options payload
+        // Backend expects List<OptionDto> in 'options' field
+        if (qAny.richOptions) {
+          // Map to OptionDto structure
+          updatedQ.options = qAny.richOptions.map((o: any) => ({
+            label: o.label,
+            nextSectionId: o.nextSectionId
           }));
+          updatedQ.optionsJson = JSON.stringify(qAny.richOptions); // Backup for frontend rich features
         }
 
-        // Single Schedule Attendance
-        if (q.inputType === 'SCHEDULE_ATTENDANCE') {
-          return [{
-            ...q,
-            inputType: 'BOOLEAN' as QuestionType,
-            syncType: 'PRE_REGISTRATION' as AttendanceSyncType
-          }];
+        // Split multi-schedule questions into individual questions for backend
+        if (updatedQ.inputType === 'SCHEDULE_ATTENDANCE') {
+          // If it's a grouped schedule question, we need to split it back into individual questions
+          if (updatedQ.linkedSchedules && updatedQ.linkedSchedules.length > 0) {
+            return updatedQ.linkedSchedules.map((schedule, idx) => ({
+              ...updatedQ,
+              id: schedule.questionId || (-(Date.now() + idx)), // Use original ID if available, or a stable temporary ID
+              label: schedule.title, // Use schedule title as label
+              linkedScheduleId: schedule.id,
+              linkedScheduleDate: schedule.startDate,
+              linkedSchedules: undefined, // Remove the group array
+              options: undefined,
+              richOptions: undefined
+            }));
+          }
         }
-
-        // Worship Attendance
-        if (q.inputType === 'WORSHIP_ATTENDANCE') {
-          return [{
-            ...q,
-            inputType: 'BOOLEAN' as QuestionType,
-            syncType: 'POST_CONFIRMATION' as AttendanceSyncType
-          }];
-        }
-
-        return [q];
+        
+        return [updatedQ];
       })
     }));
 
-    // Flatten for legacy support check
-    const allQuestions = processedSections.flatMap(s => s.questions);
-    
-    if (allQuestions.length === 0) {
-      alert('최소 1개 이상의 질문을 추가해주세요.');
-      return;
-    }
-
-    const newTemplate: Partial<FormTemplate> = {
+    return {
       title,
       description,
       category,
@@ -501,17 +1042,56 @@ export const FormBuilder = ({
       startDate: startDate ? new Date(startDate).toISOString() : undefined,
       endDate: endDate ? new Date(endDate).toISOString() : undefined,
       isActive,
-      questions: allQuestions, // Legacy support
-      sections: processedSections, // New structure
-      accessList,
+      sections: processedSections,
+      accessList
     };
-
-    await onSave(newTemplate);
   };
+
+  const saveFormInternal = async () => {
+    await onSave(getTemplateData());
+  };
+
+  useEffect(() => {
+    if (onDataChange) {
+      onDataChange(getTemplateData());
+    }
+  }, [title, description, category, formType, startDate, endDate, isActive, sections, accessList]);
+
+  useImperativeHandle(ref, () => ({
+    saveForm: async () => {
+      await saveFormInternal();
+    },
+    openAccessSettings: () => {
+      setIsAccessInfoOpen(true);
+    },
+    openDateSettings: () => {
+      setIsDateModalOpen(true);
+    },
+    openPreview: handlePreview,
+    getTemplateData
+  }));
+
+  const titleCardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (titleCardRef.current && !titleCardRef.current.contains(event.target as Node)) {
+        setIsTitleFocused(false);
+      }
+    }
+
+    if (isTitleFocused) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isTitleFocused]);
 
   return (
     <div className={`flex flex-col h-full bg-slate-50 ${isModal ? '' : 'min-h-screen'}`}>
       {/* Header Area - Sticky/Fixed */}
+      {!hideHeader && (
       <div className={`flex-none bg-slate-50 z-10 ${isModal ? 'border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4' : 'px-4 py-6 sm:px-6 sm:py-10'}`}>
         <div className={`mx-auto w-full ${isModal ? '' : 'max-w-4xl'}`}>
           <header className="flex items-center justify-between">
@@ -520,8 +1100,26 @@ export const FormBuilder = ({
               {!customTitle && <p className="mt-1 text-xs sm:text-sm text-slate-500">새로운 보고서 양식이나 신청서를 생성합니다.</p>}
             </div>
             <div className="flex items-center gap-2">
+              {!lockSettings && (
+                <button
+                  onClick={() => setIsDateModalOpen(true)}
+                  className="flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
+                  title="설정 (기간/카테고리)"
+                >
+                  <Calendar className="h-4 w-4" />
+                </button>
+              )}
+              {!hideAccessControl && (
+                <button
+                  onClick={() => setIsAccessInfoOpen(true)}
+                  className="flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
+                  title="권한 설정"
+                >
+                  <Lock className="h-4 w-4" />
+                </button>
+              )}
               <button
-                onClick={() => setIsPreviewOpen(true)}
+                onClick={handlePreview}
                 className="flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
               >
                 <Eye className="h-4 w-4" />
@@ -547,216 +1145,57 @@ export const FormBuilder = ({
           </header>
         </div>
       </div>
+      )}
 
       {/* Scrollable Content Area */}
       <div className={`flex-1 overflow-y-auto ${isModal ? 'p-4 sm:p-6' : 'px-4 pb-10 sm:px-6'}`}>
         <div className={`mx-auto w-full space-y-6 ${isModal ? 'max-w-4xl' : 'max-w-4xl'}`}>
         
-        {/* Basic Info */}
+        {/* Title & Description Card */}
         {!hideBasicInfo && (
-          <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-            <button
-              onClick={() => setIsBasicInfoOpen(!isBasicInfoOpen)}
-              className="flex w-full items-center justify-between bg-slate-50 px-6 py-4 text-left"
-            >
-              <h2 className="text-lg font-semibold text-slate-900">기본 정보</h2>
-              {isBasicInfoOpen ? <ChevronUp className="h-5 w-5 text-slate-500" /> : <ChevronDown className="h-5 w-5 text-slate-500" />}
-            </button>
-            
-            {isBasicInfoOpen && (
-              <div className="grid gap-6 border-t border-slate-200 p-6 md:grid-cols-2">
-                <div className="md:col-span-2">
-                  <label className="mb-2 block text-sm font-semibold text-slate-900">
-                    양식 제목 <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="예: 2024년 여름 수련회 신청서"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="mb-2 block text-sm font-semibold text-slate-900">
-                    설명
-                  </label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={3}
-                    className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="양식에 대한 설명을 입력하세요"
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-900">
-                    카테고리
-                  </label>
-                  <select
-                    value={category}
-                    onChange={handleCategoryChange}
-                    className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="CELL_REPORT">셀 보고서</option>
-                    <option value="EVENT_APPLICATION">행사 신청서</option>
-                    <option value="CLUB_APPLICATION">팀/동아리 가입 신청서</option>
-                    <option value="SURVEY">설문조사</option>
-                    <option value="ETC">기타</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-900">
-                    대상 유형 (Form Type)
-                  </label>
-                  <select
-                    value={formType}
-                    onChange={(e) => setFormType(e.target.value as FormType)}
-                    className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="PERSONAL">개인 (Personal)</option>
-                    <option value="GROUP">그룹 (Group)</option>
-                  </select>
-                </div>
-
-                {/* Date Range */}
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-900">
-                    시작 일시
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-900">
-                    종료 일시
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-
-                {/* Active Status */}
-                <div className="flex items-center gap-2 md:col-span-2">
-                  <input
-                    type="checkbox"
-                    id="isActive"
-                    checked={isActive}
-                    onChange={(e) => setIsActive(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <label htmlFor="isActive" className="text-sm font-medium text-slate-900">
-                    활성화 (체크 해제 시 사용자에게 노출되지 않음)
-                  </label>
-                </div>
-              </div>
-            )}
-          </section>
+          <div 
+            ref={titleCardRef}
+            className={`rounded-xl border bg-white shadow-sm overflow-hidden transition-all border-t-8 ${
+              isTitleFocused 
+                ? 'border-t-blue-600 border-x-slate-200 border-b-slate-200 ring-1 ring-slate-200' 
+                : 'border-t-blue-600 border-slate-200 hover:bg-slate-50 cursor-pointer'
+            }`}
+            onClick={() => setIsTitleFocused(true)}
+          >
+             <div className="p-6">
+                {isTitleFocused ? (
+                  <div className="space-y-4">
+                    <input
+                      type="text"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      className="w-full text-3xl font-bold text-slate-900 border-b border-slate-200 focus:border-blue-600 focus:outline-none py-2 placeholder:text-slate-300"
+                      placeholder="양식 제목"
+                      autoFocus
+                    />
+                    <textarea
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      rows={2}
+                      className="w-full text-base text-slate-600 border-b border-slate-200 focus:border-blue-600 focus:outline-none py-2 placeholder:text-slate-300 resize-none"
+                      placeholder="양식 설명"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <h1 className={`text-3xl font-bold ${title ? 'text-slate-900' : 'text-slate-300'}`}>
+                      {title || '양식 제목 없음'}
+                    </h1>
+                    <p className={`text-base ${description ? 'text-slate-600' : 'text-slate-300'}`}>
+                      {description || '설명이 없습니다.'}
+                    </p>
+                  </div>
+                )}
+             </div>
+          </div>
         )}
 
-        {/* Access Control */}
-        {!hideAccessControl && (
-          <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-            <button
-              onClick={() => setIsAccessInfoOpen(!isAccessInfoOpen)}
-              className="flex w-full items-center justify-between bg-slate-50 px-6 py-4 text-left"
-            >
-              <h2 className="text-lg font-semibold text-slate-900">권한 설정 (Access Control)</h2>
-              {isAccessInfoOpen ? <ChevronUp className="h-5 w-5 text-slate-500" /> : <ChevronDown className="h-5 w-5 text-slate-500" />}
-            </button>
-            
-            {isAccessInfoOpen && (
-              <div className="border-t border-slate-200 p-6">
-                <div className="mb-4 flex items-end gap-2">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-500">접근 유형</label>
-                    <select
-                      value={newAccessType}
-                      onChange={(e) => setNewAccessType(e.target.value as AccessType)}
-                      className="rounded border border-slate-300 px-2 py-1 text-sm"
-                    >
-                      <option value="RESPONDENT">응답자 (제출 가능)</option>
-                      <option value="MANAGER">관리자 (수정/조회)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-500">대상 유형</label>
-                    <select
-                      value={newTargetType}
-                      onChange={(e) => setNewTargetType(e.target.value as TargetType)}
-                      className="rounded border border-slate-300 px-2 py-1 text-sm"
-                    >
-                      <option value="ALL">전체 (누구나)</option>
-                      <option value="ROLE">특정 역할 (Role)</option>
-                      <option value="USER">특정 사용자 (ID)</option>
-                      <option value="CLUB">특정 클럽 (ID)</option>
-                    </select>
-                  </div>
-                  {(newTargetType !== 'ALL' && newTargetType !== 'GUEST') && (
-                    <div className="flex-1">
-                      <label className="mb-1 block text-xs font-medium text-slate-500">값 (Role, ID 등)</label>
-                      {newTargetType === 'ROLE' ? (
-                        <select
-                          value={newTargetValue}
-                          onChange={(e) => setNewTargetValue(e.target.value)}
-                          className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                        >
-                          <option value="">선택하세요</option>
-                          <option value="ROLE_ADMIN">관리자 (ROLE_ADMIN)</option>
-                          <option value="ROLE_MANAGER">운영진 (ROLE_MANAGER)</option>
-                          <option value="ROLE_LEADER">순장/리더 (ROLE_LEADER)</option>
-                          <option value="ROLE_MEMBER">일반 성도 (ROLE_MEMBER)</option>
-                          <option value="ROLE_NEWCOMER">새가족 (ROLE_NEWCOMER)</option>
-                        </select>
-                      ) : (
-                        <input
-                          type="text"
-                          value={newTargetValue}
-                          onChange={(e) => setNewTargetValue(e.target.value)}
-                          placeholder={newTargetType === 'USER' ? 'User ID (숫자) 입력' : 'Club ID (숫자) 입력'}
-                          className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                        />
-                      )}
-                    </div>
-                  )}
-                  <button
-                    onClick={addAccessRule}
-                    className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
-                  >
-                    추가
-                  </button>
-                </div>
 
-                <div className="space-y-2">
-                  {accessList.map((access) => (
-                    <div key={access.id} className="flex items-center justify-between rounded bg-slate-50 px-3 py-2 text-sm">
-                      <div className="flex gap-2">
-                        <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${access.accessType === 'MANAGER' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
-                          {access.accessType}
-                        </span>
-                        <span className="font-semibold text-slate-700">{access.targetType}</span>
-                        {access.targetValue && <span className="text-slate-600">: {access.targetValue}</span>}
-                      </div>
-                      <button onClick={() => removeAccessRule(access.id)} className="text-slate-400 hover:text-rose-500">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                  {accessList.length === 0 && (
-                    <p className="text-sm text-slate-500">설정된 권한이 없습니다. (기본: 누구나 접근 불가할 수 있음)</p>
-                  )}
-                </div>
-              </div>
-            )}
-          </section>
-        )}
 
         {/* Questions Editor */}
         <div className="space-y-4">
@@ -793,126 +1232,344 @@ export const FormBuilder = ({
               </div>
 
               <div className="p-6 space-y-6">
-                {section.questions.map((q, qIdx) => (
-                  <div key={q.id} className="relative rounded-lg border border-slate-200 bg-white p-4 transition-shadow hover:shadow-md">
-                    {/* Handle & Actions */}
-                    <div className="absolute right-4 top-4 flex items-center gap-2">
-                      <div className="flex flex-col">
-                        <button onClick={() => moveQuestionUp(section.id, qIdx)} disabled={qIdx === 0} className="p-1 text-slate-400 hover:text-blue-600 disabled:opacity-30 transition-colors">
-                          <ChevronUp className="h-5 w-5" />
-                        </button>
-                        <button onClick={() => moveQuestionDown(section.id, qIdx)} disabled={qIdx === section.questions.length - 1} className="p-1 text-slate-400 hover:text-blue-600 disabled:opacity-30 transition-colors">
-                          <ChevronDown className="h-5 w-5" />
-                        </button>
-                      </div>
-                      <button onClick={() => removeQuestion(section.id, q.id)} className="p-2 text-slate-400 hover:text-rose-500 transition-colors">
-                        <Trash2 className="h-5 w-5" />
-                      </button>
-                    </div>
-
-                    <div className="mr-10 grid gap-4 md:grid-cols-12">
-                      {/* Question Basic Info */}
-                      <div className="md:col-span-8 space-y-3">
-                        <input
-                          type="text"
-                          value={q.label}
-                          onChange={(e) => updateQuestion(section.id, q.id, { label: e.target.value })}
-                          placeholder="질문 제목을 입력하세요"
-                          className="w-full rounded border border-slate-300 px-3 py-2 font-medium focus:border-blue-500 focus:outline-none"
-                        />
-                        
-                        <div className="flex gap-4">
-                          <select
-                            value={q.inputType}
-                            onChange={(e) => updateQuestion(section.id, q.id, { inputType: e.target.value as QuestionType })}
-                            className="rounded border border-slate-300 px-2 py-1 text-sm"
-                          >
-                            {!excludedQuestionTypes.includes('SHORT_TEXT') && <option value="SHORT_TEXT">단답형</option>}
-                            {!excludedQuestionTypes.includes('LONG_TEXT') && <option value="LONG_TEXT">서술형</option>}
-                            {!excludedQuestionTypes.includes('NUMBER') && <option value="NUMBER">숫자</option>}
-                            {!excludedQuestionTypes.includes('BOOLEAN') && <option value="BOOLEAN">참/거짓 (스위치)</option>}
-                            {!excludedQuestionTypes.includes('SINGLE_CHOICE') && <option value="SINGLE_CHOICE">객관식 (단일 선택)</option>}
-                            {!excludedQuestionTypes.includes('MULTIPLE_CHOICE') && <option value="MULTIPLE_CHOICE">객관식 (다중 선택)</option>}
-                            {!excludedQuestionTypes.includes('SCHEDULE_ATTENDANCE') && <option value="SCHEDULE_ATTENDANCE">일정 참석 여부</option>}
-                            {/* Special Types only available if member specific */}
-                            {q.memberSpecific && (
-                              <>
-                                {!excludedQuestionTypes.includes('WORSHIP_ATTENDANCE') && <option value="WORSHIP_ATTENDANCE">예배 출석 여부</option>}
-                              </>
-                            )}
-                          </select>
-                          
-                          <label className="flex items-center gap-2 text-sm text-slate-600">
-                            <input
-                              type="checkbox"
-                              checked={q.required}
-                              onChange={(e) => updateQuestion(section.id, q.id, { required: e.target.checked })}
-                              className="rounded border-slate-300"
-                            />
-                            필수
-                          </label>
-
-                          {formType === 'GROUP' && (
-                            <label className="flex items-center gap-2 text-sm text-slate-600">
-                              <input
-                                type="checkbox"
-                                checked={q.memberSpecific}
-                                onChange={(e) => updateQuestion(section.id, q.id, { memberSpecific: e.target.checked })}
-                                className="rounded border-slate-300"
-                              />
-                              순원 개인 질문
-                            </label>
-                          )}
+                {section.questions.map((q, qIdx) => {
+                  const isFocused = focusedQuestionId === q.id;
+                  
+                  return (
+                    <div 
+                      key={q.id} 
+                      className={`relative rounded-lg border transition-all ${
+                        isFocused 
+                          ? 'border-l-4 border-l-blue-500 border-y-slate-200 border-r-slate-200 bg-white shadow-md p-6' 
+                          : 'border-slate-200 bg-white p-4 hover:bg-slate-50 cursor-pointer'
+                      }`}
+                      onClick={() => !isFocused && setFocusedQuestionId(q.id)}
+                    >
+                      {!isFocused ? (
+                        /* Simplified View */
+                        <div className="flex items-center justify-between">
+                           <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-base font-medium text-slate-900">{q.label || '질문 제목 없음'}</span>
+                                {q.required && <span className="text-rose-500">*</span>}
+                              </div>
+                              {q.imageUrl && (
+                                <div className="mt-2 mb-2">
+                                  <img src={getFileUrl(q.imageUrl)} alt="Question" className="h-20 w-auto rounded object-cover border border-slate-200" />
+                                </div>
+                              )}
+                              <div className="text-xs text-slate-500 flex items-center gap-2">
+                                 <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-600 font-medium">
+                                   {{
+                                      SHORT_TEXT: '단답형',
+                                      LONG_TEXT: '장문형',
+                                      SINGLE_CHOICE: '객관식',
+                                      MULTIPLE_CHOICE: '체크박스',
+                                      NUMBER: '숫자',
+                                      BOOLEAN: '찬반',
+                                      WORSHIP_ATTENDANCE: '예배 출석',
+                                      SCHEDULE_ATTENDANCE: '일정 참석'
+                                   }[q.inputType] || q.inputType}
+                                 </span>
+                                 {q.description && <span className="text-slate-400 truncate max-w-[300px]">{q.description}</span>}
+                              </div>
+                           </div>
+                           <div className="flex items-center gap-2">
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); removeQuestion(section.id, q.id); }}
+                                className="p-2 text-slate-400 hover:text-rose-500 rounded-full hover:bg-rose-50"
+                                title="삭제"
+                              >
+                                <Trash2 className="h-5 w-5" />
+                              </button>
+                           </div>
                         </div>
-                      </div>
+                      ) : (
+                        /* Detailed View */
+                        <div className="space-y-4">
+                           {/* Handle & Actions (Move Up/Down) */}
+                           <div className="flex justify-center border-b border-slate-100 pb-2 mb-4 -mx-6 -mt-2">
+                              <div className="flex gap-1">
+                                <button onClick={() => moveQuestionUp(section.id, qIdx)} disabled={qIdx === 0} className="p-1 text-slate-400 hover:text-blue-600 disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button>
+                                <div className="flex gap-0.5 items-center"><div className="w-1 h-1 rounded-full bg-slate-300"></div><div className="w-1 h-1 rounded-full bg-slate-300"></div><div className="w-1 h-1 rounded-full bg-slate-300"></div></div>
+                                <button onClick={() => moveQuestionDown(section.id, qIdx)} disabled={qIdx === section.questions.length - 1} className="p-1 text-slate-400 hover:text-blue-600 disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button>
+                              </div>
+                           </div>
 
-                      {/* Type Specific Options */}
-                      <div className="md:col-span-12 rounded bg-slate-50 p-3">
-                        {q.inputType === 'SCHEDULE_ATTENDANCE' ? (
-                          <ScheduleManager
-                            selectedSchedules={q.linkedSchedules || []}
-                            onChange={(schedules) => updateQuestion(section.id, q.id, { linkedSchedules: schedules })}
-                          />
-                        ) : q.inputType === 'WORSHIP_ATTENDANCE' ? (
-                          <div className="flex gap-4 items-center">
-                            <label className="text-sm font-medium text-slate-700">연동 예배:</label>
-                            <select
-                              value={q.linkedWorshipCategory || 'SUNDAY_SERVICE_1'}
-                              onChange={(e) => updateQuestion(section.id, q.id, { linkedWorshipCategory: e.target.value as WorshipCategory })}
-                              className="rounded border border-slate-300 px-2 py-1 text-sm"
-                            >
-                              <option value="SUNDAY_SERVICE_1">주일예배 1부</option>
-                              <option value="SUNDAY_SERVICE_2">주일예배 2부</option>
-                              <option value="SUNDAY_SERVICE_3">주일예배 3부</option>
-                              <option value="WEDNESDAY_SERVICE_1">수요예배 1부</option>
-                              <option value="WEDNESDAY_SERVICE_2">수요예배 2부</option>
-                              <option value="FRIDAY_PRAYER">금요기도회</option>
-                              <option value="DAWN_PRAYER">새벽기도회</option>
-                              <option value="YOUTH_SERVICE">청년부 예배</option>
-                              <option value="ETC">기타</option>
-                            </select>
-                            <p className="text-xs text-slate-500">
-                              * 선택 시 해당 예배 출석 데이터와 자동 연동됩니다.
-                            </p>
-                          </div>
-                        ) : (q.inputType === 'SINGLE_CHOICE' || q.inputType === 'MULTIPLE_CHOICE') ? (
-                          <div className="space-y-2">
-                            <label className="text-xs font-medium text-slate-500">선택지 (엔터로 구분)</label>
-                            <textarea
-                              value={q.options?.join('\n') || ''}
-                              onChange={(e) => updateQuestion(section.id, q.id, { options: e.target.value.split('\n') })}
-                              className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                              rows={3}
-                              placeholder="옵션 1&#13;&#10;옵션 2&#13;&#10;옵션 3"
-                            />
-                          </div>
-                        ) : (
-                          <p className="text-xs text-slate-400">추가 설정이 없는 타입입니다.</p>
-                        )}
-                      </div>
+                           {/* Question Input Row */}
+                           <div className="flex flex-col gap-4 md:flex-row md:items-start">
+                              <div className="flex-1 space-y-3">
+                                <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-lg border-b-2 border-slate-200 focus-within:border-blue-500 focus-within:bg-white transition-colors">
+                                  <input
+                                    type="text"
+                                    value={q.label}
+                                    onChange={(e) => updateQuestion(section.id, q.id, { label: e.target.value })}
+                                    className="w-full bg-transparent text-base font-medium text-slate-900 focus:outline-none"
+                                    placeholder="질문"
+                                    autoFocus
+                                  />
+                                  <label className="cursor-pointer p-1.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors" title="이미지 추가">
+                                     <ImageIcon className="h-5 w-5" />
+                                     <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, section.id, q.id)} />
+                                  </label>
+                                </div>
+                                
+                                {q.imageUrl && (
+                                  <div className="relative inline-block group mt-2">
+                                     <img src={getFileUrl(q.imageUrl)} alt="Question" className="max-w-full h-auto max-h-80 rounded-lg border border-slate-200 shadow-sm" />
+                                     <button 
+                                        onClick={() => updateQuestion(section.id, q.id, { imageUrl: undefined })}
+                                        className="absolute top-2 right-2 bg-white p-1.5 rounded shadow text-slate-500 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"
+                                        title="이미지 삭제"
+                                     >
+                                        <Trash2 className="h-4 w-4" />
+                                     </button>
+                                  </div>
+                                )}
+                                
+                                {q.description !== undefined && (
+                                  <input
+                                    type="text"
+                                    value={q.description || ''}
+                                    onChange={(e) => updateQuestion(section.id, q.id, { description: e.target.value })}
+                                    className="w-full border-b border-slate-200 py-1 text-sm text-slate-600 focus:border-blue-500 focus:outline-none placeholder:text-slate-400"
+                                    placeholder="설명 텍스트"
+                                  />
+                                )}
+                              </div>
+                              
+                              <div className="w-full md:w-64 flex-shrink-0">
+                                <select
+                                  value={q.inputType}
+                                  onChange={(e) => updateQuestion(section.id, q.id, { inputType: e.target.value as QuestionType })}
+                                  className="w-full rounded border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 focus:border-blue-500 focus:outline-none"
+                                >
+                                  <optgroup label="기본형">
+                                    <option value="SHORT_TEXT">단답형</option>
+                                    <option value="LONG_TEXT">장문형</option>
+                                    <option value="SINGLE_CHOICE">객관식 질문</option>
+                                    <option value="MULTIPLE_CHOICE">체크박스</option>
+                                    <option value="NUMBER">숫자 입력</option>
+                                    <option value="BOOLEAN">찬성/반대 (O/X)</option>
+                                  </optgroup>
+                                  <optgroup label="특수형">
+                                    <option value="WORSHIP_ATTENDANCE">예배 출석</option>
+                                    <option value="SCHEDULE_ATTENDANCE">일정 참석</option>
+                                  </optgroup>
+                                </select>
+                              </div>
+                           </div>
+                           
+                           {/* Type Specific Options */}
+                           <div className="rounded bg-slate-50 p-3">
+                              {q.inputType === 'SCHEDULE_ATTENDANCE' ? (
+                                <ScheduleManager
+                                  selectedSchedules={q.linkedSchedules || []}
+                                  onChange={(schedules) => updateQuestion(section.id, q.id, { linkedSchedules: schedules })}
+                                />
+                              ) : q.inputType === 'WORSHIP_ATTENDANCE' ? (
+                                <div className="flex gap-4 items-center">
+                                  <label className="text-sm font-medium text-slate-700">연동 예배:</label>
+                                  <select
+                                    value={q.linkedWorshipCategory || 'SUNDAY_SERVICE_1'}
+                                    onChange={(e) => updateQuestion(section.id, q.id, { linkedWorshipCategory: e.target.value as WorshipCategory })}
+                                    className="rounded border border-slate-300 px-2 py-1 text-sm"
+                                  >
+                                    <option value="SUNDAY_SERVICE_1">주일예배 1부</option>
+                                    <option value="SUNDAY_SERVICE_2">주일예배 2부</option>
+                                    <option value="SUNDAY_SERVICE_3">주일예배 3부</option>
+                                    <option value="WEDNESDAY_SERVICE_1">수요예배 1부</option>
+                                    <option value="WEDNESDAY_SERVICE_2">수요예배 2부</option>
+                                    <option value="FRIDAY_PRAYER">금요기도회</option>
+                                    <option value="DAWN_PRAYER">새벽기도회</option>
+                                    <option value="YOUTH_SERVICE">청년부 예배</option>
+                                    <option value="ETC">기타</option>
+                                  </select>
+                                  <p className="text-xs text-slate-500">
+                                    * 선택 시 해당 예배 출석 데이터와 자동 연동됩니다.
+                                  </p>
+                                </div>
+                              ) : (q.inputType === 'SINGLE_CHOICE' || q.inputType === 'MULTIPLE_CHOICE') ? (
+                                <div className="space-y-3">
+                                  {((q as any).richOptions || []).map((option: QuestionOption, idx: number) => (
+                                    <div key={idx} className="group flex items-center gap-3 py-1">
+                                      {/* Radio Circle Icon */}
+                                      <Circle className="h-5 w-5 text-slate-300 flex-shrink-0" />
+                                      
+                                      {/* Option Input */}
+                                      <div className="flex-1 relative">
+                                        <input
+                                          type="text"
+                                          value={option.label}
+                                          onChange={(e) => {
+                                            const newOptions = [...((q as any).richOptions || [])];
+                                            newOptions[idx] = { ...newOptions[idx], label: e.target.value };
+                                            updateQuestion(section.id, q.id, { richOptions: newOptions } as any);
+                                          }}
+                                          className="w-full border-b border-transparent hover:border-slate-200 focus:border-blue-600 bg-transparent px-0 py-1.5 text-sm outline-none transition-colors placeholder:text-slate-400"
+                                          placeholder={`옵션 ${idx + 1}`}
+                                        />
+                                        <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-slate-200 group-hover:bg-slate-300 peer-focus:bg-blue-600" />
+                                      </div>
+
+                                      {/* Remove Button (Hidden by default, shown on hover) */}
+                                      <button
+                                        onClick={() => {
+                                          const newOptions = ((q as any).richOptions || []).filter((_: any, i: number) => i !== idx);
+                                          updateQuestion(section.id, q.id, { richOptions: newOptions } as any);
+                                        }}
+                                        className="p-2 text-slate-400 opacity-0 hover:bg-slate-100 hover:text-slate-600 rounded-full transition-all group-hover:opacity-100"
+                                        title="삭제"
+                                      >
+                                        <X className="h-5 w-5" />
+                                      </button>
+                                        
+                                      {/* Unified Branching Logic Dropdown */}
+                                      {q.inputType === 'SINGLE_CHOICE' && (q as any).showBranchingLogic && (
+                                        <div className="w-48 flex-shrink-0">
+                                          <select
+                                            value={
+                                              option.nextAction === 'GO_TO_SECTION' && option.targetSectionIndex !== undefined
+                                                ? `SECTION_${option.targetSectionIndex}`
+                                                : option.nextAction || 'CONTINUE'
+                                            }
+                                            onChange={(e) => {
+                                              const value = e.target.value;
+                                              const newOptions = [...((q as any).richOptions || [])];
+                                              
+                                              if (value === 'CONTINUE') {
+                                                newOptions[idx] = { ...newOptions[idx], nextAction: 'CONTINUE', targetSectionIndex: undefined };
+                                              } else if (value === 'SUBMIT') {
+                                                newOptions[idx] = { ...newOptions[idx], nextAction: 'SUBMIT', targetSectionIndex: undefined };
+                                              } else if (value.startsWith('SECTION_')) {
+                                                const sectionIndex = parseInt(value.split('_')[1]);
+                                                newOptions[idx] = { ...newOptions[idx], nextAction: 'GO_TO_SECTION', targetSectionIndex: sectionIndex };
+                                              }
+                                              
+                                              updateQuestion(section.id, q.id, { richOptions: newOptions } as any);
+                                            }}
+                                            className="w-full rounded border border-slate-200 px-3 py-2 text-xs text-slate-600 focus:border-blue-500 focus:outline-none"
+                                          >
+                                            <option value="CONTINUE">다음 섹션으로 진행하기</option>
+                                            <option value="SUBMIT">양식 제출하기</option>
+                                            {sections.map((s, i) => (
+                                              <option key={s.id} value={`SECTION_${i}`} disabled={i === sIdx}>
+                                                {i + 1} 섹션 ({s.title || '제목 없음'})으로 이동
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                  
+                                  <div className="flex items-center gap-3 py-1 pl-[1px]">
+                                    <Circle className="h-5 w-5 text-slate-300 flex-shrink-0" />
+                                    <div className="flex items-center gap-1 text-sm">
+                                      <button
+                                        onClick={() => {
+                                          const newOptions = [...((q as any).richOptions || []), { label: '', nextAction: 'CONTINUE' }];
+                                          updateQuestion(section.id, q.id, { richOptions: newOptions } as any);
+                                        }}
+                                        className="text-slate-500 hover:text-blue-600 hover:underline"
+                                      >
+                                        옵션 추가
+                                      </button>
+                                      <span className="text-slate-300">또는</span>
+                                      <button
+                                        onClick={() => {
+                                          // Logic for adding "Other" option
+                                          const newOptions = [...((q as any).richOptions || []), { label: '기타...', nextAction: 'CONTINUE' }];
+                                          updateQuestion(section.id, q.id, { richOptions: newOptions } as any);
+                                        }}
+                                        className="text-blue-600 hover:text-blue-700 font-medium hover:underline"
+                                      >
+                                        '기타' 추가
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-slate-400">추가 설정이 없는 타입입니다.</p>
+                              )}
+                           </div>
+                           
+                           {/* Footer Actions */}
+                           <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-4 mt-4">
+                              <div className="flex items-center gap-4 border-r border-slate-200 pr-4 mr-2">
+                                 {formType === 'GROUP' && (
+                                    <label className="flex items-center gap-1 cursor-pointer text-sm text-slate-600 hover:text-slate-800" title="순원 개인 질문">
+                                      <input
+                                        type="checkbox"
+                                        checked={q.memberSpecific}
+                                        onChange={(e) => updateQuestion(section.id, q.id, { memberSpecific: e.target.checked })}
+                                        className="h-4 w-4 rounded border-slate-300 focus:ring-blue-500"
+                                      />
+                                      <span>개인질문</span>
+                                    </label>
+                                 )}
+                                 <button onClick={() => duplicateQuestion(section.id, q.id)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-full" title="복사"><Copy className="h-5 w-5" /></button>
+                                 <button onClick={() => removeQuestion(section.id, q.id)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-full hover:text-rose-500" title="삭제"><Trash2 className="h-5 w-5" /></button>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                 <span className="text-sm text-slate-600">필수</span>
+                                 <button
+                                   onClick={() => updateQuestion(section.id, q.id, { required: !q.required })}
+                                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${q.required ? 'bg-blue-600' : 'bg-slate-200'}`}
+                                 >
+                                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${q.required ? 'translate-x-6' : 'translate-x-1'}`} />
+                                 </button>
+                              </div>
+                              <div className="relative ml-2">
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenMenuId(openMenuId === q.id ? null : q.id);
+                                  }}
+                                  className={`p-2 rounded-full transition-colors ${openMenuId === q.id ? 'bg-slate-100 text-slate-700' : 'text-slate-500 hover:bg-slate-100'}`}
+                                >
+                                  <MoreVertical className="h-5 w-5" />
+                                </button>
+                                
+                                {/* Dropdown menu for more options */}
+                                {openMenuId === q.id && (
+                                  <>
+                                    <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
+                                    <div className="absolute right-0 bottom-full mb-2 w-64 bg-white rounded-lg shadow-lg border border-slate-100 z-20 p-1">
+                                       <button 
+                                         onClick={() => {
+                                           updateQuestion(section.id, q.id, { description: q.description !== undefined ? undefined : '' });
+                                           setOpenMenuId(null);
+                                         }}
+                                         className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded"
+                                       >
+                                         {q.description !== undefined && <Check className="h-4 w-4" />}
+                                         <span className={q.description !== undefined ? 'ml-0' : 'ml-6'}>설명 추가</span>
+                                       </button>
+                                       
+                                       {q.inputType === 'SINGLE_CHOICE' && (
+                                         <button 
+                                           onClick={() => {
+                                              const current = (q as any).showBranchingLogic;
+                                              updateQuestion(section.id, q.id, { showBranchingLogic: !current } as any);
+                                              setOpenMenuId(null);
+                                           }}
+                                           className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded"
+                                         >
+                                           {(q as any).showBranchingLogic && <Check className="h-4 w-4" />}
+                                           <span className={(q as any).showBranchingLogic ? 'ml-0' : 'ml-6'}>답변을 기준으로 섹션 이동</span>
+                                         </button>
+                                       )}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                           </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 <button
                   onClick={() => addQuestion(section.id)}
@@ -921,6 +1578,47 @@ export const FormBuilder = ({
                   <Plus className="h-4 w-4" />
                   질문 추가하기
                 </button>
+
+                {/* Section Footer: Next Action */}
+                {sIdx < sections.length - 1 && (
+                  <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50 -mx-6 -mb-6 px-6 py-4">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-sm font-medium text-slate-700">섹션 {sIdx + 1} 완료 후 이동:</span>
+                      <p className="text-xs text-slate-400">이 섹션의 마지막 질문까지 응답한 후의 동작을 선택하세요.</p>
+                    </div>
+                    <div className="w-64">
+                      <select
+                        value={
+                          section.defaultNextAction === 'GO_TO_SECTION' && section.defaultTargetSectionIndex !== undefined
+                            ? `SECTION_${section.defaultTargetSectionIndex}`
+                            : section.defaultNextAction || 'CONTINUE'
+                        }
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          let updates: Partial<FormSection> = {};
+                          if (value === 'CONTINUE') {
+                            updates = { defaultNextAction: 'CONTINUE', defaultTargetSectionIndex: undefined };
+                          } else if (value === 'SUBMIT') {
+                            updates = { defaultNextAction: 'SUBMIT', defaultTargetSectionIndex: undefined };
+                          } else if (value.startsWith('SECTION_')) {
+                            const idx = parseInt(value.split('_')[1]);
+                            updates = { defaultNextAction: 'GO_TO_SECTION', defaultTargetSectionIndex: idx };
+                          }
+                          updateSection(section.id, updates);
+                        }}
+                        className="w-full rounded border border-slate-200 px-3 py-2 text-sm text-slate-600 focus:border-blue-500 focus:outline-none bg-white"
+                      >
+                        <option value="CONTINUE">다음 섹션으로 진행하기</option>
+                        <option value="SUBMIT">양식 제출하기</option>
+                        {sections.map((s, i) => (
+                          <option key={s.id} value={`SECTION_${i}`} disabled={i === sIdx}>
+                            {i + 1} 섹션 ({s.title || '제목 없음'})으로 이동
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
           ))}
@@ -936,59 +1634,166 @@ export const FormBuilder = ({
         </div>
       </div>
 
-      {/* Preview Modal */}
-      {isPreviewOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-          <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-6 shadow-2xl">
-            <button
-              onClick={() => setIsPreviewOpen(false)}
-              className="absolute right-4 top-4 rounded-full p-1 hover:bg-slate-100"
-            >
-              <X className="h-6 w-6 text-slate-500" />
-            </button>
+      {/* Access Control Modal */}
+      {isAccessInfoOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <h3 className="text-lg font-bold text-slate-900">접근 권한 설정</h3>
+              <button onClick={() => setIsAccessInfoOpen(false)} className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
             
-            <div className="mb-6">
-              <h2 className="text-xl font-bold text-slate-900">{title || '(제목 없음)'}</h2>
-              <p className="mt-1 text-slate-500">{description}</p>
-              <div className="mt-4 flex gap-2 text-xs text-slate-400">
-                <span>{category}</span>
-                <span>•</span>
-                <span>{formType}</span>
+            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50">
+               <div className="flex items-center justify-between">
+                 <div>
+                   <span className="text-sm font-bold text-slate-900 block">양식 활성화</span>
+                   <span className="text-xs text-slate-500">비활성화 시 사용자에게 노출되지 않습니다.</span>
+                 </div>
+                 <button
+                   onClick={() => setIsActive(!isActive)}
+                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isActive ? 'bg-blue-600' : 'bg-slate-300'}`}
+                 >
+                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isActive ? 'translate-x-6' : 'translate-x-1'}`} />
+                 </button>
+               </div>
+            </div>
+
+            <div className="flex border-b border-slate-100">
+              <button
+                onClick={() => setActiveAccessTab('RESPONDENT')}
+                className={`flex-1 py-3 text-sm font-semibold border-b-2 transition-colors ${activeAccessTab === 'RESPONDENT' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              >
+                응답자 (제출 가능)
+              </button>
+              <button
+                onClick={() => setActiveAccessTab('MANAGER')}
+                className={`flex-1 py-3 text-sm font-semibold border-b-2 transition-colors ${activeAccessTab === 'MANAGER' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              >
+                관리자 (수정/조회)
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Existing Rules List */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-bold text-slate-900">현재 적용된 권한</h4>
+                {accessList.filter(a => a.accessType === activeAccessTab).length === 0 ? (
+                  <p className="text-sm text-slate-400 py-4 text-center bg-slate-50 rounded-lg">설정된 권한이 없습니다 (기본: {activeAccessTab === 'RESPONDENT' ? '모두 가능' : '작성자만 가능'})</p>
+                ) : (
+                  accessList.filter(a => a.accessType === activeAccessTab).map(rule => (
+                    <div key={rule.id} className="flex items-center justify-between rounded-lg border border-slate-200 p-3 bg-white">
+                      <div className="flex items-center gap-3">
+                        <span className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+                          {TARGET_TYPE_MAP[rule.targetType]}
+                        </span>
+                        <span className="text-sm font-medium text-slate-700">
+                          {rule.targetType === 'ROLE' ? ROLE_MAP[rule.targetValue] || rule.targetValue :
+                           rule.targetType === 'ALL' ? '모든 사용자' :
+                           rule.targetName || rule.targetValue}
+                        </span>
+                      </div>
+                      <button onClick={() => removeAccessRule(rule.id)} className="text-slate-400 hover:text-rose-500">
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Add New Rule */}
+              <div className="space-y-3 pt-4 border-t border-slate-100">
+                <h4 className="text-sm font-bold text-slate-900">권한 추가</h4>
+                <div className="flex gap-2">
+                  <select
+                    value={newTargetType}
+                    onChange={(e) => handleTargetTypeChange(e.target.value as TargetType)}
+                    className="w-32 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="ALL">전체</option>
+                    <option value="ROLE">직분/역할</option>
+                    <option value="USER">특정 사용자</option>
+                    <option value="CLUB">부서/클럽</option>
+                    <option value="GUEST">비회원</option>
+                  </select>
+
+                  <div className="flex-1">
+                    {newTargetType === 'ROLE' ? (
+                      <select
+                        value={newTargetValue}
+                        onChange={(e) => setNewTargetValue(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                      >
+                        <option value="">역할 선택...</option>
+                        {Object.entries(ROLE_MAP).map(([key, label]) => (
+                          <option key={key} value={key}>{label}</option>
+                        ))}
+                      </select>
+                    ) : (newTargetType === 'USER' || newTargetType === 'CLUB') ? (
+                      <button
+                        onClick={() => {
+                          setTargetTypeForModal(newTargetType);
+                          setIsSelectionModalOpen(true);
+                        }}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50"
+                      >
+                        {selectedTargets.length > 0 
+                          ? `${selectedTargets[0].name} 외 ${selectedTargets.length - 1}명 선택됨`
+                          : '대상 검색하기...'}
+                      </button>
+                    ) : (
+                      <input
+                        type="text"
+                        value={newTargetType === 'ALL' ? '모든 사용자' : newTargetType === 'GUEST' ? '비회원 (게스트)' : newTargetValue}
+                        disabled
+                        className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-500"
+                      />
+                    )}
+                  </div>
+
+                  <button
+                    onClick={addAccessRule}
+                    disabled={
+                      (newTargetType === 'ROLE' && !newTargetValue) ||
+                      ((newTargetType === 'USER' || newTargetType === 'CLUB') && selectedTargets.length === 0)
+                    }
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:bg-slate-300"
+                  >
+                    추가
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-8">
-              <DynamicFormRenderer 
-                template={{
-                  id: 0,
-                  title,
-                  description,
-                  category,
-                  type: formType,
-                  targetClubId: targetClubId ? Number(targetClubId) : undefined,
-                  startDate,
-                  endDate,
-                  isActive,
-                  questions: [],
-                  sections: sections
-                }}
-                answers={{}}
-                onChange={() => {}}
-                readOnly={true}
-              />
-            </div>
-
-            <div className="mt-8 flex justify-end">
+            <div className="border-t border-slate-100 px-6 py-4 bg-slate-50 rounded-b-xl flex justify-end">
               <button
-                onClick={() => setIsPreviewOpen(false)}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                onClick={() => setIsAccessInfoOpen(false)}
+                className="rounded-lg bg-slate-900 px-6 py-2 text-sm font-bold text-white hover:bg-slate-800"
               >
-                닫기
+                완료
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Date Settings Modal */}
+      <DateSettingsModal 
+        isOpen={isDateModalOpen}
+        onClose={() => setIsDateModalOpen(false)}
+        startDate={startDate}
+        endDate={endDate}
+        setStartDate={setStartDate}
+        setEndDate={setEndDate}
+         category={category}
+         setCategory={setCategory}
+         shouldHideCategory={shouldHideCategory}
+         formType={formType}
+         setFormType={setFormType}
+         lockSettings={lockSettings}
+       />
+
     </div>
   );
-};
+});
