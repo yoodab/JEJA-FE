@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import axios from 'axios'
+import toast from 'react-hot-toast'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { getFileUrl } from '../services/albumService'
 import { getMembers } from '../services/memberService'
 import { 
@@ -110,6 +113,7 @@ const getStatusFromTab = (tab: string): string | undefined => {
 
 function NewcomerManagePage() {
   const navigate = useNavigate()
+  const { confirm } = useConfirm()
   const [newcomers, setNewcomers] = useState<Newcomer[]>([])
   const [showModal, setShowModal] = useState(false)
   const [editingNewcomer, setEditingNewcomer] = useState<Newcomer | null>(null)
@@ -241,7 +245,7 @@ function NewcomerManagePage() {
           setExportModalTab('people')
         } catch (error) {
           console.error('Failed to fetch export candidates', error)
-          alert('데이터를 불러오는 중 오류가 발생했습니다.')
+          toast.error('데이터를 불러오는 중 오류가 발생했습니다.')
         } finally {
           setIsExportLoading(false)
         }
@@ -442,7 +446,7 @@ function NewcomerManagePage() {
         setShowExcelUploadModal(false)
       } catch (error) {
         console.error('Excel upload error:', error)
-        alert('엑셀 업로드 중 오류가 발생했습니다.')
+        toast.error('엑셀 업로드 중 오류가 발생했습니다.')
       }
     }
     reader.readAsBinaryString(file)
@@ -456,20 +460,20 @@ function NewcomerManagePage() {
     try {
       const selectedData = excelPreviewData.filter((_, idx) => selectedPreviewRows.has(idx))
       if (selectedData.length === 0) {
-        alert('저장할 데이터가 없습니다.')
+        toast.error('저장할 데이터가 없습니다.')
         return
       }
 
       await createNewcomersBatch(selectedData)
       await loadNewcomers()
       
-      alert(`${selectedData.length}명의 새신자가 추가되었습니다.`)
+      toast.success(`${selectedData.length}명의 새신자가 추가되었습니다.`)
       setShowPreviewModal(false)
       setExcelPreviewData([])
       setSelectedPreviewRows(new Set())
     } catch (error) {
       console.error('Excel save error:', error)
-      alert('데이터 저장 중 오류가 발생했습니다.')
+      toast.error('데이터 저장 중 오류가 발생했습니다.')
     }
   }
 
@@ -627,9 +631,19 @@ function NewcomerManagePage() {
     if (e) {
       e.stopPropagation()
     }
-    if (!confirm('새신자 정보를 삭제하시겠습니까?')) {
+    
+    const isConfirmed = await confirm({
+      title: '새신자 삭제',
+      message: '새신자 정보를 삭제하시겠습니까?',
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소',
+    })
+
+    if (!isConfirmed) {
       return
     }
+
     try {
       await deleteNewcomer(id)
       await loadNewcomers()
@@ -638,9 +652,10 @@ function NewcomerManagePage() {
         setSelectedNewcomer(null)
         setOriginalNewcomer(null)
       }
+      toast.success('삭제되었습니다.')
     } catch (error) {
       console.error('새신자 삭제 실패:', error)
-      alert('삭제 중 오류가 발생했습니다.')
+      toast.error('삭제 중 오류가 발생했습니다.')
     }
   }
 
@@ -653,19 +668,19 @@ function NewcomerManagePage() {
 
   const handleAssignCell = async () => {
     if (!cellAssignTargetId || !selectedCellId) {
-      alert('순을 선택해주세요.')
+      toast.error('순을 선택해주세요.')
       return
     }
     
     const selectedCell = cellList.find(c => c.cellId === selectedCellId)
     if (!selectedCell) {
-      alert('유효하지 않은 순입니다.')
+      toast.error('유효하지 않은 순입니다.')
       return
     }
 
     try {
       await assignNewcomerCell(cellAssignTargetId, selectedCell.cellName)
-      alert('순 배정이 완료되었습니다.')
+      toast.success('순 배정이 완료되었습니다.')
       setShowCellAssignModal(false)
       
       // 목록 새로고침
@@ -679,13 +694,20 @@ function NewcomerManagePage() {
       }
     } catch (error) {
       console.error('순 배정 실패:', error)
-      alert('순 배정 중 오류가 발생했습니다.')
+      toast.error('순 배정 중 오류가 발생했습니다.')
     }
   }
 
-  const handleCloseDetailModal = () => {
+  const handleCloseDetailModal = async () => {
     if (selectedNewcomer && originalNewcomer && JSON.stringify(selectedNewcomer) !== JSON.stringify(originalNewcomer)) {
-      if (!confirm('저장하지 않은 변경사항이 있습니다. 정말 닫으시겠습니까?')) {
+      const isConfirmed = await confirm({
+        title: '변경사항 파기',
+        message: '저장하지 않은 변경사항이 있습니다. 정말 닫으시겠습니까?',
+        type: 'warning',
+        confirmText: '닫기',
+        cancelText: '취소',
+      })
+      if (!isConfirmed) {
         return
       }
     }
@@ -760,7 +782,7 @@ function NewcomerManagePage() {
     const target = newcomers.find((n) => n.newcomerId === newcomerId)
     // 같은 상태 그룹(예: MAIN_WORSHIP, YOUTH_WORSHIP은 모두 '관리중')이면 변경하지 않음
     if (target && NewcomerStatusMap[target.status] === NewcomerStatusMap[newStatus]) {
-      alert('이미 해당 상태입니다.')
+      toast.error('이미 해당 상태입니다.')
       return
     }
 
@@ -771,7 +793,7 @@ function NewcomerManagePage() {
       setStatusChangeTarget(null)
     } catch (error) {
       console.error('Status update failed:', error)
-      alert('상태 변경에 실패했습니다.')
+      toast.error('상태 변경에 실패했습니다.')
     }
   }
 
@@ -784,16 +806,29 @@ function NewcomerManagePage() {
 
   // 등반 처리 핸들러
   const handleGraduate = async (id: number) => {
-    if (!confirm('해당 새신자를 청년부 등록 처리하시겠습니까?')) {
+    const isConfirmed = await confirm({
+      title: '청년부 등록 처리',
+      message: '해당 새신자를 청년부 등록 처리하시겠습니까?',
+      type: 'warning',
+      confirmText: '처리',
+      cancelText: '취소',
+    })
+
+    if (!isConfirmed) {
       return
     }
+
     try {
       await graduateNewcomer(id)
       await loadNewcomers()
-      alert('청년부 등록 처리가 완료되었습니다.')
+      toast.success('청년부 등록 처리가 완료되었습니다.')
     } catch (error) {
       console.error('Graduate processing failed:', error)
-      alert('청년부 등록 처리에 실패했습니다.')
+      let errorMessage = '청년부 등록 처리에 실패했습니다.'
+      if (axios.isAxiosError(error)) {
+        errorMessage = error.response?.data?.message || error.message || errorMessage
+      }
+      toast.error(errorMessage)
     }
   }
 
@@ -839,14 +874,14 @@ function NewcomerManagePage() {
         setFormData({ ...formData, profileImageUrl: uploadedUrl })
       } catch (error) {
         console.error('Image upload failed:', error)
-        alert('이미지 업로드에 실패했습니다.')
+        toast.error('이미지 업로드에 실패했습니다.')
       }
     }
   }
 
   const handleSave = async () => {
     if (!formData.name) {
-      alert('새신자 이름을 입력해주세요.')
+      toast.error('새신자 이름을 입력해주세요.')
       return
     }
 
@@ -878,14 +913,16 @@ function NewcomerManagePage() {
           phone: formData.phone.replace(/[^0-9]/g, '')
         }
         await updateNewcomer(editingNewcomer.newcomerId, updatePayload)
+        toast.success('수정되었습니다.')
       } else {
         await createNewcomer(payload)
+        toast.success('등록되었습니다.')
       }
       await loadNewcomers()
       setShowModal(false)
     } catch (error) {
       console.error('Failed to save newcomer', error)
-      alert('저장 중 오류가 발생했습니다.')
+      toast.error('저장 중 오류가 발생했습니다.')
     } finally {
       setIsSaving(false)
     }
@@ -895,7 +932,7 @@ function NewcomerManagePage() {
   const handleDownloadExcel = async () => {
     try {
       if (selectedExportNewcomerIds.size === 0) {
-        alert('선택된 대상이 없습니다.')
+        toast.error('선택된 대상이 없습니다.')
         return
       }
 
@@ -968,7 +1005,7 @@ function NewcomerManagePage() {
       setShowExportSettingsModal(false)
     } catch (error) {
       console.error('Export failed:', error)
-      alert('데이터 내보내기에 실패했습니다.')
+      toast.error('데이터 내보내기에 실패했습니다.')
     } finally {
       setIsExportLoading(false)
     }
@@ -978,7 +1015,7 @@ function NewcomerManagePage() {
   const handleDownloadPdf = async () => {
     try {
       if (selectedExportNewcomerIds.size === 0) {
-        alert('선택된 대상이 없습니다.')
+        toast.error('선택된 대상이 없습니다.')
         return
       }
 
@@ -1002,7 +1039,7 @@ function NewcomerManagePage() {
       // 1. 숨겨진 인쇄 영역 요소 가져오기
       const printArea = document.getElementById('print-area')
       if (!printArea) {
-        alert('인쇄 영역을 찾을 수 없습니다.')
+        toast.error('인쇄 영역을 찾을 수 없습니다.')
         return
       }
 
@@ -1042,7 +1079,7 @@ function NewcomerManagePage() {
       setShowExportSettingsModal(false)
     } catch (error) {
       console.error('PDF export failed:', error)
-      alert('PDF 내보내기에 실패했습니다.')
+      toast.error('PDF 내보내기에 실패했습니다.')
     } finally {
       setIsExportLoading(false)
     }
@@ -1052,7 +1089,7 @@ function NewcomerManagePage() {
   const handleDownloadImage = async () => {
     try {
       if (selectedExportNewcomerIds.size === 0) {
-        alert('선택된 대상이 없습니다.')
+        toast.error('선택된 대상이 없습니다.')
         return
       }
 
@@ -1075,7 +1112,7 @@ function NewcomerManagePage() {
 
       const printArea = document.getElementById('print-area')
       if (!printArea) {
-        alert('인쇄 영역을 찾을 수 없습니다.')
+        toast.error('인쇄 영역을 찾을 수 없습니다.')
         return
       }
 
@@ -1093,7 +1130,7 @@ function NewcomerManagePage() {
       setShowExportSettingsModal(false)
     } catch (error) {
       console.error('Image export failed:', error)
-      alert('이미지 내보내기에 실패했습니다.')
+      toast.error('이미지 내보내기에 실패했습니다.')
     } finally {
       setIsExportLoading(false)
     }
@@ -1101,7 +1138,7 @@ function NewcomerManagePage() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
-    alert('클립보드에 복사되었습니다.')
+    toast.success('클립보드에 복사되었습니다.')
   }
 
   // MD 관련 함수들
@@ -1132,20 +1169,29 @@ function NewcomerManagePage() {
   }
 
   const handleDeleteMd = async (id: number) => {
-    if (confirm('MD 배치를 삭제하시겠습니까?')) {
+    const isConfirmed = await confirm({
+      title: 'MD 배치 삭제',
+      message: 'MD 배치를 삭제하시겠습니까?',
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소',
+    })
+    
+    if (isConfirmed) {
       try {
         await deleteMdAssignment(id)
         await loadMds()
+        toast.success('삭제되었습니다.')
       } catch (error) {
         console.error('MD 삭제 실패:', error)
-        alert('삭제 중 오류가 발생했습니다.')
+        toast.error('삭제 중 오류가 발생했습니다.')
       }
     }
   }
 
   const handleSaveMd = async () => {
     if (!mdFormData.memberId || !mdFormData.charge) {
-      alert('팀원 선택과 담당(역할)을 모두 입력해주세요.')
+      toast.error('팀원 선택과 담당(역할)을 모두 입력해주세요.')
       return
     }
 
@@ -1158,14 +1204,16 @@ function NewcomerManagePage() {
 
       if (editingMd) {
         await updateMdAssignment(editingMd.id, payload)
+        toast.success('수정되었습니다.')
       } else {
         await createMdAssignment(payload)
+        toast.success('등록되었습니다.')
       }
       await loadMds()
       setShowMdModal(false)
     } catch (error) {
       console.error('MD 저장 실패:', error)
-      alert('저장 중 오류가 발생했습니다.')
+      toast.error('저장 중 오류가 발생했습니다.')
     }
   }
 
@@ -2114,7 +2162,7 @@ function NewcomerManagePage() {
                         setTimeout(() => setIsSaving(false), 500)
                       } catch (error) {
                         console.error('Update failed:', error)
-                        alert('저장에 실패했습니다.')
+                        toast.error('저장에 실패했습니다.')
                         setIsSaving(false)
                       }
                     }}

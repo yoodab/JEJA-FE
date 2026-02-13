@@ -34,11 +34,17 @@ export interface MemberStats {
  * @param gender 백엔드에서 받은 gender (예: "MALE", "FEMALE")
  * @returns 한글 성별 문자열 (예: "남성")
  */
-export function formatGender(gender: string): string {
+export function formatGender(gender: string | null | undefined): string {
+  if (!gender) return '미입력'
+  
   const genderMap: Record<string, string> = {
-    MALE: '남성',
-    FEMALE: '여성',
+    MALE: '남',
+    FEMALE: '여',
     NONE: '미입력',
+    '남자': '남',
+    '여자': '여',
+    '남': '남',
+    '여': '여'
   }
   return genderMap[gender] || gender
 }
@@ -46,27 +52,34 @@ export function formatGender(gender: string): string {
 /**
  * 백엔드 Role Enum을 한글 문자열로 변환
  * @param roles 백엔드에서 받은 roles 배열 (예: ["MEMBER", "CELL_LEADER"])
- * @returns 한글 역할 문자열 (예: "순장")
+ * @returns 한글 역할 문자열 (예: "순장, 팀장")
  */
 export function formatRoles(roles: string[] | undefined): string {
   if (!roles || roles.length === 0) {
-    return '일반'
+    return '일반성도'
   }
 
-  // 우선순위에 따라 가장 높은 역할을 반환
-  // CELL_LEADER > TEAM_LEADER > MEMBER
-  if (roles.includes('CELL_LEADER')) {
-    return '순장'
-  }
-  if (roles.includes('TEAM_LEADER')) {
-    return '리더'
-  }
-  if (roles.includes('MEMBER')) {
-    return '일반'
+  const roleMap: Record<string, string> = {
+    MEMBER: '일반성도',
+    CELL_LEADER: '순장',
+    CELL_SUB_LEADER: '부순장',
+    TEAM_LEADER: '팀장',
+    EXECUTIVE: '임원',
   }
 
-  // 알 수 없는 역할이면 첫 번째 역할을 그대로 반환
-  return roles[0] || '일반'
+  // ROLE_ 접두사 제거 후 매핑
+  const translatedRoles = roles
+    .map(role => {
+      const cleanRole = role.replace('ROLE_', '')
+      return roleMap[cleanRole] || cleanRole
+    })
+    // 중복 제거 및 "일반성도"가 다른 역할과 같이 있으면 제거 (더 구체적인 역할이 있으므로)
+    .filter((role, index, self) => {
+      if (role === '일반성도' && self.length > 1) return false
+      return self.indexOf(role) === index
+    })
+
+  return translatedRoles.join(', ')
 }
 
 /**

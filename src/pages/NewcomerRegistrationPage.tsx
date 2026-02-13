@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
 import { registerPublicNewcomer } from '../services/attendanceService'
 
 export default function NewcomerRegistrationPage() {
@@ -22,15 +23,15 @@ export default function NewcomerRegistrationPage() {
 
     // 유효성 검사
     if (!formData.name.trim()) {
-      alert('이름을 입력해주세요.')
+      toast.error('이름을 입력해주세요.')
       return
     }
     if (formData.birthDate.length !== 6) {
-      alert('생년월일 6자리를 정확히 입력해주세요.')
+      toast.error('생년월일 6자리를 정확히 입력해주세요.')
       return
     }
     if (!formData.phone.trim()) {
-      alert('연락처를 입력해주세요.')
+      toast.error('연락처를 입력해주세요.')
       return
     }
 

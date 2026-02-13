@@ -4,6 +4,7 @@ import { uploadMemberImage } from '../../services/memberService'
 import { getFileUrl } from '../../services/albumService'
 import type { CreateMemberRequest, UpdateMemberRequest } from '../../services/memberService'
 import { formatPhoneNumber } from '../../utils/format'
+import { toast } from 'react-hot-toast'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
 
@@ -81,7 +82,7 @@ export default function MemberEditModal({ member, onClose, onSave }: MemberEditM
       setPreviewUrl(`${API_BASE_URL}${uploadedUrl}`) 
     } catch (error) {
       console.error('이미지 업로드 실패:', error)
-      alert('이미지 업로드에 실패했습니다.')
+      toast.error('이미지 업로드에 실패했습니다.')
       setPreviewUrl(member?.memberImageUrl ? `${API_BASE_URL}${member.memberImageUrl}` : null) // Revert
     } finally {
       setIsUploading(false)

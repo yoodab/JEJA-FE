@@ -9,8 +9,6 @@ interface RoleSelectModalProps {
 
 const AVAILABLE_ROLES = [
   { value: 'MEMBER', label: '일반성도' },
-  { value: 'CELL_LEADER', label: '순장' },
-  { value: 'TEAM_LEADER', label: '팀장' },
   { value: 'EXECUTIVE', label: '임원' },
 ]
 
@@ -49,10 +47,10 @@ export default function RoleSelectModal({ member, onClose, onSave }: RoleSelectM
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
         <h2 className="mb-4 text-lg font-bold text-slate-900">
-          권한(직분) 수정
+          권한 수정
         </h2>
         <p className="mb-6 text-sm text-slate-600">
-          <span className="font-semibold text-slate-900">{member.name}</span> 님의 직분을 선택해주세요.
+          <span className="font-semibold text-slate-900">{member.name}</span> 님의 권한을 선택해주세요.
         </p>
 
         <form onSubmit={handleSubmit}>
@@ -69,9 +67,14 @@ export default function RoleSelectModal({ member, onClose, onSave }: RoleSelectM
                   className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm font-medium text-slate-700">{role.label}</span>
-                <span className="text-xs text-slate-400">({role.value})</span>
               </label>
             ))}
+            
+            <div className="mt-4 rounded-lg bg-amber-50 p-3">
+              <p className="text-xs text-amber-700">
+                * 순장, 팀장 권한은 순 관리, 팀 관리 메뉴에서 해당 부여할 수 있습니다.
+              </p>
+            </div>
           </div>
 
           <div className="flex justify-end gap-2">

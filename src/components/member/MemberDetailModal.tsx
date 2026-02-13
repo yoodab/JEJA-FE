@@ -86,7 +86,6 @@ export default function MemberDetailModal({ member, onClose, onEdit, onDelete }:
             )}
           </div>
           <h3 className="text-xl font-bold text-slate-900">{member.name}</h3>
-          <p className="text-sm text-slate-500 mt-1">{formatRoles(member.roles)}</p>
         </div>
 
         <div className="space-y-4 px-2">

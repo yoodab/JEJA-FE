@@ -49,6 +49,14 @@ export interface CreateNewcomerRequest {
   managerMemberId?: number
   isChurchRegistered?: boolean
   profileImageUrl?: string
+  // 엑셀 일괄 등록용 추가 필드
+  mdName?: string
+  registrationDate?: string
+  firstStatus?: string
+  middleStatus?: string
+  recentStatus?: string
+  assignmentNote?: string
+  isMemberRegistered?: boolean
 }
 
 export interface UpdateNewcomerRequest {

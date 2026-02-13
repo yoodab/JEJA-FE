@@ -1,25 +1,31 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
+import { useConfirm } from '../contexts/ConfirmContext'
 import type { Member, MemberStats } from '../types/member'
-import { getMembers, createMember, updateMember, deleteMember, uploadMembersFromExcel, getMemberStats } from '../services/memberService'
+import { getMembers, createMember, updateMember, deleteMember, createMembersBatch, getMemberStats } from '../services/memberService'
 import type { CreateMemberRequest, UpdateMemberRequest } from '../services/memberService'
-import { formatMemberStatus, getMemberStatusColor } from '../types/member'
+import { formatMemberStatus, getMemberStatusColor, formatGender } from '../types/member'
 import MemberDetailModal from '../components/member/MemberDetailModal'
 import MemberEditModal from '../components/member/MemberEditModal'
+import MemberStatusModal from '../components/member/MemberStatusModal'
 import RoleSelectModal from '../components/member/RoleSelectModal'
+import MemberExcelUploadModal from '../components/member/MemberExcelUploadModal'
 import ImagePreviewModal from '../components/ImagePreviewModal'
 import { formatPhoneNumber } from '../utils/format'
 import { getFileUrl } from '../services/albumService'
 
 function MemberManagePage() {
   const navigate = useNavigate()
+  const { confirm } = useConfirm()
   
   // Data State
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
-  const pageSize = 20
+  const [totalElements, setTotalElements] = useState(0)
+  const pageSize = 10
 
   // Stats State
   const [stats, setStats] = useState<MemberStats>({
@@ -44,10 +50,13 @@ function MemberManagePage() {
     open: false, 
     member: null 
   })
+  const [statusModalData, setStatusModalData] = useState<{ open: boolean, member: Member | null }>({ 
+    open: false, 
+    member: null 
+  })
   
   // Excel Upload State
-  const [isUploading, setIsUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showExcelModal, setShowExcelModal] = useState(false)
   
   // Kebab Menu State
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null)
@@ -79,11 +88,6 @@ function MemberManagePage() {
     return () => clearTimeout(timer)
   }, [searchTerm])
 
-  // Reset page when filter changes
-  useEffect(() => {
-    setCurrentPage(0)
-  }, [debouncedSearchTerm, selectedStatus])
-
   const loadMembers = useCallback(async () => {
     try {
       setLoading(true)
@@ -95,18 +99,24 @@ function MemberManagePage() {
       })
       setMembers(response.content)
       setTotalPages(response.totalPages)
+      setTotalElements(response.totalElements)
     } catch (error) {
       console.error('멤버 목록 로드 실패:', error)
-      alert('멤버 목록을 불러오는데 실패했습니다.')
+      toast.error('멤버 목록을 불러오는데 실패했습니다.')
     } finally {
       setLoading(false)
     }
   }, [currentPage, pageSize, debouncedSearchTerm, selectedStatus])
 
-  // Load Members
+  // Load members when page, search term, or status changes
   useEffect(() => {
     loadMembers()
-  }, [loadMembers])
+  }, [currentPage, debouncedSearchTerm, selectedStatus, loadMembers])
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(0)
+  }, [debouncedSearchTerm, selectedStatus])
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -133,15 +143,28 @@ function MemberManagePage() {
     setActiveMenuId(null)
   }
 
+  const handleStatusEdit = (member: Member) => {
+    setStatusModalData({ open: true, member })
+    setActiveMenuId(null)
+  }
+
   const handleDelete = async (memberId: number) => {
-    if (confirm('성도 정보를 삭제하시겠습니까?')) {
+    const isConfirmed = await confirm({
+      title: '성도 삭제',
+      message: '성도 정보를 삭제하시겠습니까?',
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소'
+    })
+
+    if (isConfirmed) {
       try {
         await deleteMember(memberId)
-        alert('성도 정보가 삭제되었습니다.')
+        toast.success('성도 정보가 삭제되었습니다.')
         loadMembers()
       } catch (error) {
         console.error('멤버 삭제 실패:', error)
-        alert('멤버 삭제에 실패했습니다.')
+        toast.error('멤버 삭제에 실패했습니다.')
       }
     }
     setActiveMenuId(null)
@@ -152,17 +175,17 @@ function MemberManagePage() {
       if (editModalData.member) {
         // Update
         await updateMember(editModalData.member.memberId, data as UpdateMemberRequest)
-        alert('성도 정보가 수정되었습니다.')
+        toast.success('성도 정보가 수정되었습니다.')
       } else {
         // Create
         await createMember(data as CreateMemberRequest)
-        alert('성도가 등록되었습니다.')
+        toast.success('성도가 등록되었습니다.')
       }
       loadMembers()
       loadStats() // Reload stats
     } catch (error) {
       console.error('저장 실패:', error)
-      alert('저장에 실패했습니다.')
+      toast.error('저장에 실패했습니다.')
     }
   }
 
@@ -191,40 +214,49 @@ function MemberManagePage() {
       }
 
       await updateMember(memberId, payload)
-      alert('권한이 수정되었습니다.')
+      toast.success('권한이 수정되었습니다.')
       setRoleModalData({ open: false, member: null })
       loadMembers()
     } catch (error) {
       console.error('권한 수정 실패:', error)
-      alert('권한 수정에 실패했습니다.')
+      toast.error('권한 수정에 실패했습니다.')
     }
   }
 
-  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    const validExtensions = ['.xlsx', '.xls']
-    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'))
-    if (!validExtensions.includes(fileExtension)) {
-      alert('엑셀 파일(.xlsx, .xls)만 업로드 가능합니다.')
-      e.target.value = ''
-      return
-    }
-
+  const handleSaveStatus = async (memberId: number, status: string) => {
     try {
-      setIsUploading(true)
-      await uploadMembersFromExcel(file)
-      alert('엑셀 업로드가 완료되었습니다.')
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
+      const member = members.find(m => m.memberId === memberId)
+      if (!member) return
+
+      const payload: UpdateMemberRequest = {
+        name: member.name,
+        phone: member.phone,
+        birthDate: member.birthDate,
+        gender: member.gender,
+        memberStatus: status,
+        memberImageUrl: member.memberImageUrl || undefined,
+        roles: member.roles.map(r => r.toString())
       }
+
+      await updateMember(memberId, payload)
+      toast.success('상태가 변경되었습니다.')
       loadMembers()
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '엑셀 업로드에 실패했습니다.'
-      alert(errorMessage)
-    } finally {
-      setIsUploading(false)
+      loadStats()
+    } catch (error) {
+      console.error('상태 변경 실패:', error)
+      toast.error('상태 변경에 실패했습니다.')
+    }
+  }
+
+  const handleSaveExcelBatch = async (data: CreateMemberRequest[]) => {
+    try {
+      await createMembersBatch(data)
+      toast.success(`${data.length}명의 성도가 등록되었습니다.`)
+      loadMembers()
+      loadStats()
+    } catch (error) {
+      console.error('엑셀 저장 실패:', error)
+      throw error
     }
   }
 
@@ -260,19 +292,11 @@ function MemberManagePage() {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-              className="rounded-full bg-green-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => setShowExcelModal(true)}
+              className="rounded-full bg-green-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700"
             >
-              {isUploading ? '업로드 중...' : '📊 엑셀 업로드'}
+              📊 엑셀 업로드
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={handleExcelUpload}
-              className="hidden"
-            />
             <button
               type="button"
               onClick={handleCreate}
@@ -390,7 +414,7 @@ function MemberManagePage() {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-sm font-bold text-slate-900">{member.name}</td>
-                        <td className="px-4 py-3 text-sm text-slate-600">{getGenderDisplay(member.gender)}</td>
+                        <td className="px-4 py-3 text-sm text-slate-600">{formatGender(member.gender)}</td>
                         <td className="px-4 py-3 text-sm text-slate-600">{member.birthDate || '-'}</td>
                         <td className="px-4 py-3 text-sm text-slate-600">{formatPhoneNumber(member.phone)}</td>
                         <td className="px-4 py-3">
@@ -424,62 +448,67 @@ function MemberManagePage() {
         </div>
 
         {/* Pagination Component */}
-        {totalPages > 0 && (
-          <div className="flex justify-center items-center space-x-2 py-4">
-            <button
-              onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
-              disabled={currentPage === 0}
-              className="px-3 py-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-50"
-            >
-              Prev
-            </button>
-            
-            {(() => {
-              const MAX_VISIBLE_PAGES = 5
-              let startPage = 0
-              let endPage = totalPages - 1
+        {!loading && totalPages > 0 && (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 mt-4">
+            <div className="text-sm text-slate-600 text-center sm:text-left">
+              전체 {totalElements}명 중 {(totalElements === 0 ? 0 : currentPage * pageSize + 1)}-{Math.min((currentPage + 1) * pageSize, totalElements)}명 표시
+            </div>
+            <div className="flex justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((prev) => Math.max(0, prev - 1))}
+                disabled={currentPage === 0}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                이전
+              </button>
+              <div className="flex items-center gap-1">
+                {(() => {
+                  const MAX_VISIBLE_PAGES = 5
+                  let startPage = 0
+                  let endPage = totalPages - 1
 
-              if (totalPages > MAX_VISIBLE_PAGES) {
-                // Logic for many pages (Sliding Window)
-                const half = Math.floor(MAX_VISIBLE_PAGES / 2)
-                startPage = Math.max(0, currentPage - half)
-                endPage = startPage + MAX_VISIBLE_PAGES - 1
+                  if (totalPages > MAX_VISIBLE_PAGES) {
+                    const half = Math.floor(MAX_VISIBLE_PAGES / 2)
+                    startPage = Math.max(0, currentPage - half)
+                    endPage = startPage + MAX_VISIBLE_PAGES - 1
 
-                // Correction for the end of the list
-                if (endPage >= totalPages) {
-                  endPage = totalPages - 1
-                  startPage = Math.max(0, endPage - MAX_VISIBLE_PAGES + 1)
-                }
-              }
+                    if (endPage >= totalPages) {
+                      endPage = totalPages - 1
+                      startPage = Math.max(0, endPage - MAX_VISIBLE_PAGES + 1)
+                    }
+                  }
 
-              // Now generate the array of page numbers
-              const pageNumbers = []
-              for (let i = startPage; i <= endPage; i++) {
-                pageNumbers.push(i)
-              }
+                  const pages = []
+                  for (let i = startPage; i <= endPage; i++) {
+                    pages.push(i)
+                  }
 
-              return pageNumbers.map((pageNum) => (
-                <button
-                  key={pageNum}
-                  onClick={() => setCurrentPage(pageNum)}
-                  className={`w-8 h-8 flex items-center justify-center rounded ${
-                    currentPage === pageNum
-                      ? 'bg-blue-600 text-white font-bold'
-                      : 'border border-slate-300 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  {pageNum + 1}
-                </button>
-              ))
-            })()}
-
-            <button
-              onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
-              disabled={currentPage === totalPages - 1}
-              className="px-3 py-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-50"
-            >
-              Next
-            </button>
+                  return pages.map((page) => (
+                    <button
+                      key={page}
+                      type="button"
+                      onClick={() => setCurrentPage(page)}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                        currentPage === page
+                          ? 'bg-blue-600 text-white'
+                          : 'text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {page + 1}
+                    </button>
+                  ))
+                })()}
+              </div>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1))}
+                disabled={currentPage === totalPages - 1}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                다음
+              </button>
+            </div>
           </div>
         )}
 
@@ -496,6 +525,15 @@ function MemberManagePage() {
           }}
           onClick={(e) => e.stopPropagation()}
         >
+          <button
+            onClick={() => {
+              const member = members.find((m) => m.memberId === activeMenuId)
+              if (member) handleStatusEdit(member)
+            }}
+            className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+          >
+            상태 변경
+          </button>
           <button
             onClick={() => {
               const member = members.find((m) => m.memberId === activeMenuId)
@@ -551,12 +589,26 @@ function MemberManagePage() {
         />
       )}
 
+      {statusModalData.open && statusModalData.member && (
+        <MemberStatusModal
+          member={statusModalData.member}
+          onClose={() => setStatusModalData({ open: false, member: null })}
+          onSave={handleSaveStatus}
+        />
+      )}
+
       {previewImage && (
         <ImagePreviewModal
           imageUrl={previewImage}
           onClose={() => setPreviewImage(null)}
         />
       )}
+
+      <MemberExcelUploadModal
+        isOpen={showExcelModal}
+        onClose={() => setShowExcelModal(false)}
+        onSave={handleSaveExcelBatch}
+      />
     </div>
   )
 }
