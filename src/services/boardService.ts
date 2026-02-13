@@ -99,7 +99,7 @@ export async function getBoardPosts(
     id: post.postId || post.id,
     author: post.authorName || post.author,
     authorProfileImage: getImageUrl(post.authorProfileImage),
-    isLiked: post.isLiked !== undefined ? post.isLiked : post.liked,
+    isLiked: post.isLiked,
     likeCount: post.likeCount,
     views: post.viewCount !== undefined ? post.viewCount : post.views,
     comments: post.commentCount !== undefined ? post.commentCount : (typeof post.comments === 'number' ? post.comments : 0)
@@ -113,7 +113,7 @@ export async function getBoardPosts(
 }
 
 // 게시판 글 상세 조회 - GET /api/posts/{postId}
-export async function getBoardPostById(boardType: string, postId: number, incrementView: boolean = true): Promise<BoardPost> {
+export async function getBoardPostById(_boardType: string, postId: number, incrementView: boolean = true): Promise<BoardPost> {
   const response = await api.get<ApiResponse<BoardPost>>(`/api/posts/${postId}`, {
     params: { incrementView }
   })
@@ -124,7 +124,7 @@ export async function getBoardPostById(boardType: string, postId: number, increm
     id: post.postId || post.id,
     author: post.authorName || post.author,
     authorProfileImage: getImageUrl(post.authorProfileImage),
-    isLiked: post.isLiked !== undefined ? post.isLiked : post.liked,
+    isLiked: post.isLiked,
     likeCount: post.likeCount,
     views: post.viewCount !== undefined ? post.viewCount : post.views,
     comments: post.commentCount !== undefined ? post.commentCount : (typeof post.comments === 'number' ? post.comments : 0),
@@ -155,7 +155,7 @@ export async function createBoardPost(
 
 // 게시판 글 수정 - PATCH /api/posts/{postId}
 export async function updateBoardPost(
-  boardType: string,
+  _boardType: string,
   postId: number,
   payload: UpdateBoardPostRequest
 ): Promise<void> {
@@ -163,7 +163,7 @@ export async function updateBoardPost(
 }
 
 // 게시판 글 삭제 - DELETE /api/posts/{postId}
-export async function deleteBoardPost(boardType: string, postId: number): Promise<void> {
+export async function deleteBoardPost(_boardType: string, postId: number): Promise<void> {
   await api.delete(`/api/posts/${postId}`)
 }
 

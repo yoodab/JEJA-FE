@@ -6,7 +6,7 @@ import type { FormTemplate } from '../types/form';
 import { mockMembers } from '../data/mockData';
 import { getFormTemplates, createFormTemplate, getFormTemplate, deleteFormTemplate } from '../services/formService';
 import { DynamicFormRenderer } from '../components/forms/DynamicFormRenderer';
-import { Plus, Users, FileText, ChevronRight, ListChecks, Calendar, MoreVertical, Copy, Trash2, Edit3 } from 'lucide-react';
+import { Plus, Users, FileText, ChevronRight, ListChecks, Calendar, MoreVertical, Copy, Trash2 } from 'lucide-react';
 
 function ReportManagePage() {
   const navigate = useNavigate();
@@ -33,8 +33,8 @@ function ReportManagePage() {
 
   // Create Template Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
-  const [selectedTemplate, setSelectedTemplate] = useState<FormTemplate | null>(null)
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<FormTemplate | null>(null);
   const [newTemplateTitle, setNewTemplateTitle] = useState('');
   const [newTemplateType, setNewTemplateType] = useState<'CELL_REPORT' | 'EVENT_APPLICATION'>('CELL_REPORT');
 
@@ -87,11 +87,6 @@ function ReportManagePage() {
   const handleMenuClick = (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
     setMenuOpenId(menuOpenId === id ? null : id);
-  };
-
-  const handleEdit = (e: React.MouseEvent, template: FormTemplate) => {
-    e.stopPropagation();
-    navigate(`/manage/forms/${template.id}`);
   };
 
   const handleDelete = async (e: React.MouseEvent, id: number) => {
@@ -247,6 +242,24 @@ function ReportManagePage() {
                       
                       {menuOpenId === template.id && (
                         <div className="absolute right-0 top-8 z-10 w-32 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              setMenuOpenId(null);
+                              try {
+                                const fullTemplate = await getFormTemplate(template.id);
+                                setSelectedTemplate(fullTemplate);
+                                setIsPreviewModalOpen(true);
+                              } catch (error) {
+                                console.error('Failed to fetch template for preview:', error);
+                                toast.error('미리보기를 불러오는데 실패했습니다.');
+                              }
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                          >
+                            <FileText className="h-4 w-4" />
+                            미리보기
+                          </button>
                           <button
                             onClick={(e) => handleCopy(e, template.id)}
                             className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"

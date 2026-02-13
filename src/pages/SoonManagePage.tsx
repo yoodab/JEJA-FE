@@ -12,7 +12,6 @@ import {
   activateSeason,
   type Cell,
 } from '../services/cellService'
-import { formatPhoneNumber } from '../utils/format'
 import type { Member } from '../types/member'
 
 function SoonManagePage() {

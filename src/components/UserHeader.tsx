@@ -2,10 +2,8 @@ import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   clearAuth,
-  getUserRole,
   isLoggedIn as checkLoggedIn,
   isManager as checkIsManager,
-  MANAGER_ROLES,
 } from "../utils/auth";
 import { getClubs, getMyClubs } from "../services/clubService";
 import { getBoards, type Board } from "../services/boardService";
@@ -20,12 +18,10 @@ type UserHeaderProps = {
 
 function UserHeader({
   isLoggedIn: propLoggedIn,
-  userRole: propUserRole,
   onLogout,
 }: UserHeaderProps) {
   const navigate = useNavigate();
   const [localLoggedIn, setLocalLoggedIn] = useState(false);
-  const [localRole, setLocalRole] = useState<string | null>(null);
   const [isBoardMenuOpen, setIsBoardMenuOpen] = useState(false);
   const [isTeamMenuOpen, setIsTeamMenuOpen] = useState(false);
   const [isMyInfoMenuOpen, setIsMyInfoMenuOpen] = useState(false);
@@ -90,7 +86,6 @@ function UserHeader({
   useEffect(() => {
     const sync = () => {
       setLocalLoggedIn(checkLoggedIn());
-      setLocalRole(getUserRole());
     };
     sync();
     window.addEventListener("storage", sync);
@@ -151,7 +146,6 @@ function UserHeader({
       } else {
         clearAuth();
         setLocalLoggedIn(false);
-        setLocalRole(null);
       }
     } else {
       navigate("/login");

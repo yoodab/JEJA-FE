@@ -28,6 +28,7 @@ const submissionJan11: FormSubmission = {
   templateId: 1,
   submitterName: "윤다빈 순장",
   submitDate: "2026-01-10",
+  submitTime: "2026-01-10T10:00:00",
   targetSundayDate: "2026-01-11", // 1월 2주차 데이터
   status: "APPROVED",
   answers: [
@@ -50,6 +51,7 @@ const submissionMyInfo: FormSubmission = {
   templateId: 1,
   submitterName: "김청년",
   submitDate: "2026-01-10",
+  submitTime: "2026-01-10T10:00:00",
   targetSundayDate: "2026-01-11",
   status: "PENDING",
   answers: []

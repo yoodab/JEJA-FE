@@ -657,7 +657,7 @@ function BoardDetailPage() {
   };
 
   const isCommentLiked = (comment: CommentResponse) => {
-    return comment.liked || comment.isLiked;
+    return comment.liked;
   };
 
   return (

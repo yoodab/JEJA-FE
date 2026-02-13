@@ -4,7 +4,7 @@ import UserHeader from '../components/UserHeader';
 import Footer from '../components/Footer';
 import type { FormTemplate, MySubmissionResponse } from '../types/form';
 import { getAvailableForms, getMySubmissions } from '../services/formService';
-import { Users, FileText, ChevronRight, ListChecks, CheckCircle, Clock, History, Calendar } from 'lucide-react';
+import { Users, FileText, ChevronRight, ListChecks, CheckCircle, Clock, Calendar } from 'lucide-react';
 
 function UserReportListPage() {
   const navigate = useNavigate();
@@ -49,28 +49,6 @@ function UserReportListPage() {
  const handleSubmissionClick = (submission: MySubmissionResponse) => {
     navigate(`/reports/view/${submission.submissionId}`);
   };
-
-  const getThisSunday = () => {
-    const today = new Date();
-    const day = today.getDay(); // 0(Sun) ~ 6(Sat)
-    const target = new Date(today);
-
-    // 월(1)~수(3)요일인 경우: 지난 주일을 기본값으로
-    if (day >= 1 && day <= 3) {
-      target.setDate(today.getDate() - day);
-    } else {
-      // 목(4)~토(6) 또는 일(0)인 경우: 다가오는/오늘 주일을 기본값으로
-      const diff = day === 0 ? 0 : 7 - day;
-      target.setDate(today.getDate() + diff);
-    }
-    
-    const yyyy = target.getFullYear();
-    const mm = String(target.getMonth() + 1).padStart(2, '0');
-    const dd = String(target.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-  };
-
-  const thisSunday = getThisSunday();
 
   const displayAvailableForms = availableForms
     .filter((template) => {

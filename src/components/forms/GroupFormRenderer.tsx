@@ -29,14 +29,9 @@ export const GroupFormRenderer: React.FC<GroupFormRendererProps> = ({
   
   // Determine questions to display
   let questionsToDisplay = template.questions;
-  let currentSectionTitle = '';
-  let currentSectionDescription = '';
-
   if (isSectionMode) {
     const currentSection = template.sections![currentSectionIndex];
     questionsToDisplay = currentSection.questions;
-    currentSectionTitle = currentSection.title;
-    currentSectionDescription = currentSection.description || '';
   }
 
   const sortedQuestions = [...questionsToDisplay].sort((a, b) => a.orderIndex - b.orderIndex);

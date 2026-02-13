@@ -1,5 +1,5 @@
 // Enums
-export type FormCategory = 'CLUB_APPLICATION' | 'CELL_REPORT' | 'EVENT_APPLICATION';
+export type FormCategory = 'CLUB_APPLICATION' | 'CELL_REPORT' | 'EVENT_APPLICATION' | 'SURVEY' | 'ETC';
 export type FormType = 'PERSONAL' | 'GROUP';
 export type QuestionType = 'SHORT_TEXT' | 'LONG_TEXT' | 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'NUMBER' | 'BOOLEAN' | 'WORSHIP_ATTENDANCE' | 'SCHEDULE_ATTENDANCE';
 export type SubmissionStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -56,6 +56,7 @@ export interface FormAccess {
 export interface FormQuestion {
   id: number;
   label: string; // 예: "주일예배", "기도제목"
+  description?: string;
   inputType: QuestionType;
   syncType?: AttendanceSyncType;
   required: boolean;
@@ -109,6 +110,9 @@ export interface MySubmissionResponse {
   targetSundayDate?: string;
   status: SubmissionStatus;
   targetCellName?: string;
+  targetCellId?: number;
+  category?: FormCategory;
+  type?: FormType;
 }
 
 export interface SubmissionDetailResponse {

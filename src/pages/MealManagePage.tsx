@@ -1,12 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
-import { useConfirm } from '../contexts/ConfirmContext'
 import { getMeals, addMealStock, consumeMealTicket, updateMeal, deleteMeal, type MealHistoryItem } from '../services/mealService'
 
 function MealManagePage() {
   const navigate = useNavigate()
-  const { confirm } = useConfirm()
   
   // Data from Server
   const [currentStock, setCurrentStock] = useState(0)

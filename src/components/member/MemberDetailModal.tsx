@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Member } from '../../types/member'
 import { formatPhoneNumber } from '../../utils/format'
-import { formatGender, formatRoles, formatMemberStatus } from '../../types/member'
+import { formatGender, formatMemberStatus } from '../../types/member'
 import ImagePreviewModal from '../ImagePreviewModal'
 import { getFileUrl } from '../../services/albumService'
 
