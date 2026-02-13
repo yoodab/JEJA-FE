@@ -1,24 +1,15 @@
 import { useState, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
-import type { FormTemplate, FormQuestion, FormCategory, FormType, QuestionType, WorshipCategory, FormAccess, AccessType, TargetType, FormSection, NextActionType, AttendanceSyncType, QuestionOption } from '../../types/form';
+import type { FormTemplate, FormQuestion, FormCategory, FormType, QuestionType, WorshipCategory, FormAccess, TargetType, FormSection, NextActionType, QuestionOption } from '../../types/form';
 import type { Schedule } from '../../types/schedule';
-import type { Member } from '../../types/member';
-import type { Club } from '../../types/club';
 import { scheduleService } from '../../services/scheduleService';
 import { getMembers } from '../../services/memberService';
 import { getClubs } from '../../services/clubService';
 import { uploadFiles, getFileUrl } from '../../services/albumService';
-import { Plus, Trash2, Check, ChevronUp, ChevronDown, X, Eye, Layers, Calendar, Search, User, Users, MoreVertical, Circle, Copy, Image as ImageIcon, Lock } from 'lucide-react';
-import { DynamicFormRenderer } from './DynamicFormRenderer';
-import { mockMembers } from '../../data/mockData';
+import { Plus, Trash2, Check, ChevronUp, ChevronDown, X, Eye, Layers, Calendar, Search, MoreVertical, Circle, Copy, Image as ImageIcon, Lock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useConfirm } from '../../contexts/ConfirmContext';
 
 // Localization Maps
-const ACCESS_TYPE_MAP: Record<AccessType, string> = {
-  RESPONDENT: '응답자 (제출 가능)',
-  MANAGER: '관리자 (수정/조회)'
-};
-
 const TARGET_TYPE_MAP: Record<TargetType, string> = {
   ALL: '전체 (누구나)',
   ROLE: '특정 역할',
@@ -91,7 +82,7 @@ const TargetSelectionModal = ({
         setItems(result.content.map(m => ({ 
           id: m.memberId.toString(), 
           name: m.name, 
-          subText: m.loginId || 'ID없음' 
+          subText: m.memberId?.toString() || 'ID없음' 
         })));
         setSearched(true);
       } else {
@@ -207,14 +198,6 @@ const TargetSelectionModal = ({
           </button>
         </div>
       </div>
-      {/* Target Selection Modal */}
-      <TargetSelectionModal
-        isOpen={isSelectionModalOpen}
-        onClose={() => setIsSelectionModalOpen(false)}
-        onConfirm={handleModalConfirm}
-        type={targetTypeForModal}
-        initialSelected={selectedTargets}
-      />
     </div>
   );
 };
@@ -335,19 +318,7 @@ const ScheduleManager = ({
   );
 };
 
-const DateSettingsModal = ({
-  isOpen,
-  onClose,
-  startDate,
-  endDate,
-  setStartDate,
-  setEndDate,
-  category,
-  setCategory,
-  shouldHideCategory,
-  formType,
-  setFormType
-}: {
+const DateSettingsModal = (props: {
   isOpen: boolean;
   onClose: () => void;
   startDate: string;
@@ -361,6 +332,21 @@ const DateSettingsModal = ({
   setFormType: (val: FormType) => void;
   lockSettings?: boolean;
 }) => {
+  const {
+    isOpen,
+    onClose,
+    startDate,
+    endDate,
+    setStartDate,
+    setEndDate,
+    category,
+    setCategory,
+    shouldHideCategory,
+    formType,
+    setFormType,
+    lockSettings = false
+  } = props;
+  
   if (!isOpen) return null;
 
   return (
@@ -510,7 +496,7 @@ export const FormBuilder = forwardRef<FormBuilderHandle, FormBuilderProps>((prop
     customTitle,
     initialAccessList,
     hideAccessControl = false,
-    excludedQuestionTypes = [],
+    excludedQuestionTypes: _excludedQuestionTypes = [],
     hideBasicInfo = false,
     hideHeader = false,
     onDataChange,
@@ -676,12 +662,9 @@ export const FormBuilder = forwardRef<FormBuilderHandle, FormBuilderProps>((prop
 
   const [accessList, setAccessList] = useState<FormAccess[]>(initialTemplate?.accessList || initialAccessList || []);
 
-  const [isBasicInfoOpen, setIsBasicInfoOpen] = useState(true);
   const [isAccessInfoOpen, setIsAccessInfoOpen] = useState(false);
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // Access Form State
-  const [newAccessType, setNewAccessType] = useState<AccessType>('RESPONDENT');
   const [newTargetType, setNewTargetType] = useState<TargetType>('ALL');
   const [newTargetValue, setNewTargetValue] = useState(''); // For single value inputs (ROLE, etc)
   const [selectedTargets, setSelectedTargets] = useState<{id: string, name: string}[]>([]); // For multi-select (USER, CLUB)
@@ -692,7 +675,6 @@ export const FormBuilder = forwardRef<FormBuilderHandle, FormBuilderProps>((prop
   // Question Focus & Image Upload
   const [focusedQuestionId, setFocusedQuestionId] = useState<number | null>(null);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
-  const [previewAnswers, setPreviewAnswers] = useState<any>({});
   const [activeAccessTab, setActiveAccessTab] = useState<'RESPONDENT' | 'MANAGER'>('RESPONDENT');
 
   // Auto-save trigger
@@ -953,28 +935,6 @@ export const FormBuilder = forwardRef<FormBuilderHandle, FormBuilderProps>((prop
       }
       return s;
     }));
-  };
-
-  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newCategory = e.target.value as FormCategory;
-    setCategory(newCategory);
-
-    // Automatically add ROLE_LEADER permission for CELL_REPORT
-    if (newCategory === 'CELL_REPORT') {
-      const hasLeaderPerm = accessList.some(
-        a => a.accessType === 'RESPONDENT' && a.targetType === 'ROLE' && a.targetValue === 'ROLE_LEADER'
-      );
-
-      if (!hasLeaderPerm) {
-        const newRule: FormAccess = {
-          id: Date.now(),
-          accessType: 'RESPONDENT',
-          targetType: 'ROLE',
-          targetValue: 'ROLE_LEADER'
-        };
-        setAccessList(prev => [...prev, newRule]);
-      }
-    }
   };
 
   const handleSave = async () => {
@@ -1689,7 +1649,7 @@ export const FormBuilder = forwardRef<FormBuilderHandle, FormBuilderProps>((prop
                           {TARGET_TYPE_MAP[rule.targetType]}
                         </span>
                         <span className="text-sm font-medium text-slate-700">
-                          {rule.targetType === 'ROLE' ? ROLE_MAP[rule.targetValue] || rule.targetValue :
+                          {rule.targetType === 'ROLE' ? (rule.targetValue ? (ROLE_MAP[rule.targetValue] || rule.targetValue) : '') :
                            rule.targetType === 'ALL' ? '모든 사용자' :
                            rule.targetName || rule.targetValue}
                         </span>
@@ -1793,7 +1753,13 @@ export const FormBuilder = forwardRef<FormBuilderHandle, FormBuilderProps>((prop
          setFormType={setFormType}
          lockSettings={lockSettings}
        />
-
-    </div>
-  );
-});
+      <TargetSelectionModal
+        isOpen={isSelectionModalOpen}
+        onClose={() => setIsSelectionModalOpen(false)}
+        onConfirm={handleModalConfirm}
+        type={targetTypeForModal}
+        initialSelected={selectedTargets}
+      />
+     </div>
+   );
+ });

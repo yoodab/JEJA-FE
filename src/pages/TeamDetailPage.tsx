@@ -11,30 +11,22 @@ import { getClub, addClubMember, removeClubMember, changeClubLeader } from '../s
 import ClubType, { type ClubMember } from '../types/club'
 import { getMyInfo } from '../services/userService'
 import { getTemplateByClubId, submitForm, createFormTemplate, updateFormTemplate, getClubSubmissions, approveSubmission, rejectSubmission, updateTemplateStatus } from '../services/formService'
-import type { FormTemplate, ClubSubmissionResponse } from '../types/form'
+import type { FormTemplate, ClubSubmissionResponse, FormCategory, FormType } from '../types/form'
 import { DynamicFormRenderer } from '../components/forms/DynamicFormRenderer'
 import { FormBuilder } from '../components/forms/FormBuilder'
 import SubmissionDetailModal from '../components/forms/SubmissionDetailModal'
 
 import { 
   Users, 
-  Clock, 
-  CheckCircle2, 
-  XCircle, 
   Search, 
   Calendar, 
-  MoreVertical, 
   Settings, 
   UserPlus, 
   Shield, 
   Info, 
-  ExternalLink,
-  ChevronRight,
-  Filter,
   Edit3,
   Trash2,
   MoreHorizontal,
-  AlertCircle,
   ArrowRight
 } from 'lucide-react'
 

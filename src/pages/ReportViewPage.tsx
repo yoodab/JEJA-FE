@@ -6,7 +6,7 @@ import { getFormSubmission, getLastSubmission, getTemplateDetail } from '../serv
 import { getCellDetail, getMyCell } from '../services/cellService';
 import type { FormSubmission, FormTemplate } from '../types/form';
 import { DynamicFormRenderer } from '../components/forms/DynamicFormRenderer';
-import { ChevronLeft, Calendar, Clock, CheckCircle, AlertCircle, Edit3, User, Users } from 'lucide-react';
+import { ChevronLeft, Calendar, Edit3, User, Users } from 'lucide-react';
 
 function ReportViewPage() {
   const { submissionId } = useParams();

@@ -1,5 +1,4 @@
 import api from './api'
-import type { ApiResponse } from '../types/api'
 
 const API_ENDPOINT = '/api/meals'
 

@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import axios from 'axios'
-import { useConfirm } from '../contexts/ConfirmContext'
 import type { 
   Schedule, 
   ScheduleType, 
@@ -65,7 +64,6 @@ const typeLabels: Record<ScheduleType, string> = {
 
 function ScheduleManagePage() {
   const navigate = useNavigate()
-  const { confirm } = useConfirm()
   
   // Data States
   const [schedules, setSchedules] = useState<Schedule[]>([])

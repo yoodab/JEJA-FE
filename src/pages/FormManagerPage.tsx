@@ -9,7 +9,7 @@ import { DynamicFormRenderer } from '../components/forms/DynamicFormRenderer';
 import { FormBuilder } from '../components/forms/FormBuilder';
 import type { FormBuilderHandle } from '../components/forms/FormBuilder';
 import { 
-  ChevronLeft, ChevronRight, Eye, Settings, Share2, 
+  ChevronLeft, ChevronRight, Eye, Share2, 
   Calendar, Lock, Download, User, Trash2, PlayCircle, StopCircle, Copy
 } from 'lucide-react';
 import {
@@ -39,12 +39,12 @@ export default function FormManagerPage() {
   // Submissions State
   const [submissions, setSubmissions] = useState<FormSubmission[]>([]);
   const [allSubmissionDetails, setAllSubmissionDetails] = useState<FormSubmission[]>([]);
-  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  // const [loadingSubmissions, setLoadingSubmissions] = useState(false);
   
   // Response View State
   const [responseSubTab, setResponseSubTab] = useState<'summary' | 'question' | 'individual'>('summary');
   const [currentSubmissionIndex, setCurrentSubmissionIndex] = useState(0);
-  const [selectedQuestionId, setSelectedQuestionId] = useState<number | null>(null);
+  // const [selectedQuestionId, setSelectedQuestionId] = useState<number | null>(null);
   
   // Cell Report Filter State
   const [selectedTargetDate, setSelectedTargetDate] = useState<string>('ALL');
@@ -80,7 +80,7 @@ export default function FormManagerPage() {
 
   const fetchSubmissions = async (id: number) => {
     try {
-      setLoadingSubmissions(true);
+      // setLoadingSubmissions(true);
       // 1. Get Summary List
       const summaryList = await getFormSubmissions(id);
       setSubmissions(summaryList);
@@ -104,7 +104,7 @@ export default function FormManagerPage() {
     } catch (error) {
       console.error('Failed to fetch submissions:', error);
     } finally {
-      setLoadingSubmissions(false);
+      // setLoadingSubmissions(false);
     }
   };
 
@@ -353,9 +353,9 @@ export default function FormManagerPage() {
                          outerRadius={80}
                          fill="#8884d8"
                          dataKey="value"
-                         label={({name, percent}) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                         label={({name, percent}) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`}
                        >
-                         {Object.keys(answers).map((entry, index) => (
+                         {Object.keys(answers).map((_, index) => (
                            <Cell key={`cell-${index}`} fill={['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'][index % 6]} />
                          ))}
                        </Pie>
@@ -364,7 +364,7 @@ export default function FormManagerPage() {
                      </PieChart>
                    </ResponsiveContainer>
                 </div>
-              ) : (q.inputType === 'WORSHIP_ATTENDANCE' || q.inputType === 'SCHEDULE_ATTENDANCE' || q.isMemberSpecific) ? (
+              ) : (q.inputType === 'WORSHIP_ATTENDANCE' || q.inputType === 'SCHEDULE_ATTENDANCE' || q.memberSpecific) ? (
                 <div className="space-y-4">
                   {/* 통계 요약 */}
                   <div className="grid grid-cols-2 gap-4 mb-4">

@@ -157,6 +157,7 @@ export interface MySubmissionResponse {
   submitTime: string;
   targetSundayDate?: string;
   targetCellName?: string;
+  targetCellId?: number;
   status: SubmissionStatus;
   category: FormCategory;
 }
@@ -416,6 +417,7 @@ export const getFormSubmissions = async (templateId: number): Promise<FormSubmis
     templateId,
     submitterName: dto.submitterName,
     submitDate: dto.submitTime.split('T')[0],
+    submitTime: dto.submitTime,
     targetSundayDate: dto.targetSundayDate,
     status: dto.status,
     answers: [] // Summary doesn't have answers

@@ -7,7 +7,7 @@ import Footer from '../components/Footer';
 import { DynamicFormRenderer } from '../components/forms/DynamicFormRenderer';
 import { getTemplateDetail, submitForm, getLastSubmission, updateSubmission, getFormSubmission } from '../services/formService';
 import { getMyCell } from '../services/cellService';
-import type { FormTemplate, QuestionAnswerDto } from '../types/form';
+import type { FormTemplate } from '../types/form';
 import { ChevronLeft, Calendar, Info, AlertCircle } from 'lucide-react';
 
 function ReportWritePage() {

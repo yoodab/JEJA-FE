@@ -44,7 +44,7 @@ function HomepageManagePage() {
   const [newSlideUrl, setNewSlideUrl] = useState('')
   const [newSlideLinkUrl, setNewSlideLinkUrl] = useState('')
   const [newSlideTitle, setNewSlideTitle] = useState('')
-  const [newSlideSubtitle, setNewSlideSubtitle] = useState('')
+  // const [newSlideSubtitle, setNewSlideSubtitle] = useState('')
   const [newSlideBackgroundColor, setNewSlideBackgroundColor] = useState('#1e293b')
   const [newSlideTextElements, setNewSlideTextElements] = useState<TextElement[]>([])
   const [draggingElementId, setDraggingElementId] = useState<string | null>(null)
@@ -420,7 +420,7 @@ function HomepageManagePage() {
     setNewSlideUrl(slide.url || '')
     setNewSlideLinkUrl(slide.linkUrl || '')
     setNewSlideTitle(slide.title || '')
-    setNewSlideSubtitle(slide.subtitle || '')
+    // setNewSlideSubtitle(slide.subtitle || '')
     setNewSlideBackgroundColor(slide.backgroundColor || '#1e293b')
     setNewSlideTextElements(slide.textElements || [])
     
@@ -433,7 +433,7 @@ function HomepageManagePage() {
     setNewSlideUrl('')
     setNewSlideLinkUrl('')
     setNewSlideTitle('')
-    setNewSlideSubtitle('')
+    // setNewSlideSubtitle('')
     setNewSlideBackgroundColor('#1e293b')
     setNewSlideTextElements([])
     setNewSlideType('text') // 기본값으로 리셋

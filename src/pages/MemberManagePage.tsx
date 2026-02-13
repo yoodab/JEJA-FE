@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../contexts/ConfirmContext'
@@ -113,7 +113,7 @@ function MemberManagePage() {
     loadMembers()
   }, [currentPage, debouncedSearchTerm, selectedStatus, loadMembers])
 
-  // Reset page when filter changes
+  // Reset to first page when filter/search changes
   useEffect(() => {
     setCurrentPage(0)
   }, [debouncedSearchTerm, selectedStatus])
@@ -235,7 +235,7 @@ function MemberManagePage() {
         gender: member.gender,
         memberStatus: status,
         memberImageUrl: member.memberImageUrl || undefined,
-        roles: member.roles.map(r => r.toString())
+        roles: member.roles?.map(r => r.toString()) || []
       }
 
       await updateMember(memberId, payload)
@@ -258,13 +258,6 @@ function MemberManagePage() {
       console.error('엑셀 저장 실패:', error)
       throw error
     }
-  }
-
-  // Helper for Gender Display
-  const getGenderDisplay = (gender: string) => {
-    if (gender === 'MALE') return '남'
-    if (gender === 'FEMALE') return '여'
-    return '-'
   }
 
   return (

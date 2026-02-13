@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { toast } from 'react-hot-toast'
-import { useConfirm } from '../contexts/ConfirmContext'
 import {
   getAttendanceSheet,
   checkInByAdmin,
@@ -73,7 +72,6 @@ const initialFormData: ScheduleFormData = {
 function AttendanceManagePage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { confirm } = useConfirm()
 
   const [activeTab, setActiveTab] = useState<TabType>('check')
   const [activeSubTab, setActiveSubTab] = useState<SubTabType>('OVERVIEW')
