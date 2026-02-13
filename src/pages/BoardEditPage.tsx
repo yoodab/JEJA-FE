@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
 import RichTextEditor from '../components/RichTextEditor'
 import { getBoardPostById, updateBoardPost, getBoards } from '../services/boardService'
 import { getNoticeById, updateNotice } from '../services/noticeService'
+import { useConfirm } from '../contexts/ConfirmContext'
 
 function BoardEditPage() {
   const { boardType, postId, noticeId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
+  const { confirm } = useConfirm()
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -25,7 +28,7 @@ function BoardEditPage() {
     const fetchPost = async () => {
       if (!id) {
         console.error('No ID provided')
-        alert('잘못된 접근입니다.')
+        toast.error('잘못된 접근입니다.')
         navigate(isYouthNotice ? '/youth-notices' : `/boards/${boardType}`)
         return
       }
@@ -46,16 +49,20 @@ function BoardEditPage() {
             // id 또는 boardId가 일치하는지 확인
             const board = boards.find(b => 
               String(b.id) === String(boardType) || 
-              (b.boardId && String(b.boardId) === String(boardType))
+              (b.boardId && String(b.boardId) === String(boardType)) ||
+              (b.boardKey && String(b.boardKey) === String(boardType))
             )
             if (board) {
               setBoardName(board.name)
-              if (board.boardId) {
-                currentApiBoardId = board.boardId
-                setApiBoardId(board.boardId)
+              if (board.boardKey) {
+                currentApiBoardId = board.boardKey
+                setApiBoardId(board.boardKey)
+              } else if (board.boardId) {
+                currentApiBoardId = String(board.boardId)
+                setApiBoardId(String(board.boardId))
               } else if (board.id) {
-                currentApiBoardId = board.id
-                setApiBoardId(board.id)
+                currentApiBoardId = String(board.id)
+                setApiBoardId(String(board.id))
               }
             }
           } catch (e) {
@@ -70,7 +77,7 @@ function BoardEditPage() {
         }
       } catch (error) {
         console.error('Failed to fetch post:', error)
-        alert('게시글을 불러오는데 실패했습니다.')
+        toast.error('게시글을 불러오는데 실패했습니다.')
         navigate(isYouthNotice ? '/youth-notices' : `/boards/${boardType}`)
       }
     }
@@ -84,7 +91,7 @@ function BoardEditPage() {
     const hasImage = content.includes('<img')
     
     if (!title.trim() || (!textContent && !hasImage)) {
-      alert('제목과 내용을 입력해주세요.')
+      toast.error('제목과 내용을 입력해주세요.')
       return
     }
 
@@ -98,7 +105,7 @@ function BoardEditPage() {
           attachmentUrl,
           attachmentName,
         })
-        alert('글이 수정되었습니다.')
+        toast.success('글이 수정되었습니다.')
         navigate(`/youth-notices/${id}`)
       } else if (boardType && id) {
         const targetId = apiBoardId || boardType
@@ -108,19 +115,27 @@ function BoardEditPage() {
           attachmentUrl,
           attachmentName,
         })
-        alert('글이 수정되었습니다.')
+        toast.success('글이 수정되었습니다.')
         navigate(`/boards/${boardType}/${id}`)
       }
     } catch (error) {
       console.error('Failed to update post:', error)
-      alert('글 수정에 실패했습니다.')
+      toast.error('글 수정에 실패했습니다.')
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const handleCancel = () => {
-    if (confirm('수정 중인 내용이 사라집니다. 정말 취소하시겠습니까?')) {
+  const handleCancel = async () => {
+    const isConfirmed = await confirm({
+      title: '수정 취소',
+      message: '수정 중인 내용이 사라집니다. 정말 취소하시겠습니까?',
+      type: 'warning',
+      confirmText: '확인',
+      cancelText: '취소',
+    })
+
+    if (isConfirmed) {
       if (isYouthNotice) {
         navigate(`/youth-notices/${id}`)
       } else {

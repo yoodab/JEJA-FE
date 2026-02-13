@@ -1,26 +1,37 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
+import Pagination from '../components/common/Pagination'
 import { getNotices, deleteNotice, togglePostNotice, type NoticeSimple } from '../services/noticeService'
+import { useConfirm } from '../contexts/ConfirmContext'
+import { isManager } from '../utils/auth'
 
 function YouthNoticePage() {
   const navigate = useNavigate()
+  const { confirm } = useConfirm()
   const [notices, setNotices] = useState<NoticeSimple[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [keyword, setKeyword] = useState('')
+  const [currentPage, setCurrentPage] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const [totalElements, setTotalElements] = useState(0)
   const [openMenuId, setOpenMenuId] = useState<number | null>(null)
+  const pageSize = 10
 
   useEffect(() => {
-    fetchNotices()
+    fetchNotices(keyword, 0)
   }, [])
 
-  const fetchNotices = async (searchKeyword?: string) => {
+  const fetchNotices = async (searchKeyword?: string, page: number = 0) => {
     try {
       setIsLoading(true)
-      const data = await getNotices({ page: 0, size: 20, keyword: searchKeyword })
+      const data = await getNotices({ page: page, size: pageSize, keyword: searchKeyword })
       setNotices(data.notices)
+      setTotalElements(data.totalCount)
+      setTotalPages(data.totalPages)
     } catch (err) {
       console.error('Failed to fetch notices:', err)
       setError('공지사항을 불러오는데 실패했습니다.')
@@ -29,9 +40,15 @@ function YouthNoticePage() {
     }
   }
 
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page)
+    fetchNotices(keyword, page)
+  }
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
-    fetchNotices(keyword)
+    setCurrentPage(0)
+    fetchNotices(keyword, 0)
   }
 
   const formatDate = (dateStr: string) => {
@@ -51,26 +68,35 @@ function YouthNoticePage() {
     e.stopPropagation()
     try {
       await togglePostNotice(postId)
-      await fetchNotices(keyword)
+      await fetchNotices(keyword, currentPage)
       setOpenMenuId(null)
     } catch (err) {
       console.error('Failed to toggle notice pin:', err)
-      alert('공지 설정 변경에 실패했습니다.')
+      toast.error('공지 설정 변경에 실패했습니다.')
     }
   }
 
   const handleDelete = async (e: React.MouseEvent, postId: number) => {
     e.preventDefault()
     e.stopPropagation()
-    if (!window.confirm('정말 삭제하시겠습니까?')) return
+    
+    const isConfirmed = await confirm({
+      title: '공지 삭제',
+      message: '정말 삭제하시겠습니까?',
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소',
+    })
+
+    if (!isConfirmed) return
     
     try {
       await deleteNotice(postId)
-      await fetchNotices(keyword)
+      await fetchNotices(keyword, currentPage)
       setOpenMenuId(null)
     } catch (err) {
       console.error('Failed to delete notice:', err)
-      alert('공지 삭제에 실패했습니다.')
+      toast.error('공지 삭제에 실패했습니다.')
     }
   }
 
@@ -82,7 +108,7 @@ function YouthNoticePage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="flex flex-col min-h-screen items-center justify-center bg-slate-50">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
       </div>
     )
@@ -90,7 +116,7 @@ function YouthNoticePage() {
 
   if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="flex flex-col min-h-screen items-center justify-center bg-slate-50">
         <div className="text-center">
           <p className="text-lg font-semibold text-slate-600">{error}</p>
           <button
@@ -105,8 +131,8 @@ function YouthNoticePage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10" onClick={() => setOpenMenuId(null)}>
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="flex flex-col min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10" onClick={() => setOpenMenuId(null)}>
+      <div className="flex-grow mx-auto w-full max-w-6xl space-y-6">
         <UserHeader />
 
         {/* 헤더 */}
@@ -142,8 +168,7 @@ function YouthNoticePage() {
           {/* 게시글 헤더 - 모바일에서는 숨김 */}
           <div className="hidden md:block border-b border-slate-200 bg-slate-50 px-4 py-3">
             <div className="grid grid-cols-12 gap-4 text-xs font-semibold text-slate-600">
-              <div className="col-span-1 text-center">번호</div>
-              <div className="col-span-5">제목</div>
+              <div className="col-span-6">제목</div>
               <div className="col-span-2 text-center">작성자</div>
               <div className="col-span-2 text-center">작성일</div>
               <div className="col-span-1 text-center">조회</div>
@@ -167,124 +192,56 @@ function YouthNoticePage() {
                   }`}
                 >
                   {/* 모바일 뷰 (md 미만) */}
-                  <div className="flex flex-col gap-2 md:hidden">
+                  <div className="flex flex-col gap-1 md:hidden">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2 overflow-hidden">
+                      <div className="flex items-center gap-2 overflow-hidden min-w-0 flex-1">
                         {notice.notice && (
                           <span className="flex-shrink-0 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">
                             공지
                           </span>
                         )}
-                        <span className="text-sm font-medium text-slate-900 truncate">
+                        <span className="text-sm font-medium text-slate-900 truncate min-w-0">
                           {notice.title}
                         </span>
                         {notice.commentCount > 0 && (
                           <span className="flex-shrink-0 text-xs text-blue-600">[{notice.commentCount}]</span>
                         )}
                         {notice.isPrivate && (
-                           <span className="flex-shrink-0 text-xs text-slate-400">🔒</span>
+                          <span className="flex-shrink-0 text-xs text-slate-400">🔒</span>
                         )}
                       </div>
                       
                       {/* 모바일 메뉴 버튼 */}
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          setOpenMenuId(openMenuId === notice.postId ? null : notice.postId)
-                        }}
-                        className="flex-shrink-0 p-1 -mr-2 text-slate-400"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="1" />
-                          <circle cx="12" cy="5" r="1" />
-                          <circle cx="12" cy="19" r="1" />
-                        </svg>
-                      </button>
+                      {isManager() && (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setOpenMenuId(openMenuId === notice.postId ? null : notice.postId)
+                          }}
+                          className="flex-shrink-0 p-1 -mr-2 text-slate-400"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="1" />
+                            <circle cx="12" cy="5" r="1" />
+                            <circle cx="12" cy="19" r="1" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                     
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
-                      <span>{notice.authorName}</span>
+                    <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                      <span className="truncate max-w-[80px] font-medium text-slate-700">{notice.authorName}</span>
                       <span>•</span>
                       <span>{formatDate(notice.createdAt)}</span>
                       <span>•</span>
                       <span>조회 {notice.viewCount}</span>
                     </div>
 
-                    {/* 모바일 메뉴 드롭다운 (위치 조정 필요할 수 있음) */}
-                    {openMenuId === notice.postId && (
-                        <div className="relative">
-                          <div className="absolute right-0 top-0 w-28 bg-white rounded-lg shadow-xl border border-slate-200 z-50 overflow-hidden">
-                            <button
-                              onClick={(e) => handleEdit(e, notice.postId)}
-                              className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 transition"
-                            >
-                              수정
-                            </button>
-                            <button
-                              onClick={(e) => handlePin(e, notice.postId)}
-                              className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 transition"
-                            >
-                              {notice.notice ? '고정 해제' : '상단 고정'}
-                            </button>
-                            <button
-                              onClick={(e) => handleDelete(e, notice.postId)}
-                              className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 transition"
-                            >
-                              삭제
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                  </div>
-
-                  {/* 데스크탑 뷰 (md 이상) */}
-                  <div className="hidden md:grid md:grid-cols-12 md:gap-4 md:items-center">
-                    <div className="col-span-1 text-center text-xs text-slate-500">
-                      {notice.notice ? (
-                        <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">
-                          공지
-                        </span>
-                      ) : (
-                        notice.postId
-                      )}
-                    </div>
-                    <div className="col-span-5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-slate-900 truncate">{notice.title}</span>
-                        {notice.commentCount > 0 && (
-                          <span className="text-xs text-blue-600">[{notice.commentCount}]</span>
-                        )}
-                        {notice.isPrivate && (
-                           <span className="text-xs text-slate-400">🔒</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="col-span-2 text-center text-xs text-slate-600 truncate">{notice.authorName}</div>
-                    <div className="col-span-2 text-center text-xs text-slate-500">
-                      {formatDate(notice.createdAt)}
-                    </div>
-                    <div className="col-span-1 text-center text-xs text-slate-500">{notice.viewCount}</div>
-                    
-                    {/* 더보기 메뉴 */}
-                    <div className="col-span-1 text-center relative flex justify-center">
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          setOpenMenuId(openMenuId === notice.postId ? null : notice.postId)
-                        }}
-                        className="p-1 rounded hover:bg-slate-200 transition text-slate-400 hover:text-slate-600"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="1" />
-                          <circle cx="12" cy="5" r="1" />
-                          <circle cx="12" cy="19" r="1" />
-                        </svg>
-                      </button>
-                      
-                      {openMenuId === notice.postId && (
-                        <div className="absolute right-0 top-8 w-28 bg-white rounded-lg shadow-xl border border-slate-200 z-50 overflow-hidden">
+                    {/* 모바일 메뉴 드롭다운 */}
+                    {isManager() && openMenuId === notice.postId && (
+                      <div className="relative">
+                        <div className="absolute right-0 top-0 w-28 bg-white rounded-lg shadow-xl border border-slate-200 z-50 overflow-hidden">
                           <button
                             onClick={(e) => handleEdit(e, notice.postId)}
                             className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 transition"
@@ -304,8 +261,76 @@ function YouthNoticePage() {
                             삭제
                           </button>
                         </div>
-                      )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 데스크탑 뷰 (md 이상) */}
+                  <div className="hidden md:grid md:grid-cols-12 md:gap-4 md:items-center">
+                    <div className="col-span-6">
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        {notice.notice && (
+                          <span className="flex-shrink-0 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">
+                            공지
+                          </span>
+                        )}
+                        <span className="text-sm font-medium text-slate-900 truncate">{notice.title}</span>
+                        {notice.commentCount > 0 && (
+                          <span className="text-xs text-blue-600">[{notice.commentCount}]</span>
+                        )}
+                        {notice.isPrivate && (
+                          <span className="text-xs text-slate-400">🔒</span>
+                        )}
+                      </div>
                     </div>
+                    <div className="col-span-2 text-center text-xs text-slate-600 truncate">{notice.authorName}</div>
+                    <div className="col-span-2 text-center text-xs text-slate-500">
+                      {formatDate(notice.createdAt)}
+                    </div>
+                    <div className="col-span-1 text-center text-xs text-slate-500">{notice.viewCount}</div>
+                    
+                    {/* 더보기 메뉴 */}
+                    {isManager() && (
+                      <div className="col-span-1 text-center relative flex justify-center">
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setOpenMenuId(openMenuId === notice.postId ? null : notice.postId)
+                          }}
+                          className="p-1 rounded hover:bg-slate-200 transition text-slate-400 hover:text-slate-600"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="1" />
+                            <circle cx="12" cy="5" r="1" />
+                            <circle cx="12" cy="19" r="1" />
+                          </svg>
+                        </button>
+                        
+                        {openMenuId === notice.postId && (
+                          <div className="absolute right-0 top-8 w-28 bg-white rounded-lg shadow-xl border border-slate-200 z-50 overflow-hidden">
+                            <button
+                              onClick={(e) => handleEdit(e, notice.postId)}
+                              className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 transition"
+                            >
+                              수정
+                            </button>
+                            <button
+                              onClick={(e) => handlePin(e, notice.postId)}
+                              className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 transition"
+                            >
+                              {notice.notice ? '고정 해제' : '상단 고정'}
+                            </button>
+                            <button
+                              onClick={(e) => handleDelete(e, notice.postId)}
+                              className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 transition"
+                            >
+                              삭제
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </Link>
               ))
@@ -313,16 +338,29 @@ function YouthNoticePage() {
           </div>
         </div>
 
-        {/* 글쓰기 버튼 */}
-        <div className="flex justify-end">
-          <button
-            onClick={() => navigate('/youth-notices/write')}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-          >
-            글쓰기
-          </button>
-        </div>
+        {/* 페이지네이션 */}
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={handlePageChange}
+          totalElements={totalElements}
+          pageSize={pageSize}
+        />
 
+        {/* 글쓰기 버튼 */}
+        {isManager() && (
+          <div className="flex justify-end">
+            <button
+              onClick={() => navigate('/youth-notices/write')}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              글쓰기
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="mx-auto w-full max-w-6xl mt-10">
         <Footer />
       </div>
     </div>

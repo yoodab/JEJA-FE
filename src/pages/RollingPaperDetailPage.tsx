@@ -398,7 +398,9 @@ const RollingPaperDetailPage = () => {
     <div className="min-h-screen relative overflow-hidden flex flex-col bg-gray-200">
       {/* Header - Fixed at top */}
       <div className="absolute top-0 left-0 right-0 p-6 z-20 pointer-events-none">
-        <h1 className="text-3xl font-bold text-center text-white drop-shadow-md">{paper.title}</h1>
+        <h1 className={`text-3xl font-bold text-center drop-shadow-md ${paper.theme === 'LIGHT' ? 'text-black' : 'text-white'}`}>
+          {paper.title}
+        </h1>
       </div>
 
       {/* Main Scrollable Area */}

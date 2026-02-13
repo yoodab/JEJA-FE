@@ -89,17 +89,25 @@ function GuestAttendancePage() {
     setMessage({ type: null, text: "" });
 
     try {
-      // 위치 정보 가져오기
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        if (!navigator.geolocation) {
-          reject(new Error("위치 정보를 지원하지 않는 브라우저입니다."));
-        }
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000, // 10초로 증가
-          maximumAge: 60000 // 1분 캐시 허용
+      let latitude: number | undefined;
+      let longitude: number | undefined;
+
+      // 예배인 경우에만 위치 정보 가져오기
+      const selectedSchedule = schedules.find(s => s.scheduleId === selectedScheduleId);
+      if (selectedSchedule?.type === 'WORSHIP') {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          if (!navigator.geolocation) {
+            reject(new Error("위치 정보를 지원하지 않는 브라우저입니다."));
+          }
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 60000
+          });
         });
-      });
+        latitude = position.coords.latitude;
+        longitude = position.coords.longitude;
+      }
 
       // 생년월일 파싱 (YYMMDD -> YYYY-MM-DD)
       // 50보다 크면 1900년대, 아니면 2000년대로 가정 (일반적인 기준)
@@ -113,8 +121,8 @@ function GuestAttendancePage() {
       const requestData: CheckInRequestDto = {
         name: name.trim(),
         birthDate: parsedBirthDate,
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
+        latitude,
+        longitude,
       };
 
       // 통합 출석 API 호출 (기존 로그인 유저와 동일한 API)

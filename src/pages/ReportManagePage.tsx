@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+import { useConfirm } from '../contexts/ConfirmContext';
 import type { FormTemplate } from '../types/form';
 import { mockMembers } from '../data/mockData';
 import { getFormTemplates, createFormTemplate, getFormTemplate, deleteFormTemplate } from '../services/formService';
 import { DynamicFormRenderer } from '../components/forms/DynamicFormRenderer';
-import { Plus, Users, FileText, ChevronRight, ListChecks, Calendar, MoreVertical, Copy, Trash2 } from 'lucide-react';
+import { Plus, Users, FileText, ChevronRight, ListChecks, Calendar, MoreVertical, Copy, Trash2, Edit3 } from 'lucide-react';
 
 function ReportManagePage() {
   const navigate = useNavigate();
+  const { confirm } = useConfirm();
   const [templates, setTemplates] = useState<FormTemplate[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -22,7 +25,7 @@ function ReportManagePage() {
       setTemplates(data);
     } catch (error) {
       console.error('Failed to fetch templates:', error);
-      alert('양식 목록을 불러오는데 실패했습니다.');
+      toast.error('양식 목록을 불러오는데 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -35,25 +38,42 @@ function ReportManagePage() {
   const [newTemplateTitle, setNewTemplateTitle] = useState('');
   const [newTemplateType, setNewTemplateType] = useState<'CELL_REPORT' | 'EVENT_APPLICATION'>('CELL_REPORT');
 
-  const handleCreateNewTemplate = () => {
+  const handleCreateNewTemplate = async () => {
     if (!newTemplateTitle.trim()) {
-      alert('양식 제목을 입력해주세요.');
+      toast.error('양식 제목을 입력해주세요.');
       return;
     }
 
-    const category = newTemplateType;
-    const formType = newTemplateType === 'CELL_REPORT' ? 'GROUP' : 'PERSONAL';
+    try {
+      const category = newTemplateType;
+      const formType = newTemplateType === 'CELL_REPORT' ? 'GROUP' : 'PERSONAL';
 
-    navigate('/manage/forms/builder', {
-      state: {
-        initialTitle: newTemplateTitle,
-        initialCategory: category,
-        initialFormType: formType,
-      },
-    });
+      const newTemplate = await createFormTemplate({
+        title: newTemplateTitle,
+        category,
+        type: formType,
+        isActive: false, // Default to inactive so user can edit before publishing
+        sections: [{
+          id: Date.now(),
+          title: '기본 섹션',
+          description: '',
+          orderIndex: 0,
+          defaultNextAction: 'CONTINUE' as any,
+          questions: []
+        }],
+        accessList: []
+      });
+
+      navigate(`/manage/forms/${newTemplate.id}`);
+    } catch (error) {
+      console.error('Failed to create template:', error);
+      toast.error('양식 생성에 실패했습니다.');
+    }
   };
 
-  // handleTemplateClick removed
+  const handleTemplateClick = (template: FormTemplate) => {
+    navigate(`/manage/forms/${template.id}`);
+  };
 
   // Menu Actions
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
@@ -69,23 +89,46 @@ function ReportManagePage() {
     setMenuOpenId(menuOpenId === id ? null : id);
   };
 
+  const handleEdit = (e: React.MouseEvent, template: FormTemplate) => {
+    e.stopPropagation();
+    navigate(`/manage/forms/${template.id}`);
+  };
+
   const handleDelete = async (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
-    if (!window.confirm('정말 이 양식을 삭제하시겠습니까?')) return;
+    
+    const isConfirmed = await confirm({
+      title: '양식 삭제',
+      message: '정말 이 양식을 삭제하시겠습니까?',
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소'
+    });
+    
+    if (!isConfirmed) return;
 
     try {
       await deleteFormTemplate(id);
-      alert('양식이 삭제되었습니다.');
+      toast.success('양식이 삭제되었습니다.');
       fetchTemplates();
     } catch (error) {
       console.error('Failed to delete template:', error);
-      alert('양식 삭제에 실패했습니다.');
+      toast.error('양식 삭제에 실패했습니다.');
     }
   };
 
   const handleCopy = async (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
-    if (!window.confirm('이 양식을 복사하시겠습니까?')) return;
+    
+    const isConfirmed = await confirm({
+      title: '양식 복사',
+      message: '이 양식을 복사하시겠습니까?',
+      type: 'warning',
+      confirmText: '복사',
+      cancelText: '취소'
+    });
+
+    if (!isConfirmed) return;
 
     try {
       const fullTemplate = await getFormTemplate(id);
@@ -98,11 +141,11 @@ function ReportManagePage() {
         sections: fullTemplate.sections || []
       };
       await createFormTemplate(newTemplate);
-      alert('양식이 복사되었습니다.');
+      toast.success('양식이 복사되었습니다.');
       fetchTemplates();
     } catch (error) {
       console.error('Failed to copy template:', error);
-      alert('양식 복사에 실패했습니다.');
+      toast.error('양식 복사에 실패했습니다.');
     }
   };
 
@@ -182,10 +225,7 @@ function ReportManagePage() {
                 <div
                   key={template.id}
                   className="group relative flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md cursor-pointer"
-                  onClick={() => {
-                    setSelectedTemplate(template);
-                    setIsPreviewModalOpen(true);
-                  }}
+                  onClick={() => handleTemplateClick(template)}
                 >
                   <div className="mb-4 flex items-start justify-between">
                     <div className="flex gap-2">

@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
+import { useConfirm } from '../contexts/ConfirmContext'
 import {
   getCells,
   createCell,
@@ -15,6 +17,7 @@ import type { Member } from '../types/member'
 
 function SoonManagePage() {
   const navigate = useNavigate()
+  const { confirm } = useConfirm()
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
   const [cells, setCells] = useState<Cell[]>([])
   const [unassignedMembers, setUnassignedMembers] = useState<Member[]>([])
@@ -27,6 +30,9 @@ function SoonManagePage() {
   // Drag & Drop states
   const [draggedMember, setDraggedMember] = useState<Member | null>(null)
   
+  const [showTextImportModal, setShowTextImportModal] = useState(false)
+  const [importText, setImportText] = useState('')
+
   const [unassignedSearch, setUnassignedSearch] = useState('')
 
   // 모달 열릴 때 배경 스크롤 방지
@@ -63,7 +69,7 @@ function SoonManagePage() {
       setUnassignedMembers(cleanUnassignedData)
     } catch (error) {
       console.error('데이터를 불러오는데 실패했습니다:', error)
-      alert('데이터를 불러오는데 실패했습니다.')
+      toast.error('데이터를 불러오는데 실패했습니다.')
     } finally {
       setIsLoading(false)
     }
@@ -82,7 +88,7 @@ function SoonManagePage() {
     e.preventDefault()
   }
 
-  const handleDrop = (targetCellId: number, zone: 'leader' | 'member') => {
+  const handleDrop = (targetCellId: number, zone: 'leader' | 'subLeader' | 'member') => {
     if (!draggedMember) return
 
     // 1. Remove from source (Uniqueness Guarantee)
@@ -92,14 +98,18 @@ function SoonManagePage() {
     // Remove from ALL cells (members list and leader position)
     let nextCells = cells.map((cell) => {
       const isLeader = cell.leaderMemberId === draggedMember.memberId
+      const isSubLeader = cell.subLeaderMemberId === draggedMember.memberId
       const isInMembers = cell.members.some(m => m.memberId === draggedMember.memberId)
       
-      if (isLeader || isInMembers) {
+      if (isLeader || isSubLeader || isInMembers) {
         return {
           ...cell,
           // If was leader, clear leader info
           leaderMemberId: isLeader ? null : cell.leaderMemberId,
           leaderName: isLeader ? null : cell.leaderName,
+          // If was subLeader, clear subLeader info
+          subLeaderMemberId: isSubLeader ? null : cell.subLeaderMemberId,
+          subLeaderName: isSubLeader ? null : cell.subLeaderName,
           // Remove from members array
           members: cell.members.filter((m) => m.memberId !== draggedMember.memberId),
         }
@@ -118,31 +128,76 @@ function SoonManagePage() {
         setCells(nextCells)
     } else {
         // Add to target cell
+        let displacedMember: Member | null = null
+
         nextCells = nextCells.map((cell) => {
           if (cell.cellId === targetCellId) {
             // Prepare members array: add dragged member if not already present
-            // Note: We used nextCells which already has the member removed, so we just add it.
-            // But we double check for safety.
             const alreadyIn = cell.members.some(m => m.memberId === draggedMember.memberId)
             const newMembers = [...cell.members]
             
             if (!alreadyIn) {
-               // Only push if we are NOT making it a leader, OR if we are making it a leader we handle it below
-               // Actually, if zone is leader, we don't add to members list.
-               if (zone !== 'leader') {
+               if (zone !== 'leader' && zone !== 'subLeader') {
                  newMembers.push(draggedMember)
                }
             }
 
             // If dropped to leader zone
             if (zone === 'leader') {
+              // Check if there is an existing leader being displaced
+              if (cell.leaderMemberId && cell.leaderMemberId !== draggedMember.memberId) {
+                displacedMember = {
+                  memberId: cell.leaderMemberId,
+                  name: cell.leaderName || 'Unknown',
+                  phone: cell.leaderPhone || '',
+                  birthDate: cell.leaderBirthDate || '',
+                  memberStatus: 'ACTIVE',
+                  memberImageUrl: null,
+                  hasAccount: false,
+                  gender: 'MALE',
+                  age: 0,
+                  roles: [],
+                } as Member
+              }
+
               return {
                 ...cell,
                 leaderMemberId: draggedMember.memberId,
                 leaderName: draggedMember.name,
                 leaderPhone: draggedMember.phone,
+                leaderBirthDate: draggedMember.birthDate,
                 cellName: `${draggedMember.name} 순`, // Auto-naming
-                // Ensure leader is NOT in members list
+                // Ensure leader is NOT in members list or subLeader position
+                subLeaderMemberId: cell.subLeaderMemberId === draggedMember.memberId ? null : cell.subLeaderMemberId,
+                subLeaderName: cell.subLeaderMemberId === draggedMember.memberId ? null : cell.subLeaderName,
+                members: newMembers.filter(m => m.memberId !== draggedMember.memberId),
+              }
+            } else if (zone === 'subLeader') {
+              // If dropped to subLeader zone
+              if (cell.subLeaderMemberId && cell.subLeaderMemberId !== draggedMember.memberId) {
+                displacedMember = {
+                  memberId: cell.subLeaderMemberId,
+                  name: cell.subLeaderName || 'Unknown',
+                  phone: cell.subLeaderPhone || '',
+                  birthDate: cell.subLeaderBirthDate || '',
+                  memberStatus: 'ACTIVE',
+                  memberImageUrl: null,
+                  hasAccount: false,
+                  gender: 'MALE',
+                  age: 0,
+                  roles: [],
+                } as Member
+              }
+
+              return {
+                ...cell,
+                subLeaderMemberId: draggedMember.memberId,
+                subLeaderName: draggedMember.name,
+                subLeaderPhone: draggedMember.phone,
+                subLeaderBirthDate: draggedMember.birthDate,
+                // Ensure subLeader is NOT in members list or leader position
+                leaderMemberId: cell.leaderMemberId === draggedMember.memberId ? null : cell.leaderMemberId,
+                leaderName: cell.leaderMemberId === draggedMember.memberId ? null : cell.leaderName,
                 members: newMembers.filter(m => m.memberId !== draggedMember.memberId),
               }
             } else {
@@ -156,6 +211,14 @@ function SoonManagePage() {
           return cell
         })
         
+        // Restore displaced member to unassigned list
+        if (displacedMember) {
+          const member = displacedMember as Member
+          if (!cleanUnassigned.some(m => m.memberId === member.memberId)) {
+            cleanUnassigned.push(member)
+          }
+        }
+
         setUnassignedMembers(cleanUnassigned)
         setCells(nextCells)
     }
@@ -168,33 +231,64 @@ function SoonManagePage() {
     // Find member object first
     const targetCell = cells.find(c => c.cellId === cellId)
     if (!targetCell) return
-    const member = targetCell.members.find(m => m.memberId === memberId)
+    
+    // Check members list, leader, and subLeader
+    let member = targetCell.members.find(m => m.memberId === memberId)
+    if (!member) {
+      if (targetCell.leaderMemberId === memberId) {
+        member = {
+          memberId: targetCell.leaderMemberId,
+          name: targetCell.leaderName || 'Unknown',
+          phone: targetCell.leaderPhone || '',
+          birthDate: targetCell.leaderBirthDate || '',
+          memberStatus: 'ACTIVE',
+        } as Member
+      } else if (targetCell.subLeaderMemberId === memberId) {
+        member = {
+          memberId: targetCell.subLeaderMemberId,
+          name: targetCell.subLeaderName || 'Unknown',
+          phone: targetCell.subLeaderPhone || '',
+          birthDate: targetCell.subLeaderBirthDate || '',
+          memberStatus: 'ACTIVE',
+        } as Member
+      }
+    }
+    
     if (!member) return
 
     setCells(prev => prev.map(cell => {
       if (cell.cellId === cellId) {
         const isLeader = cell.leaderMemberId === memberId
+        const isSubLeader = cell.subLeaderMemberId === memberId
         return {
           ...cell,
           leaderMemberId: isLeader ? null : cell.leaderMemberId,
           leaderName: isLeader ? null : cell.leaderName,
+          subLeaderMemberId: isSubLeader ? null : cell.subLeaderMemberId,
+          subLeaderName: isSubLeader ? null : cell.subLeaderName,
           members: cell.members.filter(m => m.memberId !== memberId)
         }
       }
       return cell
     }))
 
+    const memberToUnassigned = member // shadow variable
     setUnassignedMembers(prev => {
-       if (prev.some(m => m.memberId === member.memberId)) {
+       if (prev.some(m => m.memberId === memberToUnassigned.memberId)) {
          return prev
        }
-       return [...prev, member]
+       return [...prev, memberToUnassigned]
     })
   }
 
   // 변경사항 저장 (일괄 배정 API 호출)
   const handleSaveAssignment = async () => {
-    if (!window.confirm('현재 배정 상태를 저장하시겠습니까?')) return
+    const isConfirmed = await confirm({
+      title: '배정 저장',
+      message: '현재 배정 상태를 저장하시겠습니까?',
+      type: 'info'
+    });
+    if (!isConfirmed) return
 
     try {
       setIsLoading(true)
@@ -211,6 +305,7 @@ function SoonManagePage() {
             cellName: cell.cellName,
             year: cell.year,
             leaderMemberId: cell.leaderMemberId,
+            subLeaderMemberId: cell.subLeaderMemberId,
           })
           createdCellsMap.set(cell.cellId, realId)
         } catch (error) {
@@ -240,20 +335,95 @@ function SoonManagePage() {
         cellUpdates: allCellsToSync.map(cell => ({
           cellId: cell.cellId,
           leaderId: cell.leaderMemberId,
+          subLeaderId: cell.subLeaderMemberId,
           memberIds: cell.members.map(m => m.memberId)
         }))
       }
 
       await updateCellMembersBatch(batchDto)
 
-      alert('순 배정이 저장되었습니다.')
+      toast.success('순 배정이 저장되었습니다.')
       setShowAssignmentModal(false)
       fetchData() // 최신 데이터 리로드
     } catch (error) {
       console.error('저장 실패:', error)
-      alert('저장 중 오류가 발생했습니다. (일부 데이터만 저장되었을 수 있습니다)')
+      toast.error('저장 중 오류가 발생했습니다. (일부 데이터만 저장되었을 수 있습니다)')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  // 텍스트 일괄 배정
+  const handleTextImport = () => {
+    if (!importText.trim()) return
+
+    const rows = importText.trim().split('\n').map(row => row.split('\t').map(cell => cell.trim()))
+    const maxCols = Math.max(...rows.map(row => row.length))
+    
+    let currentUnassigned = [...unassignedMembers]
+    const newCells: Cell[] = []
+    
+    // Helper to find and remove member from unassigned list
+    const findAndRemove = (name: string) => {
+      const index = currentUnassigned.findIndex(m => m.name === name)
+      if (index !== -1) {
+        const [member] = currentUnassigned.splice(index, 1)
+        return member
+      }
+      return null
+    }
+
+    // Iterate by column
+    for (let col = 0; col < maxCols; col++) {
+      const leaderName = rows[0][col]
+      if (!leaderName) continue
+
+      const leader = findAndRemove(leaderName)
+      
+      const tempId = -Date.now() - col // Ensure unique temp IDs
+      const newCell: Cell = {
+        cellId: tempId,
+        cellName: leader ? `${leader.name}순` : `${leaderName}순`,
+        year: selectedYear,
+        active: false,
+        leaderMemberId: leader?.memberId || null,
+        leaderName: leader?.name || leaderName, // 이름은 있지만 매칭되지 않은 경우 텍스트라도 유지
+        leaderPhone: leader?.phone || null,
+        leaderBirthDate: leader?.birthDate || null,
+        subLeaderMemberId: null,
+        subLeaderName: null,
+        subLeaderPhone: null,
+        subLeaderBirthDate: null,
+        members: [],
+      }
+
+      // Add members
+      for (let row = 1; row < rows.length; row++) {
+        const memberName = rows[row][col]
+        if (!memberName) continue
+        
+        const member = findAndRemove(memberName)
+        if (member) {
+          newCell.members.push(member)
+        } else {
+            // 멤버를 찾지 못했더라도 이름만이라도 표시하고 싶다면?
+            // 현재 구조상 memberId가 필수이므로, 매칭되지 않은 멤버는 스킵하거나 경고해야 함.
+            // 여기서는 일단 스킵. (사용자 요구사항: "미배정 인원에서 이름 찾아서 넣고")
+            console.warn(`Member not found in unassigned: ${memberName}`)
+        }
+      }
+      
+      newCells.push(newCell)
+    }
+
+    if (newCells.length > 0) {
+      setCells(prev => [...prev, ...newCells])
+      setUnassignedMembers(currentUnassigned)
+      setImportText('')
+      setShowTextImportModal(false)
+      toast.success(`${newCells.length}개의 순이 생성되었습니다.`)
+    } else {
+      toast.error('배정할 수 있는 순이 없습니다. 이름을 확인해주세요.')
     }
   }
 
@@ -268,6 +438,11 @@ function SoonManagePage() {
       leaderMemberId: null,
       leaderName: null,
       leaderPhone: null,
+      leaderBirthDate: null,
+      subLeaderMemberId: null,
+      subLeaderName: null,
+      subLeaderPhone: null,
+      subLeaderBirthDate: null,
       members: [],
     }
     
@@ -282,22 +457,27 @@ function SoonManagePage() {
     if (!targetCell) return
 
     // 임시 셀이고 멤버가 없으면 즉시 삭제 (UX 편의성)
-    if (cellId < 0 && targetCell.members.length === 0 && !targetCell.leaderMemberId) {
+    if (cellId < 0 && targetCell.members.length === 0 && !targetCell.leaderMemberId && !targetCell.subLeaderMemberId) {
       setCells(prev => prev.filter(c => c.cellId !== cellId))
       return
     }
 
-    if (!window.confirm('정말로 이 순을 삭제하시겠습니까? 배정된 순원들은 미배정 상태가 됩니다.')) return
+    const isConfirmed = await confirm({
+      title: '순 삭제',
+      message: '정말로 이 순을 삭제하시겠습니까? 배정된 순원들은 미배정 상태가 됩니다.',
+      type: 'danger'
+    });
+    if (!isConfirmed) return
 
     // 2. API 호출 (기존 셀인 경우)
     if (cellId > 0) {
       try {
         setIsLoading(true)
         await deleteCell(cellId)
-        alert('순이 삭제되었습니다.')
+        toast.success('순이 삭제되었습니다.')
       } catch (error) {
         console.error('순 삭제 실패:', error)
-        alert('순 삭제에 실패했습니다.')
+        toast.error('순 삭제에 실패했습니다.')
         setIsLoading(false)
         return
       } finally {
@@ -305,7 +485,7 @@ function SoonManagePage() {
       }
     }
 
-    // 3. 멤버들을 미배정으로 이동 (리더 포함)
+    // 3. 멤버들을 미배정으로 이동 (리더, 부순장 포함)
     const membersToRelease = [...targetCell.members]
     
     // 리더가 있고 멤버 목록에 없다면 추가
@@ -314,10 +494,24 @@ function SoonManagePage() {
              membersToRelease.push({
                 memberId: targetCell.leaderMemberId,
                 name: targetCell.leaderName,
-                birthDate: '',
+                birthDate: targetCell.leaderBirthDate || '',
                 phone: targetCell.leaderPhone || '',
                 address: '',
                 role: '순장'
+             } as unknown as Member)
+        }
+    }
+    
+    // 부순장이 있고 멤버 목록에 없다면 추가
+    if (targetCell.subLeaderMemberId && targetCell.subLeaderName) {
+        if (!membersToRelease.some(m => m.memberId === targetCell.subLeaderMemberId)) {
+             membersToRelease.push({
+                memberId: targetCell.subLeaderMemberId,
+                name: targetCell.subLeaderName,
+                birthDate: targetCell.subLeaderBirthDate || '',
+                phone: targetCell.subLeaderPhone || '',
+                address: '',
+                role: '부순장'
              } as unknown as Member)
         }
     }
@@ -342,16 +536,21 @@ function SoonManagePage() {
 
   // 시즌 활성화
   const handleActivateSeason = async () => {
-    if (!window.confirm(`${selectedYear}년도 순을 활성화하시겠습니까? 이전 연도 기록은 종료됩니다.`)) return
+    const isConfirmed = await confirm({
+      title: '시즌 활성화',
+      message: `${selectedYear}년도 순을 활성화하시겠습니까? 이전 연도 기록은 종료됩니다.`,
+      type: 'warning'
+    });
+    if (!isConfirmed) return
     
     try {
         setIsLoading(true)
         await activateSeason(selectedYear)
-        alert('시즌이 활성화되었습니다.')
+        toast.success('시즌이 활성화되었습니다.')
         fetchData()
     } catch (error) {
         console.error('시즌 활성화 실패:', error)
-        alert('시즌 활성화에 실패했습니다.')
+        toast.error('시즌 활성화에 실패했습니다.')
     } finally {
         setIsLoading(false)
     }
@@ -462,7 +661,7 @@ function SoonManagePage() {
                 <div>
                   <h3 className="font-bold text-slate-900">{cell.cellName}</h3>
                   <p className="text-xs text-slate-500">
-                    순장: {cell.leaderName || '미정'}
+                    순장: {cell.leaderName || '미정'} | 부순장: {cell.subLeaderName || '미정'}
                   </p>
                 </div>
               </div>
@@ -472,16 +671,16 @@ function SoonManagePage() {
             <div className="flex-1 p-4">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-500">
-                  순원 목록 ({cell.members.filter(m => m.memberId !== cell.leaderMemberId).length}명)
+                  순원 목록 ({cell.members.filter(m => m.memberId !== cell.leaderMemberId && m.memberId !== cell.subLeaderMemberId).length}명)
                 </span>
               </div>
               <div className="space-y-2">
-                {cell.members.length === 0 ? (
-                  <p className="text-sm text-slate-400">배정된 순원이 없습니다.</p>
+                {cell.members.length === 0 && !cell.leaderMemberId && !cell.subLeaderMemberId ? (
+                  <p className="text-sm text-slate-400">배정된 인원이 없습니다.</p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {cell.members
-                        .filter(m => m.memberId !== cell.leaderMemberId)
+                        .filter(m => m.memberId !== cell.leaderMemberId && m.memberId !== cell.subLeaderMemberId)
                         .map((member) => (
                       <span
                         key={member.memberId}
@@ -514,8 +713,22 @@ function SoonManagePage() {
                 변경사항은 [저장] 버튼을 눌러야 반영됩니다
               </span>
               <button
-                onClick={() => {
-                  if (window.confirm('저장하지 않은 변경사항이 사라집니다. 닫으시겠습니까?')) {
+                onClick={() => setShowTextImportModal(true)}
+                className="rounded-lg bg-white border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                텍스트로 배정
+              </button>
+              <button
+                onClick={async () => {
+                  const isConfirmed = await confirm({
+                    title: '변경사항 취소',
+                    message: '저장하지 않은 변경사항이 사라집니다. 닫으시겠습니까?',
+                    type: 'warning',
+                    confirmText: '닫기',
+                    cancelText: '계속 편집'
+                  });
+                  
+                  if (isConfirmed) {
                     setShowAssignmentModal(false)
                     fetchData()
                   }
@@ -537,7 +750,7 @@ function SoonManagePage() {
           {/* 모달 컨텐츠 */}
           <div className="flex flex-1 overflow-hidden">
             {/* 왼쪽: 미배정 멤버 목록 */}
-            <div className="w-64 flex flex-col border-r border-slate-200 bg-white">
+            <div className="w-80 flex flex-col border-r border-slate-200 bg-white">
               <div className="border-b border-slate-100 p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="font-bold text-slate-900">미배정 인원</h3>
@@ -569,7 +782,6 @@ function SoonManagePage() {
                     >
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-slate-900">{member.name}</span>
-                        <span className="text-xs text-slate-400">{formatPhoneNumber(member.phone)}</span>
                       </div>
                       <span className="text-xs text-slate-500">{getBirthYear(member.birthDate)}년생</span>
                     </div>
@@ -605,50 +817,97 @@ function SoonManagePage() {
                                         <h4 className="text-sm font-bold text-slate-900">{cell.cellName}</h4>
                                     </div>
                                     
-                                    {/* Leader Drop Zone */}
-                                    <div 
-                                        onDragOver={handleDragOver}
-                                        onDrop={() => handleDrop(cell.cellId, 'leader')}
-                                        className={`
-                                            relative rounded-lg p-2 min-h-[50px] flex items-center justify-center transition-colors
-                                            ${cell.leaderMemberId 
-                                                ? 'bg-emerald-50 border border-emerald-200' 
-                                                : 'bg-white border-2 border-dashed border-emerald-300 hover:bg-emerald-50'
-                                            }
-                                        `}
-                                    >
-                                        {cell.leaderMemberId ? (
+                                    {/* Leader & SubLeader Zones */}
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {/* Leader Drop Zone */}
                                         <div 
-                                            draggable
-                                            onDragStart={() => {
-                                                // Try to find in members list first, otherwise construct partial member
-                                                let leaderMember = cell.members.find(m => m.memberId === cell.leaderMemberId);
-                                                if (!leaderMember) {
-                                                    // Construct partial member if not found in list (e.g. was just dropped as leader)
-                                                    leaderMember = {
-                                                        memberId: cell.leaderMemberId!,
-                                                        name: cell.leaderName || '',
-                                                        phone: cell.leaderPhone || '',
-                                                        birthDate: '', // Partial info
-                                                        address: '',
-                                                        role: '순장'
-                                                    } as unknown as Member;
+                                            onDragOver={handleDragOver}
+                                            onDrop={() => handleDrop(cell.cellId, 'leader')}
+                                            className={`
+                                                relative rounded-lg p-2 min-h-[50px] flex items-center justify-center transition-colors
+                                                ${cell.leaderMemberId 
+                                                    ? 'bg-emerald-50 border border-emerald-200' 
+                                                    : 'bg-white border-2 border-dashed border-emerald-300 hover:bg-emerald-50'
                                                 }
-                                                handleDragStart(leaderMember);
-                                            }}
-                                            className="flex flex-col items-center gap-1 cursor-move"
+                                            `}
                                         >
-                                                <div className="flex items-center gap-1 text-emerald-700">
-                                                    <span className="text-sm">👑</span>
-                                                    <span className="font-bold">{cell.leaderName}</span>
+                                            {cell.leaderMemberId ? (
+                                            <div 
+                                                draggable
+                                                onDragStart={() => {
+                                                    let leaderMember = cell.members.find(m => m.memberId === cell.leaderMemberId);
+                                                    if (!leaderMember) {
+                                                        leaderMember = {
+                                                            memberId: cell.leaderMemberId!,
+                                                            name: cell.leaderName || '',
+                                                            phone: cell.leaderPhone || '',
+                                                            birthDate: cell.leaderBirthDate || '',
+                                                            memberStatus: 'ACTIVE',
+                                                            role: '순장'
+                                                        } as unknown as Member;
+                                                    }
+                                                    handleDragStart(leaderMember);
+                                                }}
+                                                className="flex flex-col items-center gap-1 cursor-move"
+                                            >
+                                                    <div className="flex flex-col items-center text-emerald-700">
+                                                        <span className="text-[10px] font-bold uppercase opacity-50">순장</span>
+                                                        <div className="flex items-center gap-1">
+                                                            <span className="font-bold text-sm">{cell.leaderName}</span>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <span className="text-[10px] text-emerald-600 font-medium">{formatPhoneNumber(cell.leaderPhone || '')}</span>
-                                            </div>
-                                        ) : (
-                                            <div className="text-xs text-slate-400 font-medium text-center">
-                                                순장 배치 (드래그)
-                                            </div>
-                                        )}
+                                            ) : (
+                                                <div className="text-[10px] text-slate-400 font-medium text-center leading-tight">
+                                                    순장<br/>배치
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* SubLeader Drop Zone */}
+                                        <div 
+                                            onDragOver={handleDragOver}
+                                            onDrop={() => handleDrop(cell.cellId, 'subLeader')}
+                                            className={`
+                                                relative rounded-lg p-2 min-h-[50px] flex items-center justify-center transition-colors
+                                                ${cell.subLeaderMemberId 
+                                                    ? 'bg-blue-50 border border-blue-200' 
+                                                    : 'bg-white border-2 border-dashed border-blue-300 hover:bg-blue-50'
+                                                }
+                                            `}
+                                        >
+                                            {cell.subLeaderMemberId ? (
+                                            <div 
+                                                draggable
+                                                onDragStart={() => {
+                                                    let subLeaderMember = cell.members.find(m => m.memberId === cell.subLeaderMemberId);
+                                                    if (!subLeaderMember) {
+                                                        subLeaderMember = {
+                                                            memberId: cell.subLeaderMemberId!,
+                                                            name: cell.subLeaderName || '',
+                                                            phone: cell.subLeaderPhone || '',
+                                                            birthDate: cell.subLeaderBirthDate || '',
+                                                            memberStatus: 'ACTIVE',
+                                                            role: '부순장'
+                                                        } as unknown as Member;
+                                                    }
+                                                    handleDragStart(subLeaderMember);
+                                                }}
+                                                className="flex flex-col items-center gap-1 cursor-move"
+                                            >
+                                                    <div className="flex flex-col items-center text-blue-700">
+                                                        <span className="text-[10px] font-bold uppercase opacity-50">부순장</span>
+                                                        <div className="flex items-center gap-1">
+                                                            <span className="font-bold text-sm">{cell.subLeaderName}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="text-[10px] text-slate-400 font-medium text-center leading-tight">
+                                                    부순장<br/>배치
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
 
@@ -660,12 +919,12 @@ function SoonManagePage() {
                                 >
                                     <div className="mb-2 flex items-center justify-between px-1">
                                         <span className="text-xs font-semibold text-slate-500">
-                                            순원 목록 ({cell.members.filter(m => m.memberId !== cell.leaderMemberId).length}명)
+                                            순원 목록 ({cell.members.filter(m => m.memberId !== cell.leaderMemberId && m.memberId !== cell.subLeaderMemberId).length}명)
                                         </span>
                                     </div>
                                     <div className="space-y-1.5 min-h-[100px] rounded-lg border border-slate-100 bg-slate-50/30 p-2">
                                         {cell.members
-                                            .filter(m => m.memberId !== cell.leaderMemberId)
+                                            .filter(m => m.memberId !== cell.leaderMemberId && m.memberId !== cell.subLeaderMemberId)
                                             .map((member) => (
                                             <div
                                                 key={`cell-${cell.cellId}-${member.memberId}`}
@@ -675,7 +934,9 @@ function SoonManagePage() {
                                             >
                                                 <div className="flex items-center gap-1">
                                                   <span className="font-medium text-slate-700">{member.name}</span>
-                                                  <span className="text-[10px] text-slate-400">{formatPhoneNumber(member.phone)}</span>
+                                                  <span className="text-[10px] text-slate-400">
+                                                    {getBirthYear(member.birthDate) ? `(${getBirthYear(member.birthDate)})` : ''}
+                                                  </span>
                                                 </div>
                                                 <button
                                                     onClick={(e) => {
@@ -746,6 +1007,44 @@ function SoonManagePage() {
                   완료
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 텍스트 배정 모달 */}
+      {showTextImportModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-4xl rounded-xl bg-white p-6 shadow-xl flex flex-col max-h-[90vh]">
+            <h3 className="mb-4 text-lg font-bold text-slate-900">텍스트로 순 배정</h3>
+            <div className="mb-4 rounded-md bg-blue-50 p-4 text-sm text-blue-700">
+              <p className="font-bold mb-1">사용 방법</p>
+              <ul className="list-disc pl-4 space-y-1">
+                <li>엑셀이나 스프레드시트에서 이름을 복사해서 붙여넣으세요.</li>
+                <li><strong>첫 번째 행</strong>은 순장이 되며, 각 열(세로줄)의 아래 이름들은 해당 순의 순원이 됩니다.</li>
+                <li>이름은 <strong>탭(Tab)</strong>으로 구분되어야 합니다. (엑셀 복사 시 자동 적용)</li>
+                <li>미배정 인원 목록에 있는 이름만 배정됩니다.</li>
+              </ul>
+            </div>
+            <textarea
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              placeholder={`예시:\n장광희\t구혜린\t최성규\n한유진\t정지윤\t여인혁\n김수민\t박예성\t아드리안`}
+              className="flex-1 w-full rounded-lg border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:ring-emerald-500 font-mono whitespace-pre min-h-[300px]"
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => setShowTextImportModal(false)}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleTextImport}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700"
+              >
+                배정 적용
+              </button>
             </div>
           </div>
         </div>

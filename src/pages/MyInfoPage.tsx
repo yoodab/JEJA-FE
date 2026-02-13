@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
+import { useConfirm } from '../contexts/ConfirmContext'
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
 import { 
@@ -11,9 +13,11 @@ import {
   type MyInfoResponse, 
   type MyAttendanceHistoryResponse 
 } from '../services/userService'
+import { API_BASE_URL } from '../services/api'
 
 function MyInfoPage() {
   const navigate = useNavigate();
+  const { confirm } = useConfirm();
   const [myInfo, setMyInfo] = useState<MyInfoResponse | null>(null);
   const [attendanceHistory, setAttendanceHistory] = useState<MyAttendanceHistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -28,6 +32,7 @@ function MyInfoPage() {
 
   // Modals State
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [activeProfileType, setActiveProfileType] = useState<'user' | 'member'>('user');
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
 
@@ -91,14 +96,16 @@ function MyInfoPage() {
     try {
       setIsUploading(true);
       const uploadedUrl = await uploadFile(profileImageFile, 'profiles');
+      
       await updateMyInfo({ profileImageUrl: uploadedUrl });
       
-      alert('프로필 사진이 변경되었습니다.');
+      toast.success('프로필 사진이 변경되었습니다.');
       setIsProfileModalOpen(false);
       setProfileImageFile(null);
       fetchMyInfo(); // Refresh info
-    } catch {
-      alert('프로필 사진 변경 실패');
+    } catch (error) {
+      console.error('Failed to update profile image:', error);
+      toast.error('프로필 사진 변경 실패');
     } finally {
       setIsUploading(false);
     }
@@ -108,7 +115,7 @@ function MyInfoPage() {
   const handlePasswordUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      alert('새 비밀번호가 일치하지 않습니다.');
+      toast.error('새 비밀번호가 일치하지 않습니다.');
       return;
     }
 
@@ -117,28 +124,36 @@ function MyInfoPage() {
         currentPassword: passwordForm.currentPassword,
         newPassword: passwordForm.newPassword
       });
-      alert('비밀번호가 변경되었습니다.');
+      toast.success('비밀번호가 변경되었습니다.');
       setIsPasswordModalOpen(false);
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (error) {
       const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message 
         || (error instanceof Error ? error.message : '');
-      alert('비밀번호 변경 실패: ' + message);
+      toast.error('비밀번호 변경 실패: ' + message);
     }
   };
 
   // --- Withdraw Handlers ---
   const handleWithdraw = async () => {
-    if (!window.confirm('정말로 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+    const isConfirmed = await confirm({
+      title: '회원 탈퇴',
+      message: '정말로 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
+      type: 'danger',
+      confirmText: '탈퇴',
+      cancelText: '취소',
+    });
+
+    if (!isConfirmed) return;
     
     try {
       await withdraw(withdrawPassword);
-      alert('탈퇴가 완료되었습니다.');
+      toast.success('탈퇴가 완료되었습니다.');
       navigate('/login');
     } catch (error) {
       const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message 
         || (error instanceof Error ? error.message : '');
-      alert('탈퇴 실패: ' + message);
+      toast.error('탈퇴 실패: ' + message);
     }
   };
 
@@ -165,8 +180,8 @@ function MyInfoPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="flex flex-col min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
+      <div className="flex-grow mx-auto w-full max-w-6xl space-y-6">
         <UserHeader />
         
         {/* Header */}
@@ -193,13 +208,13 @@ function MyInfoPage() {
             </div>
             
             <div className="flex flex-col md:flex-row gap-6 md:gap-8">
-              {/* 프로필 이미지 & 변경 버튼 */}
+              {/* 1. 계정 프로필 사진 */}
               <div className="flex flex-col items-center space-y-3">
                 <div className="relative h-32 w-32 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
                   {myInfo.profileImageUrl ? (
                     <img
-                      src={myInfo.profileImageUrl}
-                      alt="Profile"
+                      src={myInfo.profileImageUrl.startsWith('http') ? myInfo.profileImageUrl : `${API_BASE_URL}${myInfo.profileImageUrl}`}
+                      alt="User Profile"
                       className="h-full w-full object-cover"
                     />
                   ) : (
@@ -212,8 +227,10 @@ function MyInfoPage() {
                 </div>
                 <button
                   onClick={() => {
-                    setPreviewUrl(myInfo.profileImageUrl || '');
+                    const currentUrl = myInfo.profileImageUrl || '';
+                    setPreviewUrl(currentUrl.startsWith('http') || !currentUrl ? currentUrl : `${API_BASE_URL}${currentUrl}`);
                     setProfileImageFile(null);
+                    setActiveProfileType('user');
                     setIsProfileModalOpen(true);
                   }}
                   className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50"
@@ -355,6 +372,8 @@ function MyInfoPage() {
             </button>
           </div>
         </div>
+      </div>
+      <div className="mx-auto w-full max-w-6xl mt-10">
         <Footer />
       </div>
 
@@ -364,7 +383,9 @@ function MyInfoPage() {
       {isProfileModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
           <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-bold text-slate-900">프로필 사진 변경</h3>
+            <h3 className="text-lg font-bold text-slate-900">
+              {activeProfileType === 'user' ? '계정 사진 변경' : '명부 사진 변경'}
+            </h3>
             <div className="mt-4 flex flex-col items-center">
               <div className="relative h-32 w-32 overflow-hidden rounded-full border border-slate-200 bg-slate-100 mb-4">
                 {previewUrl ? (

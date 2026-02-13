@@ -1,5 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
+import { useConfirm } from '../contexts/ConfirmContext'
 import {
   BarChart,
   Bar,
@@ -41,6 +43,7 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'
 
 function FinanceManagePage() {
   const navigate = useNavigate()
+  const { confirm } = useConfirm()
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   // 상태 관리
@@ -323,16 +326,23 @@ function FinanceManagePage() {
           await fetchDuesRecords(selectedEvent.id)
         } catch (error) {
           console.error('Failed to add members:', error)
-          alert('인원 추가에 실패했습니다.')
+          toast.error('인원 추가에 실패했습니다.')
         }
     } else {
-        if (confirm(`${selectedRemoveIds.length}명의 명단을 삭제하시겠습니까?`)) {
+        const isConfirmed = await confirm({
+          title: '명단 삭제',
+          message: `${selectedRemoveIds.length}명의 명단을 삭제하시겠습니까?`,
+          type: 'danger',
+          confirmText: '삭제',
+          cancelText: '취소',
+        })
+        if (isConfirmed) {
           try {
              await Promise.all(selectedRemoveIds.map(id => financeService.deleteDuesRecord(id)))
              await fetchDuesRecords(selectedEvent.id)
           } catch (error) {
              console.error('Failed to remove members:', error)
-             alert('인원 삭제에 실패했습니다.')
+             toast.error('인원 삭제에 실패했습니다.')
           }
         } else {
           return
@@ -356,23 +366,23 @@ function FinanceManagePage() {
       const filtered = schedules.filter(s => s.startDate.startsWith(importDate))
       setScheduleOptions(filtered)
       if (filtered.length === 0) {
-        alert('해당 날짜에 일정이 없습니다.')
+        toast.error('해당 날짜에 일정이 없습니다.')
       }
     } catch (error) {
       console.error('Failed to fetch schedules:', error)
-      alert('일정을 불러오는데 실패했습니다.')
+      toast.error('일정을 불러오는데 실패했습니다.')
     }
   }
 
   const handleSyncMembers = async () => {
     if (!selectedEvent) return
     if (!selectedEvent.scheduleId) {
-      alert('연동된 일정이 없습니다.')
+      toast.error('연동된 일정이 없습니다.')
       return
     }
 
     try {
-      const schedule = await scheduleService.getScheduleDetail(selectedEvent.scheduleId)
+      const schedule = await scheduleService.getScheduleDetail(selectedEvent.scheduleId, selectedEvent.targetDate)
       const attendees = schedule.attendees || []
       
       const currentNames = new Set(currentDuesList.map(r => r.memberName))
@@ -382,7 +392,7 @@ function FinanceManagePage() {
       const toRemove = currentDuesList.filter(r => !attendeeNames.has(r.memberName))
 
       if (toAdd.length === 0 && toRemove.length === 0) {
-        alert('이미 동기화되어 있습니다.')
+        toast.error('이미 동기화되어 있습니다.')
         return
       }
 
@@ -392,7 +402,7 @@ function FinanceManagePage() {
       setShowSyncModal(true)
     } catch (error) {
       console.error('Failed to sync members:', error)
-      alert('일정 정보를 불러오는데 실패했습니다.')
+      toast.error('일정 정보를 불러오는데 실패했습니다.')
     }
   }
 
@@ -418,10 +428,10 @@ function FinanceManagePage() {
 
       await fetchDuesRecords(selectedEvent.id)
       setShowSyncModal(false)
-      alert('동기화가 완료되었습니다.')
+      toast.success('동기화가 완료되었습니다.')
     } catch (error) {
       console.error('Failed to confirm sync:', error)
-      alert('동기화 처리에 실패했습니다.')
+      toast.error('동기화 처리에 실패했습니다.')
     }
   }
 
@@ -466,7 +476,7 @@ function FinanceManagePage() {
     if (editingEventId) {
       // 수정 모드
       if (!eventName || targetAmount <= 0) {
-        alert('행사명과 회비를 입력해주세요.')
+        toast.error('행사명과 회비를 입력해주세요.')
         return
       }
 
@@ -488,7 +498,7 @@ function FinanceManagePage() {
         setEditingEventId(null)
       } catch (error) {
         console.error('Failed to update event:', error)
-        alert('행사 수정에 실패했습니다.')
+        toast.error('행사 수정에 실패했습니다.')
       }
       return
     }
@@ -496,7 +506,7 @@ function FinanceManagePage() {
     // 추가 모드
     if (isImportMode) {
       if (!selectedScheduleIdForImport) {
-        alert('일정을 선택해주세요.')
+        toast.error('일정을 선택해주세요.')
         return
       }
       const selectedSchedule = scheduleOptions.find(s => s.scheduleId === selectedScheduleIdForImport)
@@ -508,12 +518,12 @@ function FinanceManagePage() {
       targetDate = importDate
       
       if (targetAmount <= 0) {
-        alert('회비를 입력해주세요.')
+        toast.error('회비를 입력해주세요.')
         return
       }
     } else {
       if (!eventName || targetAmount <= 0) {
-        alert('행사명과 회비를 입력해주세요.')
+        toast.error('행사명과 회비를 입력해주세요.')
         return
       }
     }
@@ -535,7 +545,7 @@ function FinanceManagePage() {
       
       if (isImportMode && scheduleId) {
         try {
-          const detail = await scheduleService.getScheduleDetail(Number(scheduleId))
+          const detail = await scheduleService.getScheduleDetail(Number(scheduleId), targetDate)
           if (detail.attendees && detail.attendees.length > 0) {
              newRecords = detail.attendees.map(a => ({
               eventId: createdEventId,
@@ -546,7 +556,14 @@ function FinanceManagePage() {
               note: '일정 참석자'
              }))
           } else {
-             if (confirm('일정에 등록된 참석자가 없습니다. 전체 인원 명단을 불러오시겠습니까?')) {
+             const isConfirmed = await confirm({
+               title: '참석자 없음',
+               message: '일정에 등록된 참석자가 없습니다. 전체 인원 명단을 불러오시겠습니까?',
+               type: 'warning',
+               confirmText: '불러오기',
+               cancelText: '취소',
+             })
+             if (isConfirmed) {
                const membersPage = await getMembers({ size: 1000, status: 'ACTIVE' })
                newRecords = membersPage.content.map(m => ({
                  eventId: createdEventId,
@@ -560,7 +577,7 @@ function FinanceManagePage() {
           }
         } catch (e) {
           console.error('Error importing schedule details', e)
-          alert('일정 상세 정보를 불러오는데 실패하여 빈 명단으로 생성합니다.')
+          toast.error('일정 상세 정보를 불러오는데 실패하여 빈 명단으로 생성합니다.')
         }
       }
 
@@ -583,29 +600,33 @@ function FinanceManagePage() {
 
     } catch (error) {
       console.error('Failed to create event:', error)
-      alert('행사 생성에 실패했습니다.')
+      toast.error('행사 생성에 실패했습니다.')
     }
   }
 
-  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false)
-  
-  const handleDeleteEvent = () => {
-    setShowDeleteConfirmModal(true)
-  }
+  const handleDeleteEvent = async () => {
+    const isConfirmed = await confirm({
+      title: '행사 삭제',
+      message: '정말로 이 행사를 삭제하시겠습니까?\n삭제된 데이터는 복구할 수 없습니다.',
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소',
+    })
 
-  const handleConfirmDelete = async () => {
+    if (!isConfirmed) return
+
     if (!selectedEventId) return
 
     try {
       await financeService.deleteDuesEvent(selectedEventId)
       await fetchDuesEvents()
       setShowEventModal(false)
-      setShowDeleteConfirmModal(false)
       setEditingEventId(null)
       setSelectedEventId(null)
+      toast.success('행사가 삭제되었습니다.')
     } catch (error) {
       console.error('Failed to delete event:', error)
-      alert('행사 삭제에 실패했습니다.')
+      toast.error('행사 삭제에 실패했습니다.')
     }
   }
 
@@ -627,7 +648,7 @@ function FinanceManagePage() {
       }
     } catch (error) {
       console.error('Failed to update payment:', error)
-      alert('납부 처리에 실패했습니다.')
+      toast.error('납부 처리에 실패했습니다.')
     }
   }
 
@@ -648,7 +669,7 @@ function FinanceManagePage() {
       setEditingDuesRecord(null)
     } catch (error) {
       console.error('Failed to update dues detail:', error)
-      alert('상세 정보 수정에 실패했습니다.')
+      toast.error('상세 정보 수정에 실패했습니다.')
     }
   }
 
@@ -832,7 +853,7 @@ function FinanceManagePage() {
     
     const list = categoryManageType === 'INCOME' ? incomeCategories : expenseCategories
     if (list.some(c => c.name === categoryInput)) {
-      alert('이미 존재하는 항목입니다.')
+      toast.error('이미 존재하는 항목입니다.')
       return
     }
 
@@ -845,20 +866,27 @@ function FinanceManagePage() {
       fetchCategories()
     } catch (error) {
       console.error('Failed to add category:', error)
-      alert('항목 추가 실패')
+      toast.error('항목 추가 실패')
     }
   }
 
   const handleDeleteCategory = async (category: CategoryDto) => {
     if (!category.id) return
-    if (!confirm(`'${category.name}' 항목을 삭제하시겠습니까?`)) return
+    const isConfirmed = await confirm({
+      title: '항목 삭제',
+      message: `'${category.name}' 항목을 삭제하시겠습니까?`,
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소',
+    })
+    if (!isConfirmed) return
 
     try {
       await financeService.deleteCategory(category.id)
       fetchCategories()
     } catch (error) {
       console.error('Failed to delete category:', error)
-      alert('항목 삭제 실패')
+      toast.error('항목 삭제 실패')
     }
   }
 
@@ -890,20 +918,27 @@ function FinanceManagePage() {
   }
 
   const handleDelete = async (id: string | number) => {
-    if (!confirm('재정 기록을 삭제하시겠습니까?')) return
+    const isConfirmed = await confirm({
+      title: '기록 삭제',
+      message: '재정 기록을 삭제하시겠습니까?',
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소',
+    })
+    if (!isConfirmed) return
     
     try {
       await financeService.deleteFinance(Number(id))
       fetchFinances()
     } catch (error) {
       console.error('Failed to delete finance:', error)
-      alert('삭제 실패')
+      toast.error('삭제 실패')
     }
   }
 
   const handleSave = async () => {
     if (formData.amount <= 0) {
-      alert('금액을 올바르게 입력해주세요.')
+      toast.error('금액을 올바르게 입력해주세요.')
       return
     }
 
@@ -927,7 +962,7 @@ function FinanceManagePage() {
       setShowModal(false)
     } catch (error) {
       console.error('Failed to save finance:', error)
-      alert('저장 실패')
+      toast.error('저장 실패')
     }
   }
 
@@ -1045,7 +1080,7 @@ function FinanceManagePage() {
 
     } catch (error) {
       console.error('Export failed:', error)
-      alert('내보내기 중 오류가 발생했습니다.')
+      toast.error('내보내기 중 오류가 발생했습니다.')
     }
   }
 
@@ -1182,13 +1217,13 @@ function FinanceManagePage() {
         ? `${previewRecords.length}건의 데이터와 신규 카테고리 ${categoryPromises.length}개가 등록되었습니다.`
         : `${previewRecords.length}건의 데이터가 성공적으로 등록되었습니다.`
       
-      alert(message)
+      toast.success(message)
       fetchFinances() // 목록 새로고침
       setShowPreviewModal(false)
       setPreviewRecords([])
     } catch (error) {
       console.error('Failed to batch upload finances:', error)
-      alert('일괄 등록에 실패했습니다.')
+      toast.error('일괄 등록에 실패했습니다.')
     }
   }
 
@@ -2346,7 +2381,7 @@ function FinanceManagePage() {
                             }))
                           } catch (error) {
                             console.error('Failed to upload receipt images:', error)
-                            alert('영수증 이미지 업로드에 실패했습니다.')
+                            toast.error('영수증 이미지 업로드에 실패했습니다.')
                           }
                           
                           e.target.value = ''
@@ -2816,34 +2851,6 @@ function FinanceManagePage() {
                 className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
               >
                 닫기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* 삭제 확인 모달 */}
-      {showDeleteConfirmModal && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
-            <h3 className="mb-2 text-lg font-bold text-slate-900">
-              행사 삭제
-            </h3>
-            <p className="mb-6 text-sm text-slate-600">
-              정말로 이 행사를 삭제하시겠습니까?<br />
-              삭제된 데이터는 복구할 수 없습니다.
-            </p>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setShowDeleteConfirmModal(false)}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleConfirmDelete}
-                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
-              >
-                삭제
               </button>
             </div>
           </div>

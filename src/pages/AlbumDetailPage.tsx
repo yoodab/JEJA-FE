@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
 import { isManager } from '../utils/auth'
+import { useConfirm } from '../contexts/ConfirmContext'
 import {
   getAlbumDetail,
   uploadFiles,
@@ -21,6 +23,7 @@ function AlbumDetailPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const initialAlbum = location.state?.album as AlbumListItem | undefined
+  const { confirm } = useConfirm()
   
   const [album, setAlbum] = useState<AlbumDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -64,7 +67,7 @@ function AlbumDetailPage() {
       setAlbum(data)
     } catch (error) {
       console.error('앨범 상세 조회 실패:', error)
-      alert('앨범을 불러올 수 없습니다.')
+      toast.error('앨범을 불러올 수 없습니다.')
       navigate('/youth-album')
     } finally {
       setLoading(false)
@@ -86,7 +89,7 @@ function AlbumDetailPage() {
 
   const handleUploadPhoto = async () => {
     if (uploadFilesList.length === 0) {
-      alert('파일을 선택해주세요.')
+      toast.error('파일을 선택해주세요.')
       return
     }
     if (!albumId) return
@@ -101,13 +104,13 @@ function AlbumDetailPage() {
       // 2. Register photos to album
       await addPhotosToAlbum(Number(albumId), photoUrls)
       
-      alert('사진이 업로드되었습니다.')
+      toast.success('사진이 업로드되었습니다.')
       setIsUploadModalOpen(false)
       setUploadFilesList([])
       loadAlbum()
     } catch (error) {
       console.error('사진 업로드 실패:', error)
-      alert('사진 업로드에 실패했습니다.')
+      toast.error('사진 업로드에 실패했습니다.')
     } finally {
       setIsUploading(false)
     }
@@ -118,30 +121,36 @@ function AlbumDetailPage() {
 
     try {
       await updatePhoto(Number(albumId), selectedPhoto.photoId, editDescription)
-      alert('사진이 수정되었습니다.')
+      toast.success('사진이 수정되었습니다.')
       setIsEditModalOpen(false)
       setSelectedPhoto(null)
       setEditDescription('')
       loadAlbum()
     } catch (error) {
       console.error('사진 수정 실패:', error)
-      alert('사진 수정에 실패했습니다.')
+      toast.error('사진 수정에 실패했습니다.')
     }
   }
 
   const handleDeletePhoto = async (photo: Photo) => {
-    if (!confirm('이 사진을 삭제하시겠습니까?')) {
-      return
-    }
+    const isConfirmed = await confirm({
+      title: '사진 삭제',
+      message: '이 사진을 삭제하시겠습니까?',
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소',
+    })
+
+    if (!isConfirmed) return
     if (!albumId) return
 
     try {
       await deletePhoto(photo.photoId)
-      alert('사진이 삭제되었습니다.')
+      toast.success('사진이 삭제되었습니다.')
       loadAlbum()
     } catch (error) {
       console.error('사진 삭제 실패:', error)
-      alert('사진 삭제에 실패했습니다.')
+      toast.error('사진 삭제에 실패했습니다.')
     }
   }
 
@@ -191,7 +200,7 @@ function AlbumDetailPage() {
     const selectedPhotos = album.photos.filter(p => selectedPhotoIds.has(p.photoId))
     
     if (selectedPhotos.length === 0) {
-      alert('다운로드할 사진을 선택해주세요.')
+      toast.error('다운로드할 사진을 선택해주세요.')
       return
     }
 
@@ -215,26 +224,32 @@ function AlbumDetailPage() {
     const selectedPhotos = album.photos.filter(p => selectedPhotoIds.has(p.photoId))
 
     if (selectedPhotos.length === 0) {
-      alert('삭제할 사진을 선택해주세요.')
+      toast.error('삭제할 사진을 선택해주세요.')
       return
     }
 
-    if (!confirm(`${selectedPhotos.length}장의 사진을 삭제하시겠습니까?`)) {
-      return
-    }
+    const isConfirmed = await confirm({
+      title: '사진 일괄 삭제',
+      message: `${selectedPhotos.length}장의 사진을 삭제하시겠습니까?`,
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소',
+    })
+
+    if (!isConfirmed) return
 
     try {
       // Sequential delete
       for (const photo of selectedPhotos) {
         await deletePhoto(photo.photoId)
       }
-      alert('사진이 삭제되었습니다.')
+      toast.success('사진이 삭제되었습니다.')
       setIsSelectMode(false)
       setSelectedPhotoIds(new Set())
       loadAlbum()
     } catch (error) {
       console.error('사진 삭제 실패:', error)
-      alert('사진 삭제 중 오류가 발생했습니다.')
+      toast.error('사진 삭제 중 오류가 발생했습니다.')
     }
   }
 

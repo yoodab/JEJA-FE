@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
 import { isLoggedIn as checkLoggedIn } from '../utils/auth'
@@ -23,6 +24,7 @@ const typeLabels: Record<string, string> = {
 
 function ScheduleListPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0])
   const [isLoggedIn] = useState(checkLoggedIn)
   const [schedules, setSchedules] = useState<Schedule[]>([])
@@ -31,6 +33,24 @@ function ScheduleListPage() {
   const [detailModalOpen, setDetailModalOpen] = useState(false)
   const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null)
   const [selectedTargetDate, setSelectedTargetDate] = useState<string | null>(null)
+
+  // Handle query parameters for direct modal opening
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const scheduleId = params.get('scheduleId')
+    const date = params.get('date')
+
+    if (scheduleId && date) {
+      if (!isLoggedIn) {
+        toast.error('로그인이 필요한 서비스입니다.')
+        return
+      }
+      setSelectedScheduleId(Number(scheduleId))
+      setSelectedTargetDate(date)
+      setSelectedDate(date) // 캘린더 날짜도 해당 날짜로 변경
+      setDetailModalOpen(true)
+    }
+  }, [location.search, isLoggedIn])
 
   const currentDate = new Date(selectedDate)
   const year = currentDate.getFullYear()
@@ -218,7 +238,7 @@ function ScheduleListPage() {
                       key={schedule.scheduleId}
                       onClick={() => {
                         if (!isLoggedIn) {
-                          alert('로그인이 필요한 서비스입니다.')
+                          toast.error('로그인이 필요한 서비스입니다.')
                           return
                         }
                         setSelectedScheduleId(schedule.scheduleId)

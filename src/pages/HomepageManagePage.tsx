@@ -1,6 +1,8 @@
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
- import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { toast } from 'react-hot-toast'
+import { useConfirm } from '../contexts/ConfirmContext'
 import {
   getUsers,
   updateUserStatus,
@@ -26,6 +28,7 @@ import { uploadFiles, getFileUrl } from '../services/albumService'
 type TabType = 'users' | 'slides' | 'youtube'
 
 function HomepageManagePage() {
+  const { confirm } = useConfirm()
   const [activeTab, setActiveTab] = useState<TabType>('users')
   
   // 사용자 관리
@@ -85,7 +88,7 @@ function HomepageManagePage() {
       setUsers(data)
     } catch (error) {
       console.error('사용자 목록 불러오기 실패:', error)
-      alert('사용자 목록을 불러오는데 실패했습니다.')
+      toast.error('사용자 목록을 불러오는데 실패했습니다.')
     } finally {
       setIsLoadingUsers(false)
     }
@@ -105,7 +108,7 @@ function HomepageManagePage() {
       setSlides(data)
     } catch (error) {
       console.error('슬라이드 목록 불러오기 실패:', error)
-      alert('슬라이드 목록을 불러오는데 실패했습니다.')
+      toast.error('슬라이드 목록을 불러오는데 실패했습니다.')
     } finally {
       setIsLoadingSlides(false)
     }
@@ -127,7 +130,7 @@ function HomepageManagePage() {
       }
     } catch (error) {
       console.error('유튜브 링크 불러오기 실패:', error)
-      alert('유튜브 링크를 불러오는데 실패했습니다.')
+      toast.error('유튜브 링크를 불러오는데 실패했습니다.')
     } finally {
       setIsLoadingYoutube(false)
     }
@@ -140,16 +143,24 @@ function HomepageManagePage() {
   }, [activeTab, loadYoutubeLinks])
 
   const handleUpdateStatus = async (userId: number, newStatus: UserStatus) => {
-    if (!confirm(`사용자 상태를 '${getStatusLabel(newStatus)}'(으)로 변경하시겠습니까?`)) return
+    const isConfirmed = await confirm({
+      title: '상태 변경',
+      message: `사용자 상태를 '${getStatusLabel(newStatus)}'(으)로 변경하시겠습니까?`,
+      type: 'warning',
+      confirmText: '변경',
+      cancelText: '취소'
+    })
+
+    if (!isConfirmed) return
 
     try {
       await updateUserStatus(userId, newStatus)
-      alert('사용자 상태가 변경되었습니다.')
+      toast.success('사용자 상태가 변경되었습니다.')
       loadUsers()
       setOpenMenuUserId(null)
     } catch (error) {
       console.error('상태 변경 실패:', error)
-      alert('상태 변경에 실패했습니다.')
+      toast.error('상태 변경에 실패했습니다.')
     }
   }
 
@@ -217,7 +228,7 @@ function HomepageManagePage() {
       
     } catch (error) {
       console.error('이미지 업로드 실패:', error)
-      alert('이미지 업로드에 실패했습니다.')
+      toast.error('이미지 업로드에 실패했습니다.')
     } finally {
       setIsUploading(false)
       // input 초기화 (같은 파일 다시 선택 가능하도록)
@@ -430,15 +441,15 @@ function HomepageManagePage() {
 
   const handleAddSlide = async () => {
     if (newSlideType === 'image' && !newSlideUrl.trim()) {
-      alert('이미지 URL을 입력해주세요.')
+      toast.error('이미지 URL을 입력해주세요.')
       return
     }
     if (newSlideType === 'text' && newSlideTextElements.length === 0) {
-      alert('최소 하나의 텍스트 요소를 추가해주세요.')
+      toast.error('최소 하나의 텍스트 요소를 추가해주세요.')
       return
     }
     if (newSlideType === 'text' && newSlideTextElements.some(el => !el.text.trim())) {
-      alert('모든 텍스트 요소의 내용을 입력해주세요.')
+      toast.error('모든 텍스트 요소의 내용을 입력해주세요.')
       return
     }
 
@@ -455,10 +466,10 @@ function HomepageManagePage() {
 
       if (editingSlideId) {
         await updateSlide(editingSlideId, slideData)
-        alert('슬라이드가 수정되었습니다.')
+        toast.success('슬라이드가 수정되었습니다.')
       } else {
         await createSlide(slideData)
-        alert('슬라이드가 추가되었습니다.')
+        toast.success('슬라이드가 추가되었습니다.')
       }
       
       // 목록 새로고침
@@ -468,36 +479,44 @@ function HomepageManagePage() {
       handleCancelEdit()
     } catch (error) {
       console.error(editingSlideId ? '슬라이드 수정 실패:' : '슬라이드 추가 실패:', error)
-      alert(editingSlideId ? '슬라이드 수정에 실패했습니다.' : '슬라이드 추가에 실패했습니다.')
+      toast.error(editingSlideId ? '슬라이드 수정에 실패했습니다.' : '슬라이드 추가에 실패했습니다.')
     }
   }
 
   const handleRemoveSlide = async (id: number) => {
-    if (!confirm('이 슬라이드를 삭제하시겠습니까?')) return
+    const isConfirmed = await confirm({
+      title: '슬라이드 삭제',
+      message: '이 슬라이드를 삭제하시겠습니까?',
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소'
+    })
+
+    if (!isConfirmed) return
 
     try {
       await deleteSlide(id)
-      alert('슬라이드가 삭제되었습니다.')
+      toast.success('슬라이드가 삭제되었습니다.')
       loadSlides()
     } catch (error) {
       console.error('슬라이드 삭제 실패:', error)
-      alert('슬라이드 삭제에 실패했습니다.')
+      toast.error('슬라이드 삭제에 실패했습니다.')
     }
   }
 
   const handleSaveYoutubeLinks = async () => {
     if (!youtubeLinks.liveUrl.trim() || !youtubeLinks.playlistUrl.trim()) {
-      alert('모든 링크를 입력해주세요.')
+      toast.error('모든 링크를 입력해주세요.')
       return
     }
 
     try {
       await updateYoutubeConfig(youtubeLinks)
-      alert('유튜브 링크가 저장되었습니다.')
+      toast.success('유튜브 링크가 저장되었습니다.')
       loadYoutubeLinks()
     } catch (error) {
       console.error('유튜브 링크 저장 실패:', error)
-      alert('유튜브 링크 저장에 실패했습니다.')
+      toast.error('유튜브 링크 저장에 실패했습니다.')
     }
   }
 
@@ -521,7 +540,7 @@ function HomepageManagePage() {
       await reorderSlides(slideIds)
     } catch (error) {
       console.error('슬라이드 순서 변경 실패:', error)
-      alert('슬라이드 순서 변경에 실패했습니다.')
+      toast.error('슬라이드 순서 변경에 실패했습니다.')
       loadSlides() // Revert on error
     }
   }

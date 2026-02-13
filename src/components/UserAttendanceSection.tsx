@@ -63,21 +63,29 @@ export default function UserAttendanceSection() {
     setMessage({ type: null, text: '' })
 
     try {
-      // 위치 정보 가져오기
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        if (!navigator.geolocation) {
-          reject(new Error("위치 정보를 지원하지 않는 브라우저입니다."))
-        }
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 60000
+      let latitude: number | undefined
+      let longitude: number | undefined
+
+      // 예배인 경우에만 위치 정보 가져오기
+      const selectedSchedule = schedules.find(s => s.scheduleId === selectedScheduleId)
+      if (selectedSchedule?.type === 'WORSHIP') {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          if (!navigator.geolocation) {
+            reject(new Error("위치 정보를 지원하지 않는 브라우저입니다."))
+          }
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 60000
+          })
         })
-      })
+        latitude = position.coords.latitude
+        longitude = position.coords.longitude
+      }
 
       await checkIn(selectedScheduleId, {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude
+        latitude,
+        longitude
       })
       setMessage({ type: 'success', text: '출석이 완료되었습니다!' })
       // 성공 후 3초 뒤 메시지 초기화

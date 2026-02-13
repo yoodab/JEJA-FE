@@ -62,7 +62,19 @@ function UserDashboardPage() {
   const [latestAlbums, setLatestAlbums] = useState<AlbumListItem[]>([]);
   const [latestSchedules, setLatestSchedules] = useState<Schedule[]>([]);
   const [slides, setSlides] = useState<Slide[]>([]);
-  const [availableForms, setAvailableForms] = useState<FormTemplate[]>([]);
+  const [availableForms, setAvailableForms] = useState<(FormTemplate & { 
+    submitted?: boolean;
+    selectableDates?: string[];
+  })[]>([]);
+
+  const unsubmittedCount = availableForms
+    .filter(f => !f.submitted)
+    .reduce((acc, f) => {
+      if (f.category === 'CELL_REPORT' && f.selectableDates && f.selectableDates.length > 0) {
+        return acc + f.selectableDates.length;
+      }
+      return acc + 1;
+    }, 0);
 
   const nextSlide = useCallback(() => {
     if (slides.length === 0) return;
@@ -199,8 +211,8 @@ function UserDashboardPage() {
   const current = slides[activeIndex];
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="flex flex-col min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
+      <div className="flex-grow mx-auto w-full max-w-6xl space-y-6">
         <UserHeader
           isLoggedIn={isLoggedIn}
           userRole={userRole}
@@ -451,7 +463,7 @@ function UserDashboardPage() {
                     작성가능 보고서
                   </span>
                   <span className="text-sm font-bold text-blue-600">
-                    {availableForms.length}개
+                    {unsubmittedCount}개
                   </span>
                 </div>
               </div>
@@ -586,23 +598,17 @@ function UserDashboardPage() {
                     };
                     const typeLabel = typeMap[schedule.type] || schedule.type;
 
-                    // 교인 전용 일정인지 확인 (배경색 구분)
-                    const isMemberSchedule = schedule.sharingScope === 'LOGGED_IN_USERS';
-
                     return (
                       <div
                         key={schedule.scheduleId}
-                        className={`w-full rounded-lg border px-3 py-2 text-left ${
-                          isMemberSchedule 
-                            ? 'border-amber-200 bg-amber-50' 
-                            : 'border-slate-200 bg-slate-50'
-                        }`}
+                        onClick={() => navigate(`/schedules?scheduleId=${schedule.scheduleId}&date=${schedule.startDate.split('T')[0]}`)}
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left cursor-pointer hover:bg-slate-100 transition-colors"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 overflow-hidden min-w-0">
                               <span
-                                className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                                className={`flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
                                   schedule.type === "WORSHIP"
                                     ? "bg-blue-100 text-blue-700"
                                     : schedule.type === "EVENT"
@@ -612,14 +618,9 @@ function UserDashboardPage() {
                               >
                                 {typeLabel}
                               </span>
-                              <span className="text-[10px] font-semibold text-slate-900">
+                              <span className="text-[10px] font-semibold text-slate-900 truncate min-w-0">
                                 {schedule.title}
                               </span>
-                              {isMemberSchedule && (
-                                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">
-                                  교인전용
-                                </span>
-                              )}
                             </div>
                             <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-500">
                               <span>{dateStr}</span>
@@ -641,7 +642,9 @@ function UserDashboardPage() {
           </div>
         </section>
         </main>
+      </div>
 
+      <div className="mx-auto w-full max-w-6xl mt-10">
         <Footer />
       </div>
     </div>

@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { getMembers } from '../services/memberService'
 import { 
   getClubs, 
@@ -43,6 +45,7 @@ const getClubColorText = (type: ClubType) => {
 
 function TeamManagePage() {
   const navigate = useNavigate()
+  const { confirm } = useConfirm()
   const [teams, setTeams] = useState<Club[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
@@ -94,7 +97,7 @@ function TeamManagePage() {
       setMembers(membersResponse.content)
     } catch (error) {
       console.error('데이터 로드 실패:', error)
-      alert('데이터를 불러오는데 실패했습니다.')
+      toast.error('데이터를 불러오는데 실패했습니다.')
     } finally {
       setLoading(false)
     }
@@ -112,11 +115,11 @@ function TeamManagePage() {
   // Handlers
   const handleCreateTeam = async () => {
     if (!createFormData.name.trim()) {
-      alert('팀 이름을 입력해주세요.')
+      toast.error('팀 이름을 입력해주세요.')
       return
     }
     if (!createFormData.leaderMemberId) {
-      alert('팀장을 선택해주세요.')
+      toast.error('팀장을 선택해주세요.')
       return
     }
 
@@ -127,13 +130,13 @@ function TeamManagePage() {
         type: createFormData.type,
         leaderMemberId: createFormData.leaderMemberId,
       })
-      alert('팀이 생성되었습니다.')
+      toast.success('팀이 생성되었습니다.')
       setShowCreateModal(false)
       fetchTeams()
       resetCreateForm()
     } catch (error) {
       console.error('팀 생성 실패:', error)
-      alert('팀 생성에 실패했습니다.')
+      toast.error('팀 생성에 실패했습니다.')
     }
   }
 
@@ -149,7 +152,7 @@ function TeamManagePage() {
   const handleUpdateTeam = async () => {
     if (!editingTeam) return
     if (!editFormData.name.trim()) {
-      alert('팀 이름을 입력해주세요.')
+      toast.error('팀 이름을 입력해주세요.')
       return
     }
 
@@ -158,25 +161,33 @@ function TeamManagePage() {
         name: editFormData.name,
         description: editFormData.description,
       })
-      alert('팀 정보가 수정되었습니다.')
+      toast.success('팀 정보가 수정되었습니다.')
       setShowEditModal(false)
       setEditingTeam(null)
       fetchTeams()
     } catch (error) {
       console.error('팀 수정 실패:', error)
-      alert('팀 수정에 실패했습니다.')
+      toast.error('팀 수정에 실패했습니다.')
     }
   }
 
   const handleDeleteTeam = async (teamId: number, teamName: string) => {
-    if (confirm(`정말로 "${teamName}" 팀을 삭제하시겠습니까?`)) {
+    const isConfirmed = await confirm({
+      title: '팀 삭제',
+      message: `정말로 "${teamName}" 팀을 삭제하시겠습니까?`,
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소',
+    })
+
+    if (isConfirmed) {
       try {
         await deleteClub(teamId)
-        alert('팀이 삭제되었습니다.')
+        toast.success('팀이 삭제되었습니다.')
         fetchTeams()
       } catch (error) {
         console.error('팀 삭제 실패:', error)
-        alert('팀 삭제에 실패했습니다.')
+        toast.error('팀 삭제에 실패했습니다.')
       }
     }
   }
@@ -189,7 +200,7 @@ function TeamManagePage() {
       setShowMemberModal(true)
     } catch (error) {
       console.error('팀 상세 정보 로드 실패:', error)
-      alert('팀 정보를 불러오는데 실패했습니다.')
+      toast.error('팀 정보를 불러오는데 실패했습니다.')
     }
   }
 
@@ -207,45 +218,60 @@ function TeamManagePage() {
       setDetailTeam(updated)
       setSelectedMemberIds([])
       setMemberSearchTerm('')
-      alert(`${selectedMemberIds.length}명의 팀원이 추가되었습니다.`)
+      toast.success(`${selectedMemberIds.length}명의 팀원이 추가되었습니다.`)
       fetchTeams() // Update list count
     } catch (error) {
       console.error('팀원 추가 실패:', error)
-      alert('일부 팀원 추가에 실패했습니다. 다시 시도해주세요.')
+      toast.error('일부 팀원 추가에 실패했습니다. 다시 시도해주세요.')
     }
   }
 
   const handleRemoveMember = async (memberId: number) => {
     if (!detailTeam) return
-    if (!confirm('정말로 이 팀원을 제외하시겠습니까?')) return
+    const isConfirmed = await confirm({
+      title: '팀원 제외',
+      message: '정말로 이 팀원을 제외하시겠습니까?',
+      type: 'danger',
+      confirmText: '제외',
+      cancelText: '취소',
+    })
+
+    if (!isConfirmed) return
 
     try {
       await removeClubMember(detailTeam.id, memberId)
       // Refresh detail
       const updated = await getClub(detailTeam.id)
       setDetailTeam(updated)
-      alert('팀원이 제외되었습니다.')
+      toast.success('팀원이 제외되었습니다.')
       fetchTeams() // Update list count
     } catch (error) {
       console.error('팀원 제외 실패:', error)
-      alert('팀원 제외에 실패했습니다.')
+      toast.error('팀원 제외에 실패했습니다.')
     }
   }
 
   const handleChangeLeader = async (newLeaderId: number) => {
     if (!detailTeam) return
-    if (!confirm('팀장을 변경하시겠습니까?')) return
+    const isConfirmed = await confirm({
+      title: '팀장 변경',
+      message: '팀장을 변경하시겠습니까?',
+      type: 'warning',
+      confirmText: '변경',
+      cancelText: '취소',
+    })
+    if (!isConfirmed) return
 
     try {
       await changeClubLeader(detailTeam.id, newLeaderId)
       // Refresh detail
       const updated = await getClub(detailTeam.id)
       setDetailTeam(updated)
-      alert('팀장이 변경되었습니다.')
+      toast.success('팀장이 변경되었습니다.')
       fetchTeams() // Update list info
     } catch (error) {
       console.error('팀장 변경 실패:', error)
-      alert('팀장 변경에 실패했습니다.')
+      toast.error('팀장 변경에 실패했습니다.')
     }
   }
 

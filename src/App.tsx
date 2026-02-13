@@ -3,6 +3,7 @@ import "./App.css";
 import { useEffect } from "react";
 import { requestForToken, onMessageListener } from "./services/notificationService";
 import { Toaster, toast } from 'react-hot-toast';
+import { ConfirmProvider } from "./contexts/ConfirmContext";
 import Layout from "./components/Layout";
 import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
@@ -36,7 +37,6 @@ import BoardWritePage from "./pages/BoardWritePage";
 import BoardEditPage from "./pages/BoardEditPage";
 import TeamManagePage from "./pages/TeamManagePage";
 import GroupFormationPage from "./pages/GroupFormationPage";
-import FormBuilderPage from "./pages/FormBuilderPage";
 import FormManagerPage from "./pages/FormManagerPage";
 import NotificationSendPage from "./pages/NotificationSendPage";
 import ReportWritePage from "./pages/ReportWritePage";
@@ -45,6 +45,7 @@ import UserReportListPage from "./pages/UserReportListPage";
 import RollingPaperManagePage from "./pages/RollingPaperManagePage";
 import RollingPaperDetailPage from "./pages/RollingPaperDetailPage";
 import ThemeEditorPage from "./pages/ThemeEditorPage";
+import FormPreviewPage from "./pages/FormPreviewPage";
 
 function App() {
   useEffect(() => {
@@ -67,12 +68,13 @@ function App() {
   }, []);
 
   return (
-    <>
+    <ConfirmProvider>
       <Toaster />
       <Routes>
         {/* 공용/일반 사용자 라우트 */}
         <Route path="/login" element={<LoginPage />} />
-      <Route path="/signup" element={<SignupPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/manage/forms/preview" element={<FormPreviewPage />} />
       <Route path="/find-password" element={<FindPasswordPage />} />
       <Route path="/attendance/guest" element={<GuestAttendancePage />} />
       <Route path="/newcomer/register" element={<NewcomerRegistrationPage />} />
@@ -118,14 +120,13 @@ function App() {
         <Route path="/manage/notifications" element={<NotificationSendPage />} />
         
         {/* 새로운 폼 관리 시스템 라우트 */}
-        <Route path="/manage/forms/builder" element={<FormBuilderPage />} />
         <Route path="/manage/forms/:templateId" element={<FormManagerPage />} />
       </Route>
 
       {/* 기본 진입 시 일반 사용자 대시보드로 이동 */}
       <Route path="*" element={<Navigate to="/user-dashboard" replace />} />
-    </Routes>
-    </>
+      </Routes>
+    </ConfirmProvider>
   );
 }
 

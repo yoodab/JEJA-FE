@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { rollingPaperService } from '../services/rollingPaperService';
 import { themeService } from '../services/themeService';
+import { useConfirm } from '../contexts/ConfirmContext';
 import type { RollingPaperTheme } from '../services/themeService';
 import type { RollingPaper } from '../types/rollingPaper';
 import { toast } from 'react-hot-toast';
@@ -8,12 +9,19 @@ import { useNavigate } from 'react-router-dom';
 import Footer from '../components/Footer';
 
 const RollingPaperManagePage = () => {
+  const { confirm } = useConfirm();
   const [papers, setPapers] = useState<RollingPaper[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const navigate = useNavigate();
 
   // Menu State
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
+
+  // Search and Pagination State
+  const [searchTitle, setSearchTitle] = useState('');
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
 
   // Create/Edit Form State
   const [editingPaperId, setEditingPaperId] = useState<number | null>(null);
@@ -27,10 +35,13 @@ const RollingPaperManagePage = () => {
   const [savedThemes, setSavedThemes] = useState<RollingPaperTheme[]>([]);
   const [selectedThemeId, setSelectedThemeId] = useState<number | null>(null);
 
-  const loadPapers = async () => {
+  const loadPapers = async (page = 0, title = searchTitle) => {
     try {
-      const data = await rollingPaperService.getAllRollingPapers();
-      setPapers(data);
+      const data = await rollingPaperService.getAllRollingPapers(title, page);
+      setPapers(data.content);
+      setTotalPages(data.totalPages);
+      setTotalElements(data.totalElements);
+      setCurrentPage(page);
     } catch (error) {
       console.error(error);
       toast.error('롤링페이퍼 목록을 불러오는데 실패했습니다.');
@@ -133,7 +144,7 @@ const RollingPaperManagePage = () => {
       }
       
       setIsModalOpen(false);
-      loadPapers();
+      loadPapers(currentPage, searchTitle);
       setTitle('');
       setSelectedThemeId(null);
       setEditingPaperId(null);
@@ -144,12 +155,20 @@ const RollingPaperManagePage = () => {
   };
 
   const handleDeleteRollingPaper = async (id: number) => {
-    if (!window.confirm('정말 이 롤링페이퍼를 삭제하시겠습니까? 복구할 수 없습니다.')) return;
+    const isConfirmed = await confirm({
+      title: '롤링페이퍼 삭제',
+      message: '정말 이 롤링페이퍼를 삭제하시겠습니까? 복구할 수 없습니다.',
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소'
+    });
+    
+    if (!isConfirmed) return;
 
     try {
       await rollingPaperService.deleteRollingPaper(id);
       toast.success('롤링페이퍼가 삭제되었습니다.');
-      loadPapers();
+      loadPapers(currentPage, searchTitle);
     } catch (error) {
       console.error(error);
       toast.error('삭제 실패');
@@ -158,7 +177,16 @@ const RollingPaperManagePage = () => {
 
   const handleDeleteTheme = async (e: React.MouseEvent, themeId: number) => {
     e.stopPropagation();
-    if (!window.confirm('정말 이 테마를 삭제하시겠습니까?')) return;
+    
+    const isConfirmed = await confirm({
+      title: '테마 삭제',
+      message: '정말 이 테마를 삭제하시겠습니까?',
+      type: 'danger',
+      confirmText: '삭제',
+      cancelText: '취소'
+    });
+    
+    if (!isConfirmed) return;
     
     try {
       await themeService.deleteTheme(themeId);
@@ -183,8 +211,8 @@ const RollingPaperManagePage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="flex flex-col min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
+      <div className="flex-grow mx-auto w-full max-w-6xl space-y-6">
         {/* Header */}
         <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div className="flex items-center gap-3">
@@ -213,72 +241,148 @@ const RollingPaperManagePage = () => {
           </button>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {papers.map((paper) => (
-          <div key={paper.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-5 border border-slate-200 relative overflow-hidden group">
-            <div className={`absolute top-0 left-0 w-2 h-full ${paper.theme === 'BLACK' ? 'bg-gray-800' : paper.theme === 'LIGHT' ? 'bg-gray-200' : 'bg-blue-400'}`}></div>
-            <div className="pl-4">
-                <div className="flex justify-between items-start mb-2 relative">
-                    <h3 className="text-xl font-bold text-gray-800 line-clamp-1">{paper.title}</h3>
-                    <div className="relative">
-                        <button 
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveMenuId(activeMenuId === paper.id ? null : paper.id);
-                            }}
-                            className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors"
-                        >
-                            <span className="text-xl font-bold leading-none">⋮</span>
-                        </button>
-                        
-                        {activeMenuId === paper.id && (
-                            <div className="absolute right-0 top-8 w-32 bg-white rounded-lg shadow-xl border border-gray-100 z-10 py-1 overflow-hidden">
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        openEditModal(paper);
-                                        setActiveMenuId(null);
-                                    }}
-                                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                                >
-                                    <span>✏️</span> 수정
-                                </button>
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteRollingPaper(paper.id);
-                                        setActiveMenuId(null);
-                                    }}
-                                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                                >
-                                    <span>🗑️</span> 삭제
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </div>
-                <p className="text-gray-500 text-sm mb-4 flex items-center gap-2">
-                    <span className="font-medium">{paper.theme}</span>
-                    {paper.theme === 'CUSTOM' && <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">Custom</span>}
-                </p>
-                <div className="flex justify-between items-center mt-4 pt-4 border-t border-slate-100">
-                <button 
-                    onClick={() => window.open(`/rolling-papers/${paper.id}`, '_blank')}
-                    className="text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 text-sm"
-                >
-                    바로가기 ↗
-                </button>
-                <button 
-                    onClick={() => copyLink(paper.id)}
-                    className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-colors"
-                >
-                    링크 복사
-                </button>
-                </div>
+        {/* Search Bar */}
+        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex w-full sm:max-w-md gap-2">
+            <div className="relative flex-grow">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+              <input
+                type="text"
+                placeholder="롤링페이퍼 제목으로 검색..."
+                value={searchTitle}
+                onChange={(e) => setSearchTitle(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && loadPapers(0, searchTitle)}
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              />
             </div>
+            <button
+              onClick={() => loadPapers(0, searchTitle)}
+              className="px-4 py-2 bg-slate-800 text-white rounded-xl text-sm font-semibold hover:bg-slate-700 transition-colors"
+            >
+              검색
+            </button>
           </div>
-        ))}
+          <div className="text-sm text-slate-500 font-medium">
+            총 <span className="text-blue-600">{totalElements}</span>개의 롤링페이퍼
+          </div>
         </div>
+
+        {papers.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-dashed border-slate-300">
+            <div className="text-4xl mb-4">📭</div>
+            <p className="text-slate-500 font-medium">검색 결과가 없거나 등록된 롤링페이퍼가 없습니다.</p>
+            {searchTitle && (
+              <button 
+                onClick={() => { setSearchTitle(''); loadPapers(0, ''); }}
+                className="mt-4 text-blue-600 hover:underline text-sm font-semibold"
+              >
+                검색어 초기화
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {papers.map((paper) => (
+            <div key={paper.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-5 border border-slate-200 relative overflow-hidden group">
+              <div className={`absolute top-0 left-0 w-2 h-full ${paper.theme === 'BLACK' ? 'bg-gray-800' : paper.theme === 'LIGHT' ? 'bg-gray-200' : 'bg-blue-400'}`}></div>
+              <div className="pl-4">
+                  <div className="flex justify-between items-start mb-2 relative">
+                      <h3 className="text-xl font-bold text-gray-800 line-clamp-1">{paper.title}</h3>
+                      <div className="relative">
+                          <button 
+                              onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuId(activeMenuId === paper.id ? null : paper.id);
+                              }}
+                              className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors"
+                          >
+                              <span className="text-xl font-bold leading-none">⋮</span>
+                          </button>
+                          
+                          {activeMenuId === paper.id && (
+                              <div className="absolute right-0 top-8 w-32 bg-white rounded-lg shadow-xl border border-gray-100 z-10 py-1 overflow-hidden">
+                                  <button
+                                      onClick={(e) => {
+                                          e.stopPropagation();
+                                          openEditModal(paper);
+                                          setActiveMenuId(null);
+                                      }}
+                                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                  >
+                                      <span>✏️</span> 수정
+                                  </button>
+                                  <button
+                                      onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteRollingPaper(paper.id);
+                                          setActiveMenuId(null);
+                                      }}
+                                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                  >
+                                      <span>🗑️</span> 삭제
+                                  </button>
+                              </div>
+                          )}
+                      </div>
+                  </div>
+                  <p className="text-gray-500 text-sm mb-4 flex items-center gap-2">
+                      <span className="font-medium">{paper.theme}</span>
+                      {paper.theme === 'CUSTOM' && <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">Custom</span>}
+                  </p>
+                  <div className="flex justify-between items-center mt-4 pt-4 border-t border-slate-100">
+                  <button 
+                      onClick={() => window.open(`/rolling-papers/${paper.id}`, '_blank')}
+                      className="text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 text-sm"
+                  >
+                      바로가기 ↗
+                  </button>
+                  <button 
+                      onClick={() => copyLink(paper.id)}
+                      className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-colors"
+                  >
+                      링크 복사
+                  </button>
+                  </div>
+              </div>
+            </div>
+          ))}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex justify-center items-center gap-2 pt-8">
+            <button
+              onClick={() => loadPapers(currentPage - 1)}
+              disabled={currentPage === 0}
+              className="p-2 rounded-lg border border-slate-200 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+            >
+              ←
+            </button>
+            <div className="flex gap-1">
+              {[...Array(totalPages)].map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => loadPapers(i)}
+                  className={`w-10 h-10 rounded-lg font-semibold transition-all ${
+                    currentPage === i
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => loadPapers(currentPage + 1)}
+              disabled={currentPage === totalPages - 1}
+              className="p-2 rounded-lg border border-slate-200 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+            >
+              →
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Create/Edit Modal */}

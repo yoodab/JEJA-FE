@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
+import { useConfirm } from '../../contexts/ConfirmContext'
 import type { Schedule } from '../../types/schedule'
 import { getScheduleDetail } from '../../services/scheduleService'
 import { applyForSchedule, cancelParticipation } from '../../services/attendanceService'
@@ -19,6 +21,7 @@ export default function ScheduleDetailModal({
   onClose,
   onUpdate,
 }: ScheduleDetailModalProps) {
+  const { confirm } = useConfirm()
   const [schedule, setSchedule] = useState<Schedule | null>(null)
   const [loading, setLoading] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<number | null>(null)
@@ -39,7 +42,7 @@ export default function ScheduleDetailModal({
         }
       } catch (err) {
         console.error('Failed to fetch schedule detail:', err)
-        alert('일정 정보를 불러오는데 실패했습니다.')
+        toast.error('일정 정보를 불러오는데 실패했습니다.')
       } finally {
         setLoading(false)
       }
@@ -52,7 +55,7 @@ export default function ScheduleDetailModal({
 
   const handleParticipation = async () => {
     if (!currentUserId) {
-      alert('로그인이 필요합니다.')
+      toast.error('로그인이 필요합니다.')
       return
     }
     if (processing) return
@@ -60,13 +63,29 @@ export default function ScheduleDetailModal({
     try {
       setProcessing(true)
       if (isParticipating) {
-        if (!confirm('참석 신청을 취소하시겠습니까?')) return
+        const isConfirmed = await confirm({
+          title: '참석 신청 취소',
+          message: '참석 신청을 취소하시겠습니까?',
+          type: 'warning',
+          confirmText: '취소하기',
+          cancelText: '닫기'
+        })
+        if (!isConfirmed) return
+        
         await cancelParticipation(scheduleId, targetDate)
-        alert('참석 신청이 취소되었습니다.')
+        toast.success('참석 신청이 취소되었습니다.')
       } else {
-        if (!confirm('이 일정에 참석하시겠습니까?')) return
+        const isConfirmed = await confirm({
+          title: '참석 신청',
+          message: '이 일정에 참석하시겠습니까?',
+          type: 'warning',
+          confirmText: '신청하기',
+          cancelText: '닫기'
+        })
+        if (!isConfirmed) return
+
         await applyForSchedule(scheduleId, targetDate)
-        alert('참석 신청이 완료되었습니다.')
+        toast.success('참석 신청이 완료되었습니다.')
       }
       
       // Refresh detail data
@@ -78,7 +97,7 @@ export default function ScheduleDetailModal({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const error = err as any
       const message = error.response?.data?.message || '작업 처리에 실패했습니다.'
-      alert(message)
+      toast.error(message)
     } finally {
       setProcessing(false)
     }

@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { getMembers } from '../services/memberService'
 import { sendAdminNotification } from '../services/notificationService'
 import type { Member } from '../types/member'
@@ -7,6 +9,7 @@ import { formatRoles, getMemberStatusColor, formatMemberStatus } from '../types/
 
 function NotificationSendPage() {
   const navigate = useNavigate()
+  const { confirm } = useConfirm()
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
 
@@ -63,10 +66,10 @@ function NotificationSendPage() {
         return Array.from(newIds)
       })
       
-      alert(`순장 ${soonjangIds.length}명이 추가되었습니다.`)
+      toast.success(`순장 ${soonjangIds.length}명이 추가되었습니다.`)
     } catch (error) {
       console.error('Failed to load soonjangs', error)
-      alert('순장 목록을 불러오는데 실패했습니다.')
+      toast.error('순장 목록을 불러오는데 실패했습니다.')
     } finally {
       setLoading(false)
     }
@@ -84,16 +87,24 @@ function NotificationSendPage() {
     e.preventDefault()
     
     if (!title.trim() || !body.trim()) {
-      alert('제목과 내용을 입력해주세요.')
+      toast.error('제목과 내용을 입력해주세요.')
       return
     }
 
     if (selectedMemberIds.length === 0) {
-      alert('발송할 대상을 선택해주세요.')
+      toast.error('발송할 대상을 선택해주세요.')
       return
     }
 
-    if (!confirm(`총 ${selectedMemberIds.length}명에게 알림을 발송하시겠습니까?`)) return
+    const isConfirmed = await confirm({
+      title: '알림 발송',
+      message: `총 ${selectedMemberIds.length}명에게 알림을 발송하시겠습니까?`,
+      type: 'warning',
+      confirmText: '발송',
+      cancelText: '취소'
+    })
+    
+    if (!isConfirmed) return
 
     try {
       setSending(true)
@@ -103,13 +114,13 @@ function NotificationSendPage() {
         title,
         body
       })
-      alert('알림이 발송되었습니다.')
+      toast.success('알림이 발송되었습니다.')
       setTitle('')
       setBody('')
       setSelectedMemberIds([])
     } catch (error) {
       console.error('Failed to send notification', error)
-      alert('알림 발송에 실패했습니다.')
+      toast.error('알림 발송에 실패했습니다.')
     } finally {
       setSending(false)
     }

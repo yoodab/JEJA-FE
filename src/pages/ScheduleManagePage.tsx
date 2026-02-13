@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
+import axios from 'axios'
+import { useConfirm } from '../contexts/ConfirmContext'
 import type { 
   Schedule, 
   ScheduleType, 
@@ -62,6 +65,7 @@ const typeLabels: Record<ScheduleType, string> = {
 
 function ScheduleManagePage() {
   const navigate = useNavigate()
+  const { confirm } = useConfirm()
   
   // Data States
   const [schedules, setSchedules] = useState<Schedule[]>([])
@@ -263,7 +267,9 @@ function ScheduleManagePage() {
     
     try {
       // 상세 정보 조회 (앨범 ID, 출석 명단 등)
-      const detail = await scheduleService.getScheduleDetail(schedule.scheduleId)
+      // 반복 일정인 경우 특정 날짜의 정보를 가져와야 함
+      const targetDate = schedule.startDate.split('T')[0]
+      const detail = await scheduleService.getScheduleDetail(schedule.scheduleId, targetDate)
       setSelectedSchedule(detail)
     } catch (err) {
       console.error('Failed to fetch schedule detail:', err)
@@ -284,7 +290,7 @@ function ScheduleManagePage() {
   // 일정 저장 (생성/수정)
   const handleSaveSchedule = async () => {
     if (!formData.title || !formData.startDate || !formData.endDate || !formData.startTime || !formData.endTime) {
-      alert('제목, 날짜, 시간을 모두 입력해주세요.')
+      toast.error('제목, 날짜, 시간을 모두 입력해주세요.')
       return
     }
 
@@ -339,12 +345,13 @@ function ScheduleManagePage() {
       }
 
       // 성공 시
+      toast.success(editingSchedule ? '일정이 수정되었습니다.' : '일정이 생성되었습니다.')
       setShowModal(false)
       fetchSchedules(year, month + 1)
       setSelectedUpdateType(null)
     } catch (err) {
       console.error(err)
-      alert('일정 저장 중 오류가 발생했습니다.')
+      toast.error('일정 저장 중 오류가 발생했습니다.')
     }
   }
 
@@ -374,12 +381,13 @@ function ScheduleManagePage() {
       // 일반 삭제
       scheduleService.deleteSchedule(schedule.scheduleId)
         .then(() => {
+          toast.success('일정이 삭제되었습니다.')
           setShowDetailModal(false)
           fetchSchedules(year, month + 1)
         })
         .catch((err) => {
           console.error(err)
-          alert('삭제 실패')
+          toast.error('삭제 실패')
         })
     }
     // scheduleToDelete 초기화는 비동기 처리 완료 후 혹은 모달 닫힐 때 적절히 수행
@@ -411,8 +419,10 @@ function ScheduleManagePage() {
           targetDate
         }
         await scheduleService.updateSchedule(pendingActionData.id, updateData)
+        toast.success('일정이 수정되었습니다.')
       } else if (recurrenceAction === 'DELETE') {
         await scheduleService.deleteSchedule(pendingActionData.id, updateType, targetDate)
+        toast.success('일정이 삭제되었습니다.')
       }
 
       setShowRecurrenceModal(false)
@@ -426,7 +436,7 @@ function ScheduleManagePage() {
       fetchSchedules(year, month + 1)
     } catch (err) {
       console.error(err)
-      alert('요청 처리 중 오류가 발생했습니다.')
+      toast.error('요청 처리 중 오류가 발생했습니다.')
     }
   }
 
@@ -482,7 +492,7 @@ function ScheduleManagePage() {
       }
     } catch (err) {
       console.error('Failed to fetch members:', err)
-      alert('멤버 목록을 불러오는데 실패했습니다.')
+      toast.error('멤버 목록을 불러오는데 실패했습니다.')
     } finally {
       setMemberListLoading(false)
     }
@@ -522,7 +532,7 @@ function ScheduleManagePage() {
       // 이미 출석한 멤버인지 확인 (attendees에서 찾음)
       const attendee = selectedSchedule?.attendees?.find(a => a.memberId === memberId)
       if (attendee?.attended) {
-        alert('이미 출석 체크된 인원은 제외할 수 없습니다.')
+        toast.error('이미 출석 체크된 인원은 제외할 수 없습니다.')
         return
       }
     }
@@ -548,10 +558,10 @@ function ScheduleManagePage() {
 
       if (memberManageMode === 'ADD') {
         await scheduleService.registerScheduleMembers(selectedSchedule.scheduleId, selectedIds, selectedDate)
-        alert('명단이 추가되었습니다.')
+        toast.success('명단이 추가되었습니다.')
       } else {
         await scheduleService.removeScheduleAttendees(selectedSchedule.scheduleId, selectedIds, selectedDate)
-        alert('명단이 삭제되었습니다.')
+        toast.success('명단이 삭제되었습니다.')
       }
       
       // 성공 후 데이터 갱신
@@ -561,8 +571,13 @@ function ScheduleManagePage() {
       setShowMemberManageModal(false)
     } catch (err) {
       console.error(err)
-      const message = err instanceof Error ? err.message : '요청 처리에 실패했습니다.'
-      alert(message)
+      let errorMessage = '요청 처리에 실패했습니다.'
+      if (axios.isAxiosError(err)) {
+        errorMessage = err.response?.data?.message || err.message || errorMessage
+      } else if (err instanceof Error) {
+        errorMessage = err.message
+      }
+      toast.error(errorMessage)
     }
   }
 
