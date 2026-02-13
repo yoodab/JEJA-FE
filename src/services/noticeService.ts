@@ -1,4 +1,4 @@
-import api from './api'
+import api, { getImageUrl } from './api'
 
 // 공지사항 생성 요청 DTO
 export interface CreateNoticeRequest {
@@ -25,6 +25,7 @@ export interface NoticeSimple {
   postId: number
   title: string
   authorName: string
+  authorProfileImage?: string
   createdAt: string
   viewCount: number
   likeCount: number
@@ -38,6 +39,7 @@ export interface CommentResponse {
   commentId: number
   content: string
   authorName: string
+  authorProfileImage?: string
   createdAt: string
   likeCount: number
   deleted: boolean
@@ -67,20 +69,24 @@ export async function getNotices(params?: {
   page?: number
   size?: number
   keyword?: string
-}): Promise<{ totalCount: number; notices: NoticeSimple[] }> {
-  const response = await api.get<ApiResponse<{ totalCount: number; content: NoticeSimple[] }>>(
+}): Promise<{ totalCount: number; notices: NoticeSimple[]; totalPages: number }> {
+  const response = await api.get<ApiResponse<{ totalElements: number; totalPages: number; content: NoticeSimple[] }>>(
     '/api/boards/notice/posts',
     {
       params: {
         page: params?.page || 0,
-        size: params?.size || 20,
+        size: params?.size || 10,
         keyword: params?.keyword,
       },
     }
   )
   return {
-    totalCount: response.data.data.totalCount,
-    notices: response.data.data.content,
+    totalCount: response.data.data.totalElements,
+    totalPages: response.data.data.totalPages,
+    notices: response.data.data.content.map(notice => ({
+      ...notice,
+      authorProfileImage: getImageUrl(notice.authorProfileImage)
+    })),
   }
 }
 
@@ -110,9 +116,27 @@ export async function toggleCommentLike(commentId: number): Promise<void> {
 }
 
 // 공지사항 상세 조회 - GET /api/posts/{postId}
-export async function getNoticeById(postId: number): Promise<NoticeDetail> {
-  const response = await api.get<ApiResponse<NoticeDetail>>(`/api/posts/${postId}`)
-  return response.data.data
+export async function getNoticeById(postId: number, incrementView: boolean = true): Promise<NoticeDetail> {
+  const response = await api.get<ApiResponse<NoticeDetail>>(`/api/posts/${postId}`, {
+    params: { incrementView }
+  })
+  const notice = response.data.data
+  return {
+    ...notice,
+    authorProfileImage: getImageUrl(notice.authorProfileImage),
+    comments: Array.isArray(notice.comments)
+      ? notice.comments.map(comment => ({
+          ...comment,
+          authorProfileImage: getImageUrl(comment.authorProfileImage),
+          children: Array.isArray(comment.children)
+            ? comment.children.map(child => ({
+                ...child,
+                authorProfileImage: getImageUrl(child.authorProfileImage)
+              }))
+            : []
+        }))
+      : []
+  }
 }
 
 // 공지사항 추가 (관리자) - POST /api/boards/notice/posts

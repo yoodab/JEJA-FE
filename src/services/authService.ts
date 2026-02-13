@@ -12,6 +12,7 @@ export interface LoginRequestDto {
 export interface LoginResponseData {
   name: string
   role: string  // ROLE_ADMIN, ROLE_USER, ROLE_PASTOR 등
+  memberRoles: string[] // 교인 직분 목록 (e.g., "TEAM_LEADER", "CELL_LEADER")
   accessToken: string
   refreshToken: string
 }
@@ -94,13 +95,18 @@ export async function login(data: LoginRequestDto): Promise<LoginResponseData> {
             return
           }
           
-          const { name, role, refreshToken } = responseData.data
+          const { name, role, memberRoles, refreshToken } = responseData.data
           
           // role 정규화 (ROLE_ 접두사가 없으면 추가)
           let normalizedRole = role
           if (normalizedRole && !normalizedRole.startsWith('ROLE_')) {
             normalizedRole = `ROLE_${normalizedRole}`
           }
+
+          // memberRoles 정규화 (각 역할에 ROLE_ 접두사 추가)
+          const normalizedMemberRoles = (memberRoles || []).map(r => 
+            r.startsWith('ROLE_') ? r : `ROLE_${r}`
+          )
           
           // 디버깅을 위한 로그
           if (import.meta.env.DEV) {
@@ -108,16 +114,23 @@ export async function login(data: LoginRequestDto): Promise<LoginResponseData> {
               name,
               originalRole: role,
               normalizedRole,
+              memberRoles: normalizedMemberRoles,
               hasToken: !!token,
               hasRefreshToken: !!refreshToken
             })
           }
           
           // 토큰과 역할 저장
-          setAuth(token, normalizedRole, refreshToken)
+          setAuth(token, normalizedRole, refreshToken, normalizedMemberRoles)
           
           // 응답 데이터 반환
-          resolve({ name, role: normalizedRole, accessToken: token, refreshToken })
+          resolve({ 
+            name, 
+            role: normalizedRole, 
+            memberRoles: normalizedMemberRoles,
+            accessToken: token, 
+            refreshToken 
+          })
         } catch (error) {
           console.error('❌ 로그인 응답 처리 중 오류:', error)
           reject(error instanceof Error ? error : new Error('로그인 처리 중 오류가 발생했습니다.'))

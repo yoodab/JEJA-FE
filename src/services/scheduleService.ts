@@ -38,8 +38,8 @@ export const getSchedules = async (year: number, month: number): Promise<Schedul
   return handleResponse(response);
 };
 
-export const createSchedule = async (data: CreateScheduleRequest): Promise<Schedule> => {
-  const response = await api.post<ApiResponse<Schedule>>('/api/schedules', data);
+export const createSchedule = async (data: CreateScheduleRequest): Promise<number> => {
+  const response = await api.post<ApiResponse<number>>('/api/schedules', data);
   return handleResponse(response);
 };
 

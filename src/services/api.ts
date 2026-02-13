@@ -4,6 +4,20 @@ import { clearAuth, getToken, setAuth, getRefreshToken } from '../utils/auth'
 // 환경 변수에서 API base URL 가져오기 (환경 변수 우선, 없으면 기본값)
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
 
+/**
+ * 이미지 경로를 전체 URL로 변환합니다.
+ * @param path 이미지 경로 (예: /files/profiles/...)
+ * @returns 전체 URL
+ */
+export const getImageUrl = (path: string | null | undefined): string | undefined => {
+  if (!path) return undefined;
+  if (path.startsWith('http')) return path;
+  
+  // path가 /로 시작하지 않으면 /를 붙여줌
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${API_BASE_URL}${normalizedPath}`;
+};
+
 interface RetryConfig extends InternalAxiosRequestConfig {
   _retry?: boolean
 }

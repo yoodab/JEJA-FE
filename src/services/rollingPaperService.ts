@@ -1,5 +1,6 @@
 import api from './api';
 import type { RollingPaper, RollingPaperCreateRequest, MessageCreateRequest, StickerCreateRequest } from '../types/rollingPaper';
+import type { Page } from '../types/api';
 
 // Service for handling rolling paper operations
 export const rollingPaperService = {
@@ -8,8 +9,10 @@ export const rollingPaperService = {
     return response.data;
   },
 
-  getAllRollingPapers: async (): Promise<RollingPaper[]> => {
-    const response = await api.get('/api/rolling-papers');
+  getAllRollingPapers: async (title?: string, page: number = 0, size: number = 12): Promise<Page<RollingPaper>> => {
+    const response = await api.get('/api/rolling-papers', {
+      params: { title, page, size }
+    });
     return response.data;
   },
 

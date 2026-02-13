@@ -7,7 +7,7 @@ export interface MealHistoryItem {
   id: number
   date: string
   category: 'STOCK' | 'USE'
-  targetName: string
+  targetName: string | null
   note: string
   amount: number
 }
@@ -36,8 +36,13 @@ export interface UpdateMealRequest {
 }
 
 export const getMeals = async (): Promise<MealDataResponse> => {
-  const response = await api.get<ApiResponse<MealDataResponse>>(API_ENDPOINT)
-  return response.data.data
+  const response = await api.get<any>(API_ENDPOINT)
+  // 백엔드에서 ApiResponse로 감싸지 않고 MealDataResponse를 직접 반환하는 경우와
+  // ApiResponse.data 안에 담아 반환하는 경우를 모두 처리
+  if (response.data?.data) {
+    return response.data.data
+  }
+  return response.data || { currentStock: 0, history: [] }
 }
 
 export const addMealStock = async (data: AddStockRequest): Promise<void> => {
