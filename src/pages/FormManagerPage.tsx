@@ -114,10 +114,14 @@ export default function FormManagerPage() {
       if (!templateId) return;
       try {
         setSaveStatus('saving');
-        await updateFormTemplate(Number(templateId), updatedData);
+        const savedTemplate = await updateFormTemplate(Number(templateId), updatedData);
         setSaveStatus('saved');
-        // Update local template state to reflect saved changes
-        setTemplate(prev => prev ? { ...prev, ...updatedData } : null);
+        
+        // Update local template state with the response from server
+        // This is critical to get real IDs for newly created sections/questions
+        if (savedTemplate) {
+          setTemplate(savedTemplate);
+        }
       } catch (error) {
         console.error('Auto-save failed:', error);
         setSaveStatus('error');
@@ -400,7 +404,7 @@ export default function FormManagerPage() {
                       <div className="flex justify-between mb-1">
                         <span className="text-[10px] text-slate-400">{a.targetMemberName || ''}</span>
                       </div>
-                      {Array.isArray(a.value) ? a.value.join(', ') : a.value}
+                      {Array.isArray(a.value) ? a.value.join(', ') : String(a.value || '')}
                     </div>
                   ))}
                 </div>
@@ -434,7 +438,7 @@ export default function FormManagerPage() {
           return (
             <div key={q.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-                <h3 className="font-bold text-slate-900">{q.label}</h3>
+                <h3 className="font-bold text-slate-900">{typeof q.label === 'string' ? q.label : ''}</h3>
                 <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200">
                   응답 {answers.length}개
                 </span>
@@ -463,7 +467,7 @@ export default function FormManagerPage() {
                           {ans.value === 'true' ? '참석/예' : '결석/아니오'}
                         </span>
                       ) : (
-                        Array.isArray(ans.value) ? ans.value.join(', ') : String(ans.value)
+                        Array.isArray(ans.value) ? ans.value.join(', ') : String(ans.value || '')
                       )}
                     </div>
                   </div>

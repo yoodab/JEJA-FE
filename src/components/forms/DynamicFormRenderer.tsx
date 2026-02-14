@@ -48,7 +48,7 @@ const processQuestions = (questions: FormQuestion[]): FormQuestion[] => {
         
         currentScheduleGroup.linkedSchedules.push({
           id: updated.linkedScheduleId,
-          title: updated.label,
+          title: typeof updated.label === 'string' ? updated.label : '',
           startDate: updated.linkedScheduleDate || '',
           questionId: updated.id // Preserve original question ID
         });
@@ -63,7 +63,7 @@ const processQuestions = (questions: FormQuestion[]): FormQuestion[] => {
           // User said "일정 참석여부 조사" so maybe the first label is fine.
           linkedSchedules: [{
             id: updated.linkedScheduleId,
-            title: updated.label,
+            title: typeof updated.label === 'string' ? updated.label : '',
             startDate: updated.linkedScheduleDate || '',
             questionId: updated.id
           }]

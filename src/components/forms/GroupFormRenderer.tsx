@@ -265,7 +265,7 @@ export const GroupFormRenderer: React.FC<GroupFormRendererProps> = ({
                       </div>
                     )}
                     <label className="mb-1 block text-sm font-medium text-slate-700">
-                      {q.label}
+                      {typeof q.label === 'string' ? q.label : ''}
                       {q.required && <span className="ml-1 text-rose-500">*</span>}
                     </label>
                     <FormInput

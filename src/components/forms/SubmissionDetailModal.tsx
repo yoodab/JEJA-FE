@@ -102,11 +102,11 @@ const SubmissionDetailModal: React.FC<SubmissionDetailModalProps> = ({
                       return (
                         <AnswerItem key={question.id}>
                           <QuestionLabel>
-                            Q. {question.label}
+                            Q. {typeof question.label === 'string' ? question.label : ''}
                             {question.required && <RequiredBadge>필수</RequiredBadge>}
                           </QuestionLabel>
-                          {answer && answer.value.trim() !== '' ? (
-                            <AnswerValue>{answer.value}</AnswerValue>
+                          {answer && String(answer.value || '').trim() !== '' ? (
+                            <AnswerValue>{String(answer.value)}</AnswerValue>
                           ) : (
                             <NoAnswerValue>미응답</NoAnswerValue>
                           )}
@@ -117,9 +117,9 @@ const SubmissionDetailModal: React.FC<SubmissionDetailModalProps> = ({
                   // 템플릿 정보가 없을 경우 기존처럼 제출된 답변만 표시
                    submission.answers.map((ans, idx) => (
                      <AnswerItem key={idx}>
-                       <QuestionLabel>Q. {ans.questionLabel || `질문 ${ans.questionId}`}</QuestionLabel>
-                       {ans.value.trim() !== '' ? (
-                         <AnswerValue>{ans.value}</AnswerValue>
+                       <QuestionLabel>Q. {typeof ans.questionLabel === 'string' ? ans.questionLabel : `질문 ${ans.questionId}`}</QuestionLabel>
+                       {String(ans.value || '').trim() !== '' ? (
+                         <AnswerValue>{String(ans.value)}</AnswerValue>
                        ) : (
                          <NoAnswerValue>미응답</NoAnswerValue>
                        )}

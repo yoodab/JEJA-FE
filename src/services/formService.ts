@@ -162,8 +162,8 @@ export interface MySubmissionResponse {
   category: FormCategory;
 }
 
-const mapQuestion = (q: RawQuestionDto): FormQuestion => ({
-  id: q.id ?? -(Date.now()),
+const mapQuestion = (q: RawQuestionDto, index: number): FormQuestion => ({
+  id: q.id ?? -(1000 + index),
   label: q.label ?? '',
   inputType: (q.inputType ?? 'SHORT_TEXT') as QuestionType,
   syncType: (q.syncType ?? undefined) as AttendanceSyncType | undefined,
@@ -178,14 +178,14 @@ const mapQuestion = (q: RawQuestionDto): FormQuestion => ({
   linkedSchedules: q.linkedSchedules,
 });
 
-const mapSection = (s: RawSectionDto): FormSection => ({
-  id: s.id ?? -(Date.now()),
+const mapSection = (s: RawSectionDto, index: number): FormSection => ({
+  id: s.id ?? -(100 + index),
   title: s.title ?? '',
   description: s.description,
   orderIndex: s.orderIndex ?? 0,
   defaultNextAction: (s.defaultNextAction ?? undefined) as NextActionType | undefined,
   defaultTargetSectionIndex: s.defaultTargetSectionIndex ?? null,
-  questions: s.questions ? s.questions.map(mapQuestion) : [],
+  questions: s.questions ? s.questions.map((q, qIdx) => mapQuestion(q, qIdx)) : [],
 });
 
 export const getAvailableForms = async (): Promise<FormTemplate[]> => {
@@ -293,13 +293,13 @@ export const getTemplateDetail = async (id: number): Promise<FormTemplate> => {
   const data = response.data.data;
   
   // 섹션에 있는 질문들을 모두 평탄화하여 questions 배열에 추가
-  const questions = data.questions ? data.questions.map(mapQuestion) : [];
+  const questions = data.questions ? data.questions.map((q, idx) => mapQuestion(q, idx)) : [];
   if (data.sections) {
-    data.sections.forEach(s => {
+    data.sections.forEach((s, sIdx) => {
       if (s.questions) {
-        s.questions.forEach(q => {
+        s.questions.forEach((q, qIdx) => {
           if (!questions.find(existing => existing.id === q.id)) {
-            questions.push(mapQuestion(q));
+            questions.push(mapQuestion(q, qIdx));
           }
         });
       }
@@ -315,7 +315,7 @@ export const getTemplateDetail = async (id: number): Promise<FormTemplate> => {
     isActive: (data.isActive ?? data.active)!,
     targetClubId: data.targetClubId,
     questions: questions,
-    sections: data.sections ? data.sections.map(mapSection) : [],
+    sections: data.sections ? data.sections.map((s, idx) => mapSection(s, idx)) : [],
     startDate: data.startDate,
     endDate: data.endDate
   };
@@ -326,13 +326,13 @@ export const getFormTemplate = async (id: number): Promise<FormTemplate> => {
   const data = response.data.data;
   
   // 섹션에 있는 질문들을 모두 평탄화하여 questions 배열에 추가
-  const questions = data.questions ? data.questions.map(mapQuestion) : [];
+  const questions = data.questions ? data.questions.map((q, idx) => mapQuestion(q, idx)) : [];
   if (data.sections) {
-    data.sections.forEach(s => {
+    data.sections.forEach((s, sIdx) => {
       if (s.questions) {
-        s.questions.forEach(q => {
+        s.questions.forEach((q, qIdx) => {
           if (!questions.find(existing => existing.id === q.id)) {
-            questions.push(mapQuestion(q));
+            questions.push(mapQuestion(q, qIdx));
           }
         });
       }
@@ -348,11 +348,11 @@ export const getFormTemplate = async (id: number): Promise<FormTemplate> => {
     isActive: (data.isActive ?? data.active)!, // Handle both isActive and active
     targetClubId: data.targetClubId,
     questions: questions,
-    sections: data.sections ? data.sections.map(mapSection) : [],
+    sections: data.sections ? data.sections.map((s, idx) => mapSection(s, idx)) : [],
     startDate: data.startDate,
     endDate: data.endDate,
     accessList: data.accessList ? data.accessList.map((a, index) => ({
-      id: Date.now() + index, 
+      id: index, // Use index for stable ID if backend doesn't provide one
       accessType: a.accessType as AccessType,
       targetType: a.targetType as TargetType,
       targetValue: a.targetValue
@@ -368,13 +368,13 @@ export const getTemplateByClubId = async (clubId: number): Promise<FormTemplate 
     const data = response.data.data;
     
     // 섹션에 있는 질문들을 모두 평탄화하여 questions 배열에 추가
-    const questions = data.questions ? data.questions.map(mapQuestion) : [];
+    const questions = data.questions ? data.questions.map((q, idx) => mapQuestion(q, idx)) : [];
     if (data.sections) {
-      data.sections.forEach(s => {
+      data.sections.forEach((s, sIdx) => {
         if (s.questions) {
-          s.questions.forEach(q => {
+          s.questions.forEach((q, qIdx) => {
             if (!questions.find(existing => existing.id === q.id)) {
-              questions.push(mapQuestion(q));
+              questions.push(mapQuestion(q, qIdx));
             }
           });
         }
@@ -390,11 +390,11 @@ export const getTemplateByClubId = async (clubId: number): Promise<FormTemplate 
       isActive: (data.isActive ?? data.active)!,
       targetClubId: data.targetClubId,
       questions: questions,
-      sections: data.sections ? data.sections.map(mapSection) : [],
+      sections: data.sections ? data.sections.map((s, idx) => mapSection(s, idx)) : [],
       startDate: data.startDate,
       endDate: data.endDate,
       accessList: data.accessList ? data.accessList.map((a, index) => ({
-        id: Date.now() + index, 
+        id: index, // Use index for stable ID if backend doesn't provide one
         accessType: a.accessType as AccessType,
         targetType: a.targetType as TargetType,
         targetValue: a.targetValue
