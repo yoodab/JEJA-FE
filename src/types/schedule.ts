@@ -1,6 +1,6 @@
 export type ScheduleType = 'WORSHIP' | 'EVENT' | 'MEETING';
 export type SharingScope = 'PUBLIC' | 'LOGGED_IN_USERS' | 'PRIVATE';
-export type RecurrenceRule = 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+export type RecurrenceRule = 'NONE' | 'DAILY' | 'WEEKLY' | 'WEEKLY_DAYS' | 'MONTHLY' | 'YEARLY';
 export type UpdateType = 'THIS_ONLY' | 'FUTURE' | 'ALL';
 
 export interface WorshipCategory {
@@ -30,6 +30,7 @@ export interface Schedule {
   worshipCategoryName?: string;
   recurrenceRule: RecurrenceRule;
   recurrenceEndDate?: string; // YYYY-MM-DD
+  recurrenceDays?: string[]; // ['MONDAY', 'TUESDAY', ...]
   linkedAlbumId?: number | null;
   attendees?: ScheduleAttendee[];
 }
@@ -45,14 +46,16 @@ export interface CreateScheduleRequest {
   worshipCategory?: string;
   recurrenceRule: RecurrenceRule;
   recurrenceEndDate?: string;
+  recurrenceDays?: string[];
   createAlbum?: boolean;
 }
 
-export interface UpdateScheduleRequest extends Partial<Omit<CreateScheduleRequest, 'recurrenceRule' | 'recurrenceEndDate'>> {
+export interface UpdateScheduleRequest extends Partial<Omit<CreateScheduleRequest, 'recurrenceRule' | 'recurrenceEndDate' | 'recurrenceDays'>> {
   updateType?: UpdateType;
   targetDate?: string; // YYYY-MM-DD (수정하려는 일정의 원본 시작 날짜)
   recurrenceRule?: RecurrenceRule;
   recurrenceEndDate?: string;
+  recurrenceDays?: string[];
 }
 
 export interface UpcomingScheduleResponse {

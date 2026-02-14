@@ -29,6 +29,7 @@ interface ScheduleFormData {
   content: string
   recurrenceRule: RecurrenceRule
   recurrenceEndDate: string // YYYY-MM-DD
+  recurrenceDays: string[]
   sharingScope: SharingScope
   worshipCategory?: string
   createAlbum: boolean
@@ -45,6 +46,7 @@ const initialFormData: ScheduleFormData = {
   content: '',
   recurrenceRule: 'NONE',
   recurrenceEndDate: '',
+  recurrenceDays: [],
   sharingScope: 'LOGGED_IN_USERS',
   worshipCategory: undefined,
   createAlbum: false,
@@ -61,6 +63,16 @@ const typeLabels: Record<ScheduleType, string> = {
   EVENT: '행사',
   MEETING: '모임',
 }
+
+const WEEK_DAYS = [
+  { value: 'MONDAY', label: '월' },
+  { value: 'TUESDAY', label: '화' },
+  { value: 'WEDNESDAY', label: '수' },
+  { value: 'THURSDAY', label: '목' },
+  { value: 'FRIDAY', label: '금' },
+  { value: 'SATURDAY', label: '토' },
+  { value: 'SUNDAY', label: '일' },
+]
 
 function ScheduleManagePage() {
   const navigate = useNavigate()
@@ -239,6 +251,7 @@ function ScheduleManagePage() {
       content: schedule.content || '',
       recurrenceRule: schedule.recurrenceRule,
       recurrenceEndDate: schedule.recurrenceEndDate || '',
+      recurrenceDays: schedule.recurrenceDays || [],
       sharingScope: schedule.sharingScope,
       worshipCategory: schedule.worshipCategory,
       createAlbum: false,
@@ -307,6 +320,7 @@ function ScheduleManagePage() {
       worshipCategory: formData.type === 'WORSHIP' ? formData.worshipCategory : undefined,
       recurrenceRule: formData.recurrenceRule,
       recurrenceEndDate: formData.recurrenceRule !== 'NONE' ? formData.recurrenceEndDate : undefined,
+      recurrenceDays: formData.recurrenceRule === 'WEEKLY_DAYS' ? formData.recurrenceDays : undefined,
       createAlbum: formData.createAlbum,
     }
 
@@ -931,15 +945,41 @@ function ScheduleManagePage() {
                       value={formData.recurrenceRule}
                       onChange={(e) => setFormData({ ...formData, recurrenceRule: e.target.value as RecurrenceRule })}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                      disabled={!!editingSchedule} // 수정 시에는 반복 규칙 변경 제한
                     >
                       <option value="NONE">반복 없음</option>
                       <option value="DAILY">매일</option>
                       <option value="WEEKLY">매주</option>
                       <option value="MONTHLY">매월</option>
                       <option value="YEARLY">매년</option>
+                      <option value="WEEKLY_DAYS">커스텀</option>
                     </select>
                   </div>
+                  {formData.recurrenceRule === 'WEEKLY_DAYS' && (
+                    <div className="mb-3">
+                      <label className="mb-1 block text-xs font-semibold text-slate-700">반복 요일</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {WEEK_DAYS.map((day) => (
+                          <button
+                            key={day.value}
+                            type="button"
+                            onClick={() => {
+                              const newDays = formData.recurrenceDays.includes(day.value)
+                                ? formData.recurrenceDays.filter(d => d !== day.value)
+                                : [...formData.recurrenceDays, day.value]
+                              setFormData({ ...formData, recurrenceDays: newDays })
+                            }}
+                            className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all ${
+                              formData.recurrenceDays.includes(day.value)
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'bg-white text-slate-600 ring-1 ring-inset ring-slate-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            {day.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {formData.recurrenceRule !== 'NONE' && (
                     <div>
                       <label className="mb-1 block text-xs font-semibold text-slate-700">반복 종료일</label>
@@ -948,7 +988,6 @@ function ScheduleManagePage() {
                         value={formData.recurrenceEndDate}
                         onChange={(e) => setFormData({ ...formData, recurrenceEndDate: e.target.value })}
                         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                        disabled={!!editingSchedule}
                       />
                     </div>
                   )}

@@ -6,7 +6,6 @@ import type { RollingPaperTheme } from '../services/themeService';
 import type { RollingPaper } from '../types/rollingPaper';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import Footer from '../components/Footer';
 
 const RollingPaperManagePage = () => {
   const { confirm } = useConfirm();
@@ -534,9 +533,6 @@ const RollingPaperManagePage = () => {
           </div>
         </div>
       )}
-      <div className="mt-12">
-        <Footer />
-      </div>
     </div>
   );
 };

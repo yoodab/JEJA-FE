@@ -632,6 +632,9 @@ export const FormBuilder = forwardRef<FormBuilderHandle, FormBuilderProps>((prop
 
   // Sync state from initialTemplate if it changes
   const initialTemplateId = initialTemplate?.id;
+  // Track section IDs to detect when temporary IDs are replaced by real backend IDs
+  const sectionIdsStr = initialTemplate?.sections?.map(s => s.id).filter(Boolean).join(',');
+
   useEffect(() => {
     if (initialTemplate) {
       setTitle(initialTemplate.title || '');
@@ -642,11 +645,37 @@ export const FormBuilder = forwardRef<FormBuilderHandle, FormBuilderProps>((prop
       setAccessList(initialTemplate.accessList || []);
       
       if (initialTemplate.sections && initialTemplate.sections.length > 0) {
-        setSections(initialTemplate.sections.map((s, index) => ({
-          ...s,
-          id: s.id || (Date.now() + index),
-          questions: processQuestions(s.questions)
-        })));
+        setSections(prevSections => {
+          // If we already have sections and the number of sections is the same, 
+          // we only want to sync IDs to avoid losing unsaved changes in the UI
+          if (prevSections.length === initialTemplate.sections!.length) {
+            return prevSections.map((ps, idx) => {
+              const serverSection = initialTemplate.sections![idx];
+              // If server has a real ID and we have a temporary one (timestamp), sync it
+              if (serverSection.id && ps.id !== serverSection.id) {
+                return { 
+                  ...ps, 
+                  id: serverSection.id,
+                  questions: ps.questions.map((pq, qIdx) => {
+                    const serverQuestion = serverSection.questions?.[qIdx];
+                    if (serverQuestion?.id && pq.id !== serverQuestion.id) {
+                      return { ...pq, id: serverQuestion.id };
+                    }
+                    return pq;
+                  })
+                };
+              }
+              return ps;
+            });
+          }
+          
+          // Fallback: Replace all sections (standard initialization)
+          return initialTemplate.sections!.map((s, index) => ({
+            ...s,
+            id: s.id || (Date.now() + index),
+            questions: processQuestions(s.questions)
+          }));
+        });
       } else if (initialTemplate.questions) {
         setSections([{
           id: Date.now(),
@@ -658,7 +687,7 @@ export const FormBuilder = forwardRef<FormBuilderHandle, FormBuilderProps>((prop
         }]);
       }
     }
-  }, [initialTemplateId]); // Only run when ID changes, not on every object change
+  }, [initialTemplateId, sectionIdsStr]); // Run when template ID or section IDs change
 
   const [accessList, setAccessList] = useState<FormAccess[]>(initialTemplate?.accessList || initialAccessList || []);
 
@@ -1210,7 +1239,7 @@ export const FormBuilder = forwardRef<FormBuilderHandle, FormBuilderProps>((prop
                         <div className="flex items-center justify-between">
                            <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="text-base font-medium text-slate-900">{q.label || '질문 제목 없음'}</span>
+                                <span className="text-base font-medium text-slate-900">{typeof q.label === 'string' ? (q.label || '질문 제목 없음') : '질문 제목 오류'}</span>
                                 {q.required && <span className="text-rose-500">*</span>}
                               </div>
                               {q.imageUrl && (
@@ -1262,7 +1291,7 @@ export const FormBuilder = forwardRef<FormBuilderHandle, FormBuilderProps>((prop
                                 <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-lg border-b-2 border-slate-200 focus-within:border-blue-500 focus-within:bg-white transition-colors">
                                   <input
                                     type="text"
-                                    value={q.label}
+                                    value={typeof q.label === 'string' ? q.label : ''}
                                     onChange={(e) => updateQuestion(section.id, q.id, { label: e.target.value })}
                                     className="w-full bg-transparent text-base font-medium text-slate-900 focus:outline-none"
                                     placeholder="질문"

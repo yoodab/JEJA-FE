@@ -208,7 +208,7 @@ export const PersonalFormRenderer: React.FC<PersonalFormRendererProps> = ({
                 </div>
               )}
               <label className="block text-sm font-semibold text-slate-700">
-                {question.label}
+                {typeof question.label === 'string' ? question.label : ''}
                 {question.required && <span className="ml-1 text-rose-500">*</span>}
               </label>
               <FormInput

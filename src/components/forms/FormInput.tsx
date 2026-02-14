@@ -120,27 +120,32 @@ export const FormInput: React.FC<FormInputProps> = ({
     case 'SINGLE_CHOICE': {
       const singleOptions = question.options?.length 
         ? question.options 
-        : (question.optionsJson ? JSON.parse(question.optionsJson).map((o: { label: string }) => o.label) : []);
+        : (question.optionsJson ? JSON.parse(question.optionsJson).map((o: string | { label: string }) => typeof o === 'string' ? o : o.label) : []);
       
       return (
         <div className="space-y-2">
-          {singleOptions.map((opt: string) => (
-            <label key={opt} className={`flex items-center p-2 rounded border cursor-pointer transition-all ${value === opt ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}>
-              <div className={`flex h-5 w-5 items-center justify-center rounded-full border ${value === opt ? 'border-blue-600' : 'border-slate-300'}`}>
-                {value === opt && <div className="h-2.5 w-2.5 rounded-full bg-blue-600" />}
-              </div>
-              <input
-                type="radio"
-                name={`question-${question.id}`}
-                value={opt}
-                checked={value === opt}
-                onChange={(e) => onChange(e.target.value)}
-                disabled={disabled}
-                className="sr-only"
-              />
-              <span className={`ml-3 text-sm ${value === opt ? 'font-medium text-blue-700' : 'text-slate-700'}`}>{opt}</span>
-            </label>
-          ))}
+          {singleOptions.map((opt: any) => {
+            const displayLabel = typeof opt === 'string' ? opt : (opt?.label || '');
+            const optValue = typeof opt === 'string' ? opt : (opt?.label || '');
+            
+            return (
+              <label key={optValue} className={`flex items-center p-2 rounded border cursor-pointer transition-all ${value === optValue ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                <div className={`flex h-5 w-5 items-center justify-center rounded-full border ${value === optValue ? 'border-blue-600' : 'border-slate-300'}`}>
+                  {value === optValue && <div className="h-2.5 w-2.5 rounded-full bg-blue-600" />}
+                </div>
+                <input
+                  type="radio"
+                  name={`question-${question.id}`}
+                  value={optValue}
+                  checked={value === optValue}
+                  onChange={(e) => onChange(e.target.value)}
+                  disabled={disabled}
+                  className="sr-only"
+                />
+                <span className={`ml-3 text-sm ${value === optValue ? 'font-medium text-blue-700' : 'text-slate-700'}`}>{displayLabel}</span>
+              </label>
+            );
+          })}
         </div>
       );
     }
@@ -149,25 +154,30 @@ export const FormInput: React.FC<FormInputProps> = ({
       const currentValues = (Array.isArray(value) ? value : []) as string[];
       const multiOptions = question.options?.length 
         ? question.options 
-        : (question.optionsJson ? JSON.parse(question.optionsJson).map((o: { label: string }) => o.label) : []);
+        : (question.optionsJson ? JSON.parse(question.optionsJson).map((o: string | { label: string }) => typeof o === 'string' ? o : o.label) : []);
 
       return (
         <div className="space-y-2">
-          {multiOptions.map((opt: string) => (
-            <div key={opt} className={`rounded border p-2 transition-colors ${currentValues.includes(opt) ? 'bg-blue-50 border-blue-200' : 'border-transparent'}`}>
-              <CustomCheckbox
-                checked={currentValues.includes(opt)}
-                onChange={(checked) => {
-                  const newValues = checked
-                    ? [...currentValues, opt]
-                    : currentValues.filter((v) => v !== opt);
-                  onChange(newValues);
-                }}
-                disabled={disabled}
-                label={opt}
-              />
-            </div>
-          ))}
+          {multiOptions.map((opt: any) => {
+            const displayLabel = typeof opt === 'string' ? opt : (opt?.label || '');
+            const optValue = typeof opt === 'string' ? opt : (opt?.label || '');
+            
+            return (
+              <div key={optValue} className={`rounded border p-2 transition-colors ${currentValues.includes(optValue) ? 'bg-blue-50 border-blue-200' : 'border-transparent'}`}>
+                <CustomCheckbox
+                  checked={currentValues.includes(optValue)}
+                  onChange={(checked) => {
+                    const newValues = checked
+                      ? [...currentValues, optValue]
+                      : currentValues.filter((v) => v !== optValue);
+                    onChange(newValues);
+                  }}
+                  disabled={disabled}
+                  label={displayLabel}
+                />
+              </div>
+            );
+          })}
         </div>
       );
     }
@@ -323,7 +333,7 @@ export const FormInput: React.FC<FormInputProps> = ({
                    {s.startDate.substring(5, 10)}
                  </span>
                  <span className={`text-sm font-semibold ${isChecked ? 'text-blue-700' : 'text-slate-700'}`}>
-                   {s.title}
+                   {typeof s.title === 'string' ? s.title : ''}
                  </span>
                </div>
             </label>
