@@ -295,7 +295,7 @@ export const getTemplateDetail = async (id: number): Promise<FormTemplate> => {
   // 섹션에 있는 질문들을 모두 평탄화하여 questions 배열에 추가
   const questions = data.questions ? data.questions.map((q, idx) => mapQuestion(q, idx)) : [];
   if (data.sections) {
-    data.sections.forEach((s, sIdx) => {
+    data.sections.forEach((s) => {
       if (s.questions) {
         s.questions.forEach((q, qIdx) => {
           if (!questions.find(existing => existing.id === q.id)) {
@@ -328,7 +328,7 @@ export const getFormTemplate = async (id: number): Promise<FormTemplate> => {
   // 섹션에 있는 질문들을 모두 평탄화하여 questions 배열에 추가
   const questions = data.questions ? data.questions.map((q, idx) => mapQuestion(q, idx)) : [];
   if (data.sections) {
-    data.sections.forEach((s, sIdx) => {
+    data.sections.forEach((s) => {
       if (s.questions) {
         s.questions.forEach((q, qIdx) => {
           if (!questions.find(existing => existing.id === q.id)) {
@@ -370,7 +370,7 @@ export const getTemplateByClubId = async (clubId: number): Promise<FormTemplate 
     // 섹션에 있는 질문들을 모두 평탄화하여 questions 배열에 추가
     const questions = data.questions ? data.questions.map((q, idx) => mapQuestion(q, idx)) : [];
     if (data.sections) {
-      data.sections.forEach((s, sIdx) => {
+      data.sections.forEach((s) => {
         if (s.questions) {
           s.questions.forEach((q, qIdx) => {
             if (!questions.find(existing => existing.id === q.id)) {
