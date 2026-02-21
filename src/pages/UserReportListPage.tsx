@@ -114,12 +114,6 @@ function UserReportListPage() {
               작성해야 할 보고서와 제출 내역을 관리합니다.
             </p>
           </div>
-          <button
-            onClick={() => navigate('/user-dashboard')}
-            className="text-sm font-semibold text-blue-600 hover:text-blue-700"
-          >
-            ← 메인으로
-          </button>
         </div>
 
         {/* 필터 탭 */}

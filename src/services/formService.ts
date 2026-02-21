@@ -90,6 +90,7 @@ interface AvailableFormResponseDto {
   startDate?: string;
   endDate?: string;
   isActive: boolean;
+  statusMessage?: string;
 }
 
 interface AdminSubmissionSummaryDto {
@@ -284,7 +285,8 @@ export const getFormTemplates = async (): Promise<FormTemplate[]> => {
     isActive: dto.isActive,
     questions: [],
     startDate: dto.startDate,
-    endDate: dto.endDate
+    endDate: dto.endDate,
+    statusMessage: dto.statusMessage
   } as FormTemplate));
 };
 
@@ -453,7 +455,17 @@ export const getFormSubmission = async (submissionId: number): Promise<FormSubmi
         value: ans.value,
         targetMemberName: ans.memberName || undefined
       }));
-    })
+    }),
+    snapshotQuestions: dto.items.map((item, idx) => ({
+      id: item.questionId,
+      label: item.label,
+      inputType: item.inputType,
+      required: false, // 스냅샷에서는 필수 여부 알 수 없음 (표시용이므로 무관)
+      orderIndex: idx,
+      options: [], // 옵션 정보는 스냅샷에 없지만, 추후 필요시 백엔드 DTO 수정 필요
+      memberSpecific: item.answers.some(a => a.memberName), // 답변에 이름이 있으면 memberSpecific으로 추정
+      linkedSchedules: undefined // 일정 정보는 스냅샷에 포함되지 않을 수 있음
+    }))
   };
 };
 

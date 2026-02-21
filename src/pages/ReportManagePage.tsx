@@ -6,7 +6,7 @@ import type { FormTemplate } from '../types/form';
 import { mockMembers } from '../data/mockData';
 import { getFormTemplates, createFormTemplate, getFormTemplate, deleteFormTemplate } from '../services/formService';
 import { DynamicFormRenderer } from '../components/forms/DynamicFormRenderer';
-import { Plus, Users, FileText, ChevronRight, ListChecks, Calendar, MoreVertical, Copy, Trash2 } from 'lucide-react';
+import { Plus, Users, FileText, ChevronRight, MoreVertical, Copy, Trash2 } from 'lucide-react';
 
 function ReportManagePage() {
   const navigate = useNavigate();
@@ -61,7 +61,18 @@ function ReportManagePage() {
           defaultNextAction: 'CONTINUE' as any,
           questions: []
         }],
-        accessList: []
+        accessList: category === 'CELL_REPORT' ? [
+          {
+            accessType: 'RESPONDENT',
+            targetType: 'ROLE',
+            targetValue: 'CELL_LEADER'
+          },
+          {
+            accessType: 'RESPONDENT',
+            targetType: 'ROLE',
+            targetValue: 'CELL_SUB_LEADER'
+          }
+        ] : []
       });
 
       navigate(`/manage/forms/${newTemplate.id}`);
@@ -146,17 +157,11 @@ function ReportManagePage() {
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-      <div className="mx-auto max-w-6xl space-y-6">
+      <div className="mx-auto max-w-6xl">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         {/* Header */}
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/dashboard')}
-              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-            >
-              ←
-            </button>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-xl">
                 📄
@@ -174,9 +179,10 @@ function ReportManagePage() {
             <Plus className="h-4 w-4" />
             새 양식 만들기
           </button>
-        </header>
+        </div>
 
         {/* Template List */}
+        <div className="p-6">
         {loading ? (
           <div className="flex h-64 items-center justify-center">
             <div className="text-center">
@@ -204,17 +210,6 @@ function ReportManagePage() {
               const Icon = isCellReport ? Users : FileText;
               const badgeColor = isCellReport ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600';
               const iconBg = isCellReport ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600';
-              
-              // Date formatting helper
-              const formatDate = (isoString?: string) => {
-                if (!isoString) return '';
-                const date = new Date(isoString);
-                return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
-              };
-              
-              const dateRange = template.startDate && template.endDate
-                ? `${formatDate(template.startDate)} ~ ${formatDate(template.endDate)}`
-                : '기간 설정 없음';
 
               return (
                 <div
@@ -290,13 +285,8 @@ function ReportManagePage() {
 
                   <div className="flex items-center justify-between border-t border-slate-100 pt-4 text-xs text-slate-400">
                     <div className="flex gap-3">
-                      <span className="flex items-center gap-1">
-                        <ListChecks className="h-3.5 w-3.5" />
-                        {template.questions?.length || 0}개 항목
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3.5 w-3.5" />
-                        {dateRange}
+                      <span className="flex items-center gap-1 font-medium text-slate-500">
+                        {template.statusMessage || '-'}
                       </span>
                     </div>
                     <ChevronRight className="h-4 w-4 text-slate-300 transition-transform group-hover:translate-x-1 group-hover:text-blue-500" />
@@ -306,6 +296,8 @@ function ReportManagePage() {
             })}
           </div>
         )}
+        </div>
+      </div>
       </div>
 
       {/* Create Template Modal */}
