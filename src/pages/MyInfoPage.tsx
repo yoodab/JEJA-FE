@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useConfirm } from '../contexts/ConfirmContext'
 import UserHeader from '../components/UserHeader'
@@ -192,17 +192,11 @@ function MyInfoPage() {
               나의 기본 정보와 출석 현황을 확인합니다.
             </p>
           </div>
-          <Link
-            to="/user-dashboard"
-            className="text-sm font-semibold text-blue-600 hover:text-blue-700"
-          >
-            ← 메인으로
-          </Link>
         </div>
 
         <div className="space-y-6">
           {/* 1. 기본 정보 섹션 */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+          <div className="p-4 sm:p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-semibold text-slate-900">기본 정보</h2>
             </div>
@@ -274,7 +268,7 @@ function MyInfoPage() {
           </div>
 
           {/* 2. 출석 현황 섹션 (기간 선택 & 통계) */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+          <div className="p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <h2 className="text-lg font-semibold text-slate-900">출석 현황</h2>
               

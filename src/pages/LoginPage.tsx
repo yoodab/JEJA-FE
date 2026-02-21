@@ -1,10 +1,12 @@
 import { type FormEvent, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { AxiosError } from 'axios'
 import { login } from '../services/authService'
+import { isManager } from '../utils/auth'
 
 function LoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [loginId, setLoginId] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -18,8 +20,17 @@ function LoginPage() {
       await login({ loginId, password })
       // 로그인 성공 시 스토리지 이벤트 발생시켜 헤더 업데이트 강제
       window.dispatchEvent(new Event('storage'))
-      // 로그인 성공 시 일반 유저 메인으로 이동
-      navigate('/user-dashboard', { replace: true })
+      
+      // 원래 가려던 페이지가 있으면 그곳으로 이동
+      const from = location.state?.from?.pathname || '/user-dashboard';
+      
+      // 관리자 페이지(/manage로 시작)로 가려던 경우 관리자 권한 확인
+      if (from.startsWith('/manage') && !isManager()) {
+         navigate('/user-dashboard', { replace: true });
+         return;
+      }
+      
+      navigate(from, { replace: true })
     } catch (err: unknown) {
       // 에러 메시지 추출
       let errorMessage = '로그인에 실패했습니다. 아이디와 비밀번호를 확인해주세요.'
