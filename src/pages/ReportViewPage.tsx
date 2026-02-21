@@ -6,7 +6,7 @@ import { getFormSubmission, getLastSubmission, getTemplateDetail } from '../serv
 import { getCellDetail, getMyCell } from '../services/cellService';
 import type { FormSubmission, FormTemplate } from '../types/form';
 import { DynamicFormRenderer } from '../components/forms/DynamicFormRenderer';
-import { ChevronLeft, Calendar, Edit3, User, Users } from 'lucide-react';
+import { Calendar, Edit3, User, Users } from 'lucide-react';
 
 function ReportViewPage() {
   const { submissionId } = useParams();
@@ -49,6 +49,37 @@ function ReportViewPage() {
         // 2. Fetch template
         if (currentTemplateId) {
           const tmplData = await getTemplateDetail(currentTemplateId);
+          
+          if (subData && subData.snapshotQuestions && subData.snapshotQuestions.length > 0) {
+            // Merge snapshot questions with template details
+            const mergedQuestions = subData.snapshotQuestions.map(snapshotQ => {
+              const templateQ = tmplData.questions.find(q => q.id === snapshotQ.id);
+              if (templateQ) {
+                // Use template details but override label/inputType from snapshot
+                return {
+                  ...templateQ,
+                  label: snapshotQ.label,
+                  inputType: snapshotQ.inputType,
+                  orderIndex: snapshotQ.orderIndex,
+                  // Keep other template details like options, linkedSchedules, etc.
+                };
+              } else {
+                // Deleted question - use snapshot as is
+                return snapshotQ;
+              }
+            });
+            
+            // Sort by orderIndex
+            mergedQuestions.sort((a, b) => a.orderIndex - b.orderIndex);
+            
+            tmplData.questions = mergedQuestions;
+            // Clear sections if we are using flattened questions list to avoid duplication/confusion
+            // or we need to update sections too. For simplicity, let's rely on questions array for now
+            // as DynamicFormRenderer prioritizes questions prop if we pass it directly? 
+            // Actually DynamicFormRenderer uses template.questions primarily.
+            tmplData.sections = []; 
+          }
+          
           setTemplate(tmplData);
 
           if (subData) {
@@ -131,12 +162,6 @@ function ReportViewPage() {
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
           <p className="mb-4 text-slate-500">양식을 찾을 수 없습니다.</p>
-          <button
-            onClick={() => navigate('/my-reports')}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-white"
-          >
-            목록으로 돌아가기
-          </button>
         </div>
       </div>
     );
@@ -157,12 +182,6 @@ function ReportViewPage() {
         
         {/* Header */}
         <div className="flex items-center gap-4">
-          <button 
-            onClick={() => navigate(-1)}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm hover:bg-slate-50 transition-colors"
-          >
-            <ChevronLeft className="h-6 w-6 text-slate-600" />
-          </button>
           <div>
             <h1 className="text-2xl font-bold text-slate-800">{template.title} 조회</h1>
             {submission && <p className="text-sm text-slate-500 mt-1">{submission.submitDate} 제출됨</p>}
@@ -213,12 +232,6 @@ function ReportViewPage() {
           </div>
 
           <div className="mt-12 flex flex-col sm:flex-row justify-center items-center gap-4 border-t border-slate-100 pt-8">
-            <button
-              onClick={() => navigate('/my-reports')}
-              className="w-full sm:w-auto rounded-xl bg-slate-100 px-8 py-3 text-sm font-bold text-slate-600 hover:bg-slate-200 transition-colors"
-            >
-              목록으로 돌아가기
-            </button>
             {canEdit && (
               <button
                 onClick={handleEdit}
