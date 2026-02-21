@@ -7,8 +7,9 @@ import Footer from '../components/Footer';
 import { DynamicFormRenderer } from '../components/forms/DynamicFormRenderer';
 import { getTemplateDetail, submitForm, getLastSubmission, updateSubmission, getFormSubmission } from '../services/formService';
 import { getMyCell } from '../services/cellService';
+import { isLoggedIn } from '../utils/auth';
 import type { FormTemplate } from '../types/form';
-import { ChevronLeft, Calendar, Info, AlertCircle } from 'lucide-react';
+import { Calendar, Info, AlertCircle } from 'lucide-react';
 
 function ReportWritePage() {
   const { templateId } = useParams();
@@ -75,7 +76,6 @@ function ReportWritePage() {
       } catch (error) {
         console.error('Failed to load form:', error);
         toast.error('양식을 불러오는데 실패했습니다.');
-        navigate(-1);
       } finally {
         setLoading(false);
       }
@@ -227,8 +227,10 @@ function ReportWritePage() {
   const periodInfo = getPeriodInfo(targetDate);
 
   const handleSubmit = async () => {
+    if (!template) return;
+
     // Validate
-    if (template?.category === 'CELL_REPORT' && !targetDate) {
+    if (template.category === 'CELL_REPORT' && !targetDate) {
       toast.error('보고서 기준일(주일)을 선택해주세요.');
       return;
     }
@@ -237,38 +239,94 @@ function ReportWritePage() {
       // Transform answers to API format
       let apiAnswers: { questionId: number; value: string; targetMemberId?: number }[] = [];
 
+      const allQuestions = template.sections 
+        ? template.sections.flatMap(s => s.questions) 
+        : template.questions || [];
+
       if (template?.type === 'PERSONAL') {
-        apiAnswers = Object.entries(answers).map(([qId, val]) => ({
-          questionId: Number(qId),
-          value: String(val)
-        }));
+        allQuestions.forEach(q => {
+          let val = answers[q.id];
+          const isBooleanType = q.inputType === 'BOOLEAN' || q.inputType === 'WORSHIP_ATTENDANCE' || q.inputType === 'SCHEDULE_ATTENDANCE' || q.inputType === 'SCHEDULE_SURVEY';
+          
+          // For boolean types, treat empty/undefined as false
+          if (isBooleanType && (val === undefined || val === null || val === '')) {
+             val = 'false';
+          }
+
+          // For non-boolean types, skip if empty
+          if (!isBooleanType && (val === undefined || val === null || val === '')) {
+             return;
+          }
+          if (!isBooleanType && Array.isArray(val) && val.length === 0) {
+             return;
+          }
+          
+          const stringVal = val !== undefined && val !== null ? (Array.isArray(val) ? val.join(',') : String(val)) : '';
+          apiAnswers.push({
+            questionId: q.id,
+            value: stringVal
+          });
+        });
       } else {
         // GROUP form handling
-        Object.entries(answers).forEach(([memberName, memberAnswers]) => {
-            const memberId = memberMap[memberName];
-            // If memberName is 'COMMON', targetMemberId is undefined.
-            // If memberName is not in map and not COMMON, it might be an issue, but we skip validation for now.
+        const commonQuestions = allQuestions.filter(q => !q.memberSpecific);
+        const memberQuestions = allQuestions.filter(q => q.memberSpecific);
+
+        // 1. Common Questions
+        commonQuestions.forEach(q => {
+            let val = answers['COMMON']?.[q.id];
+            const isBooleanType = q.inputType === 'BOOLEAN' || q.inputType === 'WORSHIP_ATTENDANCE' || q.inputType === 'SCHEDULE_ATTENDANCE' || q.inputType === 'SCHEDULE_SURVEY';
             
-            Object.entries(memberAnswers as Record<string, unknown>).forEach(([qId, val]) => {
-                // If value is array (from multiselect/checkbox), join it or handle it?
-                // Backend expects string value.
-                // DynamicFormRenderer might produce array for checkboxes.
-                // Assuming value is string or boolean or array.
-                // For checkboxes/multiselect, usually joined by comma or JSON?
-                // Current backend might expect string.
-                // Check DynamicFormRenderer: it handles boolean to array of IDs for SCHEDULE_ATTENDANCE.
-                // The value in answers is array of strings (IDs).
-                // We should probably join them or send multiple entries?
-                // Backend QuestionAnswerDto usually expects single value string.
-                // If it's multi-select, maybe comma separated?
+            // For boolean types, treat empty/undefined as false
+            if (isBooleanType && (val === undefined || val === null || val === '')) {
+                val = 'false';
+            }
+
+            // For non-boolean types, skip if empty
+            if (!isBooleanType && (val === undefined || val === null || val === '')) {
+                return;
+            }
+            if (!isBooleanType && Array.isArray(val) && val.length === 0) {
+                return;
+            }
+            
+            const stringVal = val !== undefined && val !== null ? (Array.isArray(val) ? val.join(',') : String(val)) : '';
+            
+            apiAnswers.push({
+                questionId: q.id,
+                value: stringVal,
+                targetMemberId: undefined
+            });
+        });
+
+        // 2. Member Questions
+        // Ensure we iterate over ALL display members to save empty responses if needed
+        displayMembers.forEach(memberName => {
+            const memberId = memberMap[memberName];
+            
+            memberQuestions.forEach(q => {
+                let val = answers[memberName]?.[q.id];
+                const isBooleanType = q.inputType === 'BOOLEAN' || q.inputType === 'WORSHIP_ATTENDANCE' || q.inputType === 'SCHEDULE_ATTENDANCE' || q.inputType === 'SCHEDULE_SURVEY';
                 
-                const v = val as unknown;
-                const stringVal = Array.isArray(v) ? (v as unknown[]).map(String).join(',') : String(v);
+                // For boolean types, treat empty/undefined as false
+                if (isBooleanType && (val === undefined || val === null || val === '')) {
+                    val = 'false';
+                }
+
+                // For non-boolean types, skip if empty
+                if (!isBooleanType && (val === undefined || val === null || val === '')) {
+                    return;
+                }
+                if (!isBooleanType && Array.isArray(val) && val.length === 0) {
+                    return;
+                }
+
+                const stringVal = val !== undefined && val !== null ? (Array.isArray(val) ? val.join(',') : String(val)) : '';
 
                 apiAnswers.push({
-                    questionId: Number(qId),
+                    questionId: q.id,
                     value: stringVal,
-                    targetMemberId: memberName === 'COMMON' ? undefined : memberId
+                    targetMemberId: memberId
                 });
             });
         });
@@ -292,7 +350,13 @@ function ReportWritePage() {
         toast.success('보고서가 성공적으로 제출되었습니다.');
       }
       
-      navigate('/my-reports'); // Redirect to my-reports list
+      // Navigate based on login status
+      if (isLoggedIn()) {
+        navigate('/my-reports');
+      } else {
+        // For guest users, redirect to home
+        navigate('/');
+      }
     } catch (error: unknown) {
       console.error('Submission failed:', error);
       const message = error instanceof Error ? error.message : '제출 중 오류가 발생했습니다.';
@@ -329,12 +393,6 @@ function ReportWritePage() {
              </div>
              <h2 className="mb-2 text-xl font-bold text-slate-900">제출이 중단된 양식입니다</h2>
              <p className="text-slate-500 mb-8">현재 이 양식에 대한 응답을 받지 않고 있습니다.<br/>담당자에게 문의해주세요.</p>
-             <button
-               onClick={() => navigate(-1)}
-               className="rounded-lg bg-slate-100 px-6 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200"
-             >
-               돌아가기
-             </button>
            </div>
         </div>
       </div>
@@ -348,12 +406,6 @@ function ReportWritePage() {
         
         {/* Header */}
         <div className="flex items-center gap-4 px-2">
-          <button 
-            onClick={() => navigate(-1)}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm hover:bg-slate-50 transition-colors"
-          >
-            <ChevronLeft className="h-6 w-6 text-slate-600" />
-          </button>
           <div>
             <h1 className="text-2xl font-bold text-slate-800">
               {template.title} {selectedSubmissionId ? ((submissionStatus === 'PENDING' && !isEditExpired) ? '수정' : '조회') : '작성'}
