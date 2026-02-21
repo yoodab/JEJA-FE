@@ -15,9 +15,7 @@ export const MANAGER_ROLES = [
   'ROLE_PASTOR', 
   'ROLE_MANAGER', 
   'ROLE_EXECUTIVE', 
-  'ROLE_TEAM_LEADER',
   'EXECUTIVE',
-  'TEAM_LEADER',
   'MANAGER'
 ] as const
 
