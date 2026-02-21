@@ -221,12 +221,6 @@ function ScheduleDetailPage() {
                 {isCheckingIn ? '처리 중...' : '출석하기'}
               </button>
             )}
-            <button
-              onClick={() => navigate('/schedules')}
-              className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-            >
-              ← 목록으로
-            </button>
           </div>
         </div>
 
