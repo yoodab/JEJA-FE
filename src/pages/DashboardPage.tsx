@@ -1,6 +1,5 @@
 import { useNavigate } from 'react-router-dom'
 
-
 const managementMenus = [
   {
     title: '새신자 관리',
@@ -124,33 +123,8 @@ function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
+    <div className="bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-6">
-        {/* 상단 헤더 - 청년부 메인과 동일한 톤 */}
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
-              JEJA
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">Youth Admin</p>
-              <p className="text-sm font-semibold text-slate-900">청년부 관리</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-700">
-            <span className="rounded-full bg-slate-100 px-3 py-1">관리자 전용</span>
-            <button
-              type="button"
-              onClick={() => navigate('/user-dashboard')}
-              className="rounded-full bg-slate-900 px-4 py-1.5 text-white shadow-sm transition hover:bg-slate-700"
-            >
-              메인으로
-            </button>
-          </div>
-        </header>
-
-
-
         {/* 관리 메뉴 */}
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {managementMenus.map((menu) => (
@@ -189,9 +163,6 @@ function DashboardPage() {
             </div>
           ))}
         </section>
-
-
-
       </div>
     </div>
   )

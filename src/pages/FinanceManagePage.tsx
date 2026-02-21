@@ -1,5 +1,4 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../contexts/ConfirmContext'
 import {
@@ -42,7 +41,6 @@ interface FinanceRecord extends Omit<FinanceResponseDto, 'id'> {
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d']
 
 function FinanceManagePage() {
-  const navigate = useNavigate()
   const { confirm } = useConfirm()
   const fileInputRef = useRef<HTMLInputElement>(null)
   
@@ -1236,16 +1234,10 @@ function FinanceManagePage() {
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <div className="mx-auto max-w-6xl">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/dashboard')}
-              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-            >
-              ← 
-            </button>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-xl">
                 💰
@@ -1287,45 +1279,48 @@ function FinanceManagePage() {
               + 기록 추가
             </button>
           </div>
-        </header>
+        </div>
 
         {/* 탭 네비게이션 */}
-        <div className="flex border-b border-slate-200">
+        <div className="border-b border-slate-200 px-6">
+          <div className="flex">
           <button
             onClick={() => setActiveTab('GENERAL')}
-            className={`px-6 py-3 text-sm font-semibold transition-colors ${
+            className={`mr-4 border-b-2 px-2 py-3 text-sm font-semibold transition-colors ${
               activeTab === 'GENERAL'
-                ? 'border-b-2 border-amber-500 text-amber-600'
-                : 'text-slate-500 hover:text-slate-700'
+                ? 'border-amber-500 text-amber-600'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
             일반 재정
           </button>
            <button
              onClick={() => setActiveTab('STATS')}
-             className={`px-6 py-3 text-sm font-semibold transition-colors ${
+             className={`mr-4 border-b-2 px-2 py-3 text-sm font-semibold transition-colors ${
                activeTab === 'STATS'
-                 ? 'border-b-2 border-amber-500 text-amber-600'
-                 : 'text-slate-500 hover:text-slate-700'
+                 ? 'border-amber-500 text-amber-600'
+                 : 'border-transparent text-slate-500 hover:text-slate-700'
              }`}
            >
              통계
            </button>
           <button
             onClick={() => setActiveTab('DUES')}
-            className={`px-6 py-3 text-sm font-semibold transition-colors ${
+            className={`border-b-2 px-2 py-3 text-sm font-semibold transition-colors ${
               activeTab === 'DUES'
-                ? 'border-b-2 border-amber-500 text-amber-600'
-                : 'text-slate-500 hover:text-slate-700'
+                ? 'border-amber-500 text-amber-600'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
             회비 관리
           </button>
+          </div>
         </div>
 
+        <div className="p-6">
         {activeTab === 'GENERAL' && (
         <div className="space-y-6">
-          <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:items-end">
+          <div className="flex flex-col gap-4 rounded-xl bg-slate-50 p-4 lg:flex-row lg:items-end">
             <div className="flex flex-1 gap-4">
               <div className="flex-1">
                 <label className="mb-1 block text-xs font-semibold text-slate-700">시작일</label>
@@ -1390,7 +1385,7 @@ function FinanceManagePage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="overflow-hidden rounded-xl border border-slate-200">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-slate-50">
@@ -1510,7 +1505,7 @@ function FinanceManagePage() {
         {activeTab === 'STATS' && (
           <div className="space-y-4">
             {/* 날짜 필터 */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-xl bg-slate-50 p-4">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
                 <div className="flex flex-1 gap-4">
                   <div className="flex-1">
@@ -1550,7 +1545,7 @@ function FinanceManagePage() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="rounded-xl border border-slate-200 bg-white p-5">
                 <p className="text-xs font-semibold text-slate-500">기간 수입</p>
                 <div className="mt-2 flex items-baseline gap-2">
                   <p className="text-2xl font-bold text-blue-600">
@@ -1558,7 +1553,7 @@ function FinanceManagePage() {
                   </p>
                 </div>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="rounded-xl border border-slate-200 bg-white p-5">
                 <p className="text-xs font-semibold text-slate-500">기간 지출</p>
                 <div className="mt-2 flex items-baseline gap-2">
                   <p className="text-2xl font-bold text-rose-600">
@@ -1566,7 +1561,7 @@ function FinanceManagePage() {
                   </p>
                 </div>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="rounded-xl border border-slate-200 bg-white p-5">
                 <p className="text-xs font-semibold text-slate-500">기간 잔액</p>
                 <div className="mt-2 flex items-baseline gap-2">
                   <p className={`text-2xl font-bold ${summaryStats.balance >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
@@ -1577,7 +1572,7 @@ function FinanceManagePage() {
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="rounded-xl border border-slate-200 bg-white p-5">
                 <h3 className="mb-4 text-sm font-bold text-slate-900">{statsViewMode === 'MONTHLY' ? '월별' : '일별'} 수입/지출 추이 (조회 기간)</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
@@ -1597,7 +1592,7 @@ function FinanceManagePage() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="rounded-xl border border-slate-200 bg-white p-5">
                 <h3 className="mb-4 text-sm font-bold text-slate-900">지출 카테고리 비중 (조회 기간)</h3>
                 <div className="h-64">
                   {categoryStats.length > 0 ? (
@@ -1637,7 +1632,7 @@ function FinanceManagePage() {
               </div>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-5">
               <h3 className="mb-4 text-sm font-bold text-slate-900">{statsViewMode === 'MONTHLY' ? '월별' : '일별'} 잔액 추이 (조회 기간)</h3>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1685,7 +1680,7 @@ function FinanceManagePage() {
           <div className="flex flex-col gap-6 lg:flex-row">
             {/* 좌측: 행사 목록 */}
             <div className="w-full lg:w-64 flex-shrink-0">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-4 flex items-center justify-between">
                   <h3 className="font-bold text-slate-900">행사 목록</h3>
                   <button 
@@ -1717,7 +1712,7 @@ function FinanceManagePage() {
             <div className="flex-1 space-y-6">
               {/* 대시보드 */}
               {selectedEvent && (
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="rounded-xl border border-slate-200 bg-white p-5">
                   <div className="mb-4 flex items-center justify-between">
                     <div>
                       <h3 className="font-bold text-slate-900">{selectedEvent.name} 수금 현황</h3>
@@ -1796,7 +1791,7 @@ function FinanceManagePage() {
                 </div>
               )}
 
-              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="overflow-hidden rounded-xl border border-slate-200">
                 <div className="flex items-center justify-between border-b border-slate-200 p-4">
                   <input
                     type="text"
@@ -1886,6 +1881,10 @@ function FinanceManagePage() {
             </div>
           </div>
         )}
+
+        </div>
+      </div>
+    </div>
 
         {/* 인원 관리 모달 (추가/삭제 통합) */}
         {showMemberManageModal && (
@@ -2764,7 +2763,7 @@ function FinanceManagePage() {
             </div>
           </div>
         )}
-      </div>
+
       {/* 카테고리 관리 모달 */}
       {showCategoryManageModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">

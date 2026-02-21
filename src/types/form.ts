@@ -1,7 +1,7 @@
 // Enums
 export type FormCategory = 'CLUB_APPLICATION' | 'CELL_REPORT' | 'EVENT_APPLICATION' | 'SURVEY' | 'ETC';
 export type FormType = 'PERSONAL' | 'GROUP';
-export type QuestionType = 'SHORT_TEXT' | 'LONG_TEXT' | 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'NUMBER' | 'BOOLEAN' | 'WORSHIP_ATTENDANCE' | 'SCHEDULE_ATTENDANCE';
+export type QuestionType = 'SHORT_TEXT' | 'LONG_TEXT' | 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'NUMBER' | 'BOOLEAN' | 'WORSHIP_ATTENDANCE' | 'SCHEDULE_ATTENDANCE' | 'SCHEDULE_SURVEY';
 export type SubmissionStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type WorshipCategory = 'SUNDAY_SERVICE_1' | 'SUNDAY_SERVICE_2' | 'SUNDAY_SERVICE_3' | 'WEDNESDAY_SERVICE_1' | 'WEDNESDAY_SERVICE_2' | 'FRIDAY_PRAYER' | 'DAWN_PRAYER' | 'YOUTH_SERVICE' | 'ETC';
 export type AttendanceSyncType = 'NONE' | 'POST_CONFIRMATION' | 'PRE_REGISTRATION';
@@ -33,6 +33,7 @@ export interface FormTemplate {
   questions: FormQuestion[];
   sections?: FormSection[]; // 질문 섹션 (페이지) 관리
   accessList?: FormAccess[]; // 권한 관리
+  statusMessage?: string; // 상태 메시지 (예: "마감/숨김", "진행중")
 }
 
 export interface FormSection {
@@ -84,6 +85,7 @@ export interface FormSubmission {
   targetCellId?: number;    // 순 ID (예: 1)
   status: SubmissionStatus;
   answers: FormAnswer[];
+  snapshotQuestions?: FormQuestion[]; // 제출 시점의 질문 스냅샷 (옵션)
 }
 
 export interface FormAnswer {

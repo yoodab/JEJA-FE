@@ -672,18 +672,6 @@ function BoardDetailPage() {
               {board ? board.name : (isYouthNotice ? "청년부 공지사항" : "게시글 상세보기")}
             </h1>
           </div>
-          <button
-            onClick={() => {
-              if (isYouthNotice) {
-                navigate('/youth-notices')
-              } else if (boardType) {
-                navigate(`/boards/${boardType}`)
-              }
-            }}
-            className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-          >
-            ← 목록으로
-          </button>
         </div>
 
         {/* 게시글 상세 정보 */}

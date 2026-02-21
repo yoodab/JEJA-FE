@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useParams, useNavigate, Link, useLocation } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
@@ -324,12 +324,6 @@ function AlbumDetailPage() {
         <UserHeader />
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
-            <Link
-              to="/youth-album"
-              className="text-sm font-semibold text-blue-600 hover:text-blue-700"
-            >
-              ← 앨범 목록
-            </Link>
             <div>
               <h1 className="text-2xl font-bold">{album.title}</h1>
               <p className="mt-1 text-sm text-slate-600">{album.date || album.description}</p>

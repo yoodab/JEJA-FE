@@ -17,7 +17,6 @@ function BoardWritePage() {
   const [content, setContent] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isPrivate, setIsPrivate] = useState(false)
-  const [boardName, setBoardName] = useState('')
   const [apiBoardId, setApiBoardId] = useState<string | null>(null)
 
   const isYouthNotice = location.pathname.includes('/youth-notices')
@@ -25,7 +24,7 @@ function BoardWritePage() {
   useEffect(() => {
     const fetchBoardInfo = async () => {
       if (isYouthNotice) {
-        setBoardName('청년부 공지사항')
+        // setBoardName('청년부 공지사항')
         return
       }
       
@@ -39,7 +38,7 @@ function BoardWritePage() {
             (b.boardKey && String(b.boardKey) === String(boardType))
           )
           if (board) {
-            setBoardName(board.name)
+            // setBoardName(board.name)
             // API 호출 시 사용할 식별자로 boardKey를 우선 사용
             if (board.boardKey) {
               setApiBoardId(board.boardKey)
@@ -128,23 +127,14 @@ function BoardWritePage() {
 
         {/* 헤더 */}
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-slate-900">{boardName ? `${boardName} 글쓰기` : '글쓰기'}</h1>
-          <button
-            onClick={() => {
-              if (isYouthNotice) {
-                navigate('/youth-notices')
-              } else {
-                navigate(`/boards/${boardType}`)
-              }
-            }}
-            className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-          >
-            ← 목록으로
-          </button>
+          <h1 className="text-2xl font-bold text-slate-900">
+            {isYouthNotice ? '청년부 공지사항 작성' : 
+             boardType === 'notice' ? '공지사항 작성' : '자유게시판 작성'}
+          </h1>
         </div>
 
         {/* 글쓰기 폼 */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl bg-white p-6">
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">

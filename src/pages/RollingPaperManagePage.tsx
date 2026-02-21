@@ -211,25 +211,17 @@ const RollingPaperManagePage = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-      <div className="flex-grow mx-auto w-full max-w-6xl space-y-6">
+      <div className="flex-grow mx-auto w-full max-w-6xl">
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         {/* Header */}
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/dashboard')}
-              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-            >
-              ← 
-            </button>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-100 text-xl">
-                💌
-              </div>
-              <div>
-                <p className="text-base font-bold text-slate-900">롤링페이퍼 관리</p>
-                <p className="text-xs text-slate-500">롤링페이퍼 생성 및 관리</p>
-              </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-100 text-xl">
+              💌
+            </div>
+            <div>
+              <p className="text-base font-bold text-slate-900">롤링페이퍼 관리</p>
+              <p className="text-xs text-slate-500">롤링페이퍼 생성 및 관리</p>
             </div>
           </div>
           <button 
@@ -240,8 +232,9 @@ const RollingPaperManagePage = () => {
           </button>
         </header>
 
-        {/* Search Bar */}
-        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="p-6">
+          {/* Search Bar */}
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between mb-6">
           <div className="flex w-full sm:max-w-md gap-2">
             <div className="relative flex-grow">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
@@ -282,7 +275,7 @@ const RollingPaperManagePage = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {papers.map((paper) => (
-            <div key={paper.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-5 border border-slate-200 relative overflow-hidden group">
+            <div key={paper.id} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
               <div className={`absolute top-0 left-0 w-2 h-full ${paper.theme === 'BLACK' ? 'bg-gray-800' : paper.theme === 'LIGHT' ? 'bg-gray-200' : 'bg-blue-400'}`}></div>
               <div className="pl-4">
                   <div className="flex justify-between items-start mb-2 relative">
@@ -382,7 +375,9 @@ const RollingPaperManagePage = () => {
             </button>
           </div>
         )}
+        </div>
       </div>
+    </div>
 
       {/* Create/Edit Modal */}
       {isModalOpen && (

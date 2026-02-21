@@ -19,6 +19,7 @@ function GuestAttendancePage() {
 
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null);
+  const [isScheduleListOpen, setIsScheduleListOpen] = useState(false);
   const [isLoadingSchedules, setIsLoadingSchedules] = useState(true);
 
   useEffect(() => {
@@ -27,22 +28,26 @@ function GuestAttendancePage() {
         // 출석 가능한 일정 조회 (Admin 일정 포함, 이미 오늘 날짜로 필터링됨)
         const todaySchedules = await getCheckableSchedules();
 
-        // 시간 필터링 (현재 시간 기준 +- 20분)
-        // 백엔드에서도 하지만, 클라이언트 시간 기준으로도 즉각적인 UX를 위해 필터링
+        // 시간 필터링 (현재 시간 기준 +- 120분)
         const now = new Date();
         const validSchedules = todaySchedules.filter(s => {
           const start = new Date(s.startDate);
-          // start - 20 <= now <= start + 20
-          // => now - start >= -20 && now - start <= 20
           const diffMinutes = (now.getTime() - start.getTime()) / (1000 * 60);
-          return diffMinutes >= -20 && diffMinutes <= 20;
+          return diffMinutes >= -120 && diffMinutes <= 120;
         });
         
+        // 가장 가까운 일정 순으로 정렬
+        validSchedules.sort((a, b) => {
+          const diffA = Math.abs(now.getTime() - new Date(a.startDate).getTime());
+          const diffB = Math.abs(now.getTime() - new Date(b.startDate).getTime());
+          return diffA - diffB;
+        });
+
         // 타입 호환성을 위해 형변환
         setSchedules(validSchedules as unknown as Schedule[]);
         
-        // 일정이 하나뿐이면 자동 선택
-        if (validSchedules.length === 1) {
+        // 일정이 있으면 가장 가까운 것 자동 선택
+        if (validSchedules.length > 0) {
           setSelectedScheduleId(validSchedules[0].scheduleId);
         }
       } catch (error) {
@@ -54,6 +59,10 @@ function GuestAttendancePage() {
 
     fetchSchedules();
   }, []);
+
+  const getSelectedSchedule = () => {
+    return schedules.find(s => s.scheduleId === selectedScheduleId);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,12 +119,14 @@ function GuestAttendancePage() {
       }
 
       // 생년월일 파싱 (YYMMDD -> YYYY-MM-DD)
-      // 50보다 크면 1900년대, 아니면 2000년대로 가정 (일반적인 기준)
+      const currentYear = new Date().getFullYear();
+      const currentYY = currentYear % 100;
       const yy = parseInt(birthDate.substring(0, 2), 10);
       const mm = birthDate.substring(2, 4);
       const dd = birthDate.substring(4, 6);
       
-      const fullYear = yy > 40 ? 1900 + yy : 2000 + yy; // 40년생까지는 2040년으로 보지 않고 1940년으로 봄
+      // 현재 연도(뒤 2자리)보다 크면 1900년대, 작거나 같으면 2000년대로 가정 (미래 날짜 방지)
+      const fullYear = yy > currentYY ? 1900 + yy : 2000 + yy; 
       const parsedBirthDate = `${fullYear}-${mm}-${dd}`;
 
       const requestData: CheckInRequestDto = {
@@ -199,27 +210,88 @@ function GuestAttendancePage() {
                     일정을 불러오는 중...
                   </div>
                 ) : schedules.length > 0 ? (
-                  <div className="space-y-2">
-                    {schedules.map((schedule) => (
-                      <div
-                        key={schedule.scheduleId}
-                        onClick={() => setSelectedScheduleId(schedule.scheduleId)}
-                        className={`cursor-pointer rounded-lg border p-3 transition-all ${
-                          selectedScheduleId === schedule.scheduleId
-                            ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500"
-                            : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-slate-900">
-                            {schedule.title}
-                          </span>
-                          <span className="text-xs text-slate-500">
-                            {new Date(schedule.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
+                  <div className="relative">
+                    {/* 선택된 일정 표시 (클릭 시 목록 토글) */}
+                    <div
+                      onClick={() => schedules.length > 1 && setIsScheduleListOpen(!isScheduleListOpen)}
+                      className={`rounded-lg border p-4 transition-all flex items-center justify-between ${
+                        schedules.length > 1 ? "cursor-pointer hover:bg-slate-50" : ""
+                      } ${
+                        isScheduleListOpen
+                          ? "border-blue-500 ring-1 ring-blue-500 bg-blue-50"
+                          : "border-slate-300 bg-white"
+                      }`}
+                    >
+                      {selectedScheduleId ? (
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-slate-900 text-lg">
+                              {getSelectedSchedule()?.title}
+                            </span>
+                            <span className="text-sm font-medium text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                              {new Date(getSelectedSchedule()?.startDate || "").toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                          <div className="text-sm text-slate-500 mt-1">
+                            {getSelectedSchedule()?.location || "장소 정보 없음"}
+                          </div>
                         </div>
+                      ) : (
+                        <span className="text-slate-500">일정을 선택해주세요</span>
+                      )}
+                      
+                      {/* 일정이 여러 개일 때만 화살표 아이콘 표시 */}
+                      {schedules.length > 1 && (
+                        <svg
+                          className={`w-5 h-5 text-slate-400 ml-3 transition-transform ${
+                            isScheduleListOpen ? "rotate-180" : ""
+                          }`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      )}
+                    </div>
+
+                    {/* 드롭다운 목록 */}
+                    {isScheduleListOpen && schedules.length > 1 && (
+                      <div className="absolute z-10 w-full mt-2 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        {schedules
+                          .filter((s) => s.scheduleId !== selectedScheduleId)
+                          .map((schedule) => (
+                            <div
+                              key={schedule.scheduleId}
+                              onClick={() => {
+                                setSelectedScheduleId(schedule.scheduleId);
+                                setIsScheduleListOpen(false);
+                              }}
+                              className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-none transition-colors"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium text-slate-700">
+                                  {schedule.title}
+                                </span>
+                                <span className="text-xs text-slate-500">
+                                  {new Date(schedule.startDate).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
                       </div>
-                    ))}
+                    )}
                   </div>
                 ) : (
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-500">

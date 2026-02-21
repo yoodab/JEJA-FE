@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import UserHeader from '../components/UserHeader'
 import Footer from '../components/Footer'
@@ -23,7 +23,6 @@ const typeLabels: Record<string, string> = {
 }
 
 function ScheduleListPage() {
-  const navigate = useNavigate()
   const location = useLocation()
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0])
   const [isLoggedIn] = useState(checkLoggedIn)
@@ -126,21 +125,14 @@ function ScheduleListPage() {
         {/* 헤더 */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">청년부 일정</h1>
-            <p className="mt-1 text-sm text-slate-600">다가오는 예배와 행사 일정을 확인하세요.</p>
+            <h1 className="text-2xl font-bold text-slate-900">주일 일정 관리</h1>
           </div>
-          <button
-            onClick={() => navigate('/user-dashboard')}
-            className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-          >
-            ← 메인으로
-          </button>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
           {/* 캘린더 */}
           <div className="lg:col-span-2">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl bg-white p-4">
               {/* 월 네비게이션 */}
               <div className="mb-4 flex items-center justify-between">
                 <button
@@ -222,7 +214,7 @@ function ScheduleListPage() {
           </div>
 
           {/* 선택된 날짜의 일정 목록 */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-2xl bg-white p-4">
             <h3 className="mb-4 text-sm font-semibold text-slate-900">
               {formatDate(selectedDate)} 일정
             </h3>

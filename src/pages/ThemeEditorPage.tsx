@@ -211,9 +211,6 @@ const ThemeEditorPage = () => {
       {/* Header */}
       <div className="bg-white border-b px-4 lg:px-6 py-3 flex flex-col sm:flex-row justify-between items-center gap-3 shrink-0 z-20">
         <div className="flex items-center justify-between w-full sm:w-auto gap-4">
-            <button onClick={() => navigate(-1)} className="text-gray-500 hover:text-black p-1">
-                <span className="text-xl">←</span>
-            </button>
             <h1 className="text-xl font-bold">{editingThemeId ? '테마 수정' : '테마 만들기'}</h1>
             <div className="w-8 sm:hidden"></div> {/* Spacer for center alignment on mobile */}
         </div>

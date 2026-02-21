@@ -41,14 +41,28 @@ const processQuestions = (questions: FormQuestion[]): FormQuestion[] => {
     }
 
     // Grouping Logic for SCHEDULE_ATTENDANCE
-    if (updated.inputType === 'SCHEDULE_ATTENDANCE' && updated.linkedScheduleId) {
-      if (currentScheduleGroup && currentScheduleGroup.memberSpecific === updated.memberSpecific) {
+    // Only group if NOT memberSpecific (Group questions). Personal questions should remain separate to preserve labels.
+    if (updated.inputType === 'SCHEDULE_ATTENDANCE' && updated.linkedScheduleId && !updated.memberSpecific) {
+      // Recover schedule title from optionsJson if available
+      let scheduleTitle = typeof updated.label === 'string' ? updated.label : '';
+      if (updated.optionsJson) {
+        try {
+          const parsed = JSON.parse(updated.optionsJson);
+          if (parsed && parsed.scheduleTitle) {
+            scheduleTitle = parsed.scheduleTitle;
+          }
+        } catch (e) {
+          // Ignore parsing error
+        }
+      }
+
+      if (currentScheduleGroup && currentScheduleGroup.inputType === 'SCHEDULE_ATTENDANCE' && !currentScheduleGroup.memberSpecific) {
         // Add to existing group
         if (!currentScheduleGroup.linkedSchedules) currentScheduleGroup.linkedSchedules = [];
         
         currentScheduleGroup.linkedSchedules.push({
           id: updated.linkedScheduleId,
-          title: typeof updated.label === 'string' ? updated.label : '',
+          title: scheduleTitle,
           startDate: updated.linkedScheduleDate || '',
           questionId: updated.id // Preserve original question ID
         });
@@ -63,7 +77,50 @@ const processQuestions = (questions: FormQuestion[]): FormQuestion[] => {
           // User said "일정 참석여부 조사" so maybe the first label is fine.
           linkedSchedules: [{
             id: updated.linkedScheduleId,
-            title: typeof updated.label === 'string' ? updated.label : '',
+            title: scheduleTitle,
+            startDate: updated.linkedScheduleDate || '',
+            questionId: updated.id
+          }]
+        };
+        processed.push(currentScheduleGroup);
+      }
+    } else if (updated.inputType === 'SCHEDULE_SURVEY' && updated.linkedScheduleId && !updated.memberSpecific) {
+      // Grouping Logic for SCHEDULE_SURVEY
+      // Only group if NOT memberSpecific
+      
+      // Recover schedule title from optionsJson if available
+      let scheduleTitle = typeof updated.label === 'string' ? updated.label : '';
+      if (updated.optionsJson) {
+        try {
+          const parsed = JSON.parse(updated.optionsJson);
+          if (parsed && parsed.scheduleTitle) {
+            scheduleTitle = parsed.scheduleTitle;
+          }
+        } catch (e) {
+          // Ignore parsing error
+        }
+      }
+
+      if (currentScheduleGroup && currentScheduleGroup.inputType === 'SCHEDULE_SURVEY' && !currentScheduleGroup.memberSpecific) {
+        // Add to existing group
+        if (!currentScheduleGroup.linkedSchedules) currentScheduleGroup.linkedSchedules = [];
+        
+        currentScheduleGroup.linkedSchedules.push({
+          id: updated.linkedScheduleId,
+          title: scheduleTitle,
+          startDate: updated.linkedScheduleDate || '',
+          questionId: updated.id // Preserve original question ID
+        });
+        
+        // Don't push this question to processed list, it's merged into the group
+        continue;
+      } else {
+        // Start new group
+        currentScheduleGroup = {
+          ...updated,
+          linkedSchedules: [{
+            id: updated.linkedScheduleId,
+            title: scheduleTitle,
             startDate: updated.linkedScheduleDate || '',
             questionId: updated.id
           }]
@@ -71,7 +128,32 @@ const processQuestions = (questions: FormQuestion[]): FormQuestion[] => {
         processed.push(currentScheduleGroup);
       }
     } else {
-      // Not a schedule question, or end of group
+      // Not a grouped schedule question
+      // If it's a personal schedule question, make sure linkedSchedules is set for rendering
+      if ((updated.inputType === 'SCHEDULE_ATTENDANCE' || updated.inputType === 'SCHEDULE_SURVEY') && 
+          updated.linkedScheduleId && updated.memberSpecific) {
+        
+        // Recover schedule title
+        let scheduleTitle = typeof updated.label === 'string' ? updated.label : '';
+        if (updated.optionsJson) {
+          try {
+            const parsed = JSON.parse(updated.optionsJson);
+            if (parsed && parsed.scheduleTitle) {
+              scheduleTitle = parsed.scheduleTitle;
+            }
+          } catch (e) {
+            // Ignore parsing error
+          }
+        }
+
+        updated.linkedSchedules = [{
+          id: updated.linkedScheduleId,
+          title: scheduleTitle,
+          startDate: updated.linkedScheduleDate || '',
+          questionId: updated.id
+        }];
+      }
+
       currentScheduleGroup = null;
       processed.push(updated);
     }
@@ -113,7 +195,7 @@ export const DynamicFormRenderer: React.FC<DynamicFormRendererProps> = ({
         : processedTemplate.questions || [];
 
       allQuestions.forEach(q => {
-        if (q.inputType === 'SCHEDULE_ATTENDANCE' && q.linkedSchedules && q.linkedSchedules.length > 0) {
+        if ((q.inputType === 'SCHEDULE_ATTENDANCE' || q.inputType === 'SCHEDULE_SURVEY') && q.linkedSchedules && q.linkedSchedules.length > 0) {
           // Collect selected schedule IDs
           const selectedIds = q.linkedSchedules
             .filter(s => answers[s.questionId!] === true) // Check original question answer
@@ -144,7 +226,7 @@ export const DynamicFormRenderer: React.FC<DynamicFormRendererProps> = ({
         let modified = false;
 
         allQuestions.forEach(q => {
-          if (q.inputType === 'SCHEDULE_ATTENDANCE' && q.linkedSchedules && q.linkedSchedules.length > 0) {
+          if ((q.inputType === 'SCHEDULE_ATTENDANCE' || q.inputType === 'SCHEDULE_SURVEY') && q.linkedSchedules && q.linkedSchedules.length > 0) {
             // Collect selected schedule IDs for this target
             const selectedIds = q.linkedSchedules
               .filter(s => newAnswers[target]?.[s.questionId!] === true)

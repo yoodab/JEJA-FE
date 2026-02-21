@@ -18,7 +18,6 @@ function BoardEditPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [attachmentUrl, setAttachmentUrl] = useState('')
   const [attachmentName, setAttachmentName] = useState('')
-  const [boardName, setBoardName] = useState('')
   const [apiBoardId, setApiBoardId] = useState<string | null>(null)
 
   const isYouthNotice = !!noticeId || location.pathname.includes('/youth-notices')
@@ -35,7 +34,7 @@ function BoardEditPage() {
 
       try {
         if (isYouthNotice) {
-          setBoardName('청년부 공지사항')
+          // setBoardName('청년부 공지사항')
           const notice = await getNoticeById(Number(id))
           setTitle(notice.title)
           setContent(notice.content)
@@ -53,7 +52,7 @@ function BoardEditPage() {
               (b.boardKey && String(b.boardKey) === String(boardType))
             )
             if (board) {
-              setBoardName(board.name)
+              // setBoardName(board.name)
               if (board.boardKey) {
                 currentApiBoardId = board.boardKey
                 setApiBoardId(board.boardKey)
@@ -151,23 +150,14 @@ function BoardEditPage() {
 
         {/* 헤더 */}
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-slate-900">{boardName ? `${boardName} 글 수정` : '글 수정'}</h1>
-          <button
-            onClick={() => {
-              if (isYouthNotice) {
-                navigate(`/youth-notices/${id}`)
-              } else {
-                navigate(`/boards/${boardType}/${id}`)
-              }
-            }}
-            className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-          >
-            ← 취소
-          </button>
+          <h1 className="text-2xl font-bold text-slate-900">
+            {isYouthNotice ? '청년부 공지사항 수정' : 
+             boardType === 'notice' ? '공지사항 수정' : '자유게시판 수정'}
+          </h1>
         </div>
 
         {/* 글쓰기 폼 */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl bg-white p-6">
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">

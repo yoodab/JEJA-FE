@@ -64,6 +64,8 @@ export const FormInput: React.FC<FormInputProps> = ({
 }) => {
   const commonClasses = `rounded border border-slate-300 ${compact ? 'px-1 py-0.5 text-xs' : 'px-2 py-1 text-sm'} disabled:bg-slate-100 ${className}`;
 
+  const toBoolean = (val: any) => val === true || val === 'true';
+
   switch (question.inputType) {
     case 'SHORT_TEXT':
       return (
@@ -104,14 +106,14 @@ export const FormInput: React.FC<FormInputProps> = ({
           <label className="relative inline-flex items-center cursor-pointer">
             <input
               type="checkbox"
-              checked={!!value}
+              checked={toBoolean(value)}
               onChange={(e) => onChange(e.target.checked)}
               className="sr-only peer"
               disabled={disabled}
             />
             <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
             <span className="ml-3 text-sm font-medium text-slate-700">
-              {!!value ? '예 (Yes)' : '아니오 (No)'}
+              {toBoolean(value) ? '예 (Yes)' : '아니오 (No)'}
             </span>
           </label>
         </div>
@@ -122,6 +124,14 @@ export const FormInput: React.FC<FormInputProps> = ({
         ? question.options 
         : (question.optionsJson ? JSON.parse(question.optionsJson).map((o: string | { label: string }) => typeof o === 'string' ? o : o.label) : []);
       
+      if ((!singleOptions || singleOptions.length === 0) && value) {
+        return (
+          <div className="p-2 rounded border border-slate-200 bg-slate-50 text-slate-700 text-sm">
+            {String(value)}
+          </div>
+        );
+      }
+
       return (
         <div className="space-y-2">
           {singleOptions.map((opt: any) => {
@@ -156,6 +166,15 @@ export const FormInput: React.FC<FormInputProps> = ({
         ? question.options 
         : (question.optionsJson ? JSON.parse(question.optionsJson).map((o: string | { label: string }) => typeof o === 'string' ? o : o.label) : []);
 
+      if ((!multiOptions || multiOptions.length === 0) && value && (Array.isArray(value) ? value.length > 0 : true)) {
+        const valStr = Array.isArray(value) ? value.join(', ') : String(value);
+        return (
+           <div className="p-2 rounded border border-slate-200 bg-slate-50 text-slate-700 text-sm">
+              {valStr}
+           </div>
+        );
+      }
+
       return (
         <div className="space-y-2">
           {multiOptions.map((opt: any) => {
@@ -188,7 +207,7 @@ export const FormInput: React.FC<FormInputProps> = ({
           <div className="flex items-center justify-center">
             <input
               type="checkbox"
-              checked={!!value}
+              checked={toBoolean(value)}
               onChange={(e) => onChange(e.target.checked)}
               className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               disabled={disabled}
@@ -198,17 +217,17 @@ export const FormInput: React.FC<FormInputProps> = ({
       }
       return (
         <div className="flex items-center justify-center py-2">
-          <label className={`flex items-center justify-center cursor-pointer rounded-lg border px-6 py-3 transition-all ${!!value ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
+          <label className={`flex items-center justify-center cursor-pointer rounded-lg border px-6 py-3 transition-all ${toBoolean(value) ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
             <input
               type="checkbox"
-              checked={!!value}
+              checked={toBoolean(value)}
               onChange={(e) => onChange(e.target.checked)}
               className="sr-only"
               disabled={disabled}
             />
             <div className="flex items-center gap-2">
-              <div className={`flex h-5 w-5 items-center justify-center rounded border ${!!value ? 'border-white bg-transparent' : 'border-slate-300 bg-white'}`}>
-                {!!value && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+              <div className={`flex h-5 w-5 items-center justify-center rounded border ${toBoolean(value) ? 'border-white bg-transparent' : 'border-slate-300 bg-white'}`}>
+                {toBoolean(value) && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
               </div>
               <span className="font-semibold">출석 체크</span>
             </div>
@@ -216,7 +235,8 @@ export const FormInput: React.FC<FormInputProps> = ({
         </div>
       );
 
-    case 'SCHEDULE_ATTENDANCE': {
+    case 'SCHEDULE_ATTENDANCE':
+    case 'SCHEDULE_SURVEY': {
       // Frontend grouping populates linkedSchedules
       const schedules = question.linkedSchedules || [];
       const currentIds = (Array.isArray(value) ? value : []) as string[];
@@ -272,7 +292,7 @@ export const FormInput: React.FC<FormInputProps> = ({
                 checked={isAllSelected}
                 onChange={handleSelectAll}
                 disabled={disabled}
-                label={<span className="font-semibold text-slate-700">전체 참석</span>}
+                label={<span className="font-semibold text-slate-700">{question.inputType === 'SCHEDULE_ATTENDANCE' ? '전체 참석' : '전체 선택'}</span>}
               />
             </div>
             <div className="max-h-60 overflow-y-auto p-2 space-y-1">
@@ -329,12 +349,14 @@ export const FormInput: React.FC<FormInputProps> = ({
                 disabled={disabled}
               />
                <div className="flex flex-col">
-                 <span className="text-xs font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded w-fit mb-0.5">
-                   {s.startDate.substring(5, 10)}
-                 </span>
                  <span className={`text-sm font-semibold ${isChecked ? 'text-blue-700' : 'text-slate-700'}`}>
-                   {typeof s.title === 'string' ? s.title : ''}
-                 </span>
+                  {question.label}
+                </span>
+                {!question.memberSpecific && (
+                  <span className="text-xs text-slate-500 mt-1">
+                    [{s.startDate?.substring(5, 10)}] {s.title}
+                  </span>
+                )}
                </div>
             </label>
           </div>

@@ -595,32 +595,32 @@ function ScheduleManagePage() {
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-      <div className="mx-auto max-w-6xl space-y-6">
-        {/* 헤더 */}
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/dashboard')}
-              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-            >
-              ← 
-            </button>
+      <div className="mx-auto max-w-6xl">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          {/* 헤더 및 액션 */}
+          <div className="flex flex-col gap-6 border-b border-slate-200 p-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-xl shadow-sm">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-xl text-blue-600">
                 🗓️
               </div>
               <div>
-                <p className="text-base font-bold text-slate-900">일정 관리</p>
-                <p className="text-xs text-slate-500">예배 및 행사 일정 관리</p>
+                <h1 className="text-xl font-bold text-slate-900">일정 관리</h1>
+                <p className="text-sm text-slate-500">교회 예배 및 행사 일정을 관리합니다.</p>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={handleCreateSchedule}
+              className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            >
+              + 새 일정 추가
+            </button>
           </div>
-        </header>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-4">
+          {/* 컨텐츠 영역 */}
+          <div className="p-6">
+            {/* 필터 */}
+            <div className="mb-6 flex flex-wrap items-center gap-4">
               <span className="text-sm font-semibold text-slate-700">일정 분류</span>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -650,43 +650,36 @@ function ScheduleManagePage() {
                 ))}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={handleCreateSchedule}
-              className="rounded-full bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
-            >
-              + 일정 추가
-            </button>
-          </div>
-        </div>
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* 캘린더 */}
-          <div className="lg:col-span-2">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              {/* 월 네비게이션 */}
-              <div className="mb-4 flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => changeMonth(-1)}
-                  className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-                >
-                  ←
-                </button>
-                <h2 className="text-lg font-bold text-slate-900">
-                  {year}년 {month + 1}월
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => changeMonth(1)}
-                  className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-                >
-                  →
-                </button>
-              </div>
+            <div className="grid gap-6 lg:grid-cols-3">
+              {/* 캘린더 */}
+              <div className="lg:col-span-2">
+                <div className="rounded-xl border border-slate-200 bg-white">
+                  {/* 월 네비게이션 */}
+                <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => changeMonth(-1)}
+                    className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+                  >
+                    ←
+                  </button>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    {year}년 {month + 1}월
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => changeMonth(1)}
+                    className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+                  >
+                    →
+                  </button>
+                </div>
+
+                <div className="p-4">
 
               {/* 요일 헤더 */}
-              <div className="mb-2 grid grid-cols-7 text-center">
+              <div className="mb-2 grid grid-cols-7 border-b border-slate-100 pb-2 text-center">
                 {['일', '월', '화', '수', '목', '금', '토'].map((day, i) => (
                   <div
                     key={day}
@@ -748,14 +741,17 @@ function ScheduleManagePage() {
                 ))}
               </div>
             </div>
+            </div>
           </div>
 
           {/* 선택된 날짜의 일정 목록 */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm h-fit">
-            <h3 className="mb-4 text-sm font-semibold text-slate-900">
-              {selectedDate} 일정
-            </h3>
-            <div className="space-y-2 max-h-[600px] overflow-y-auto">
+          <div className="rounded-xl border border-slate-200 bg-white h-fit">
+            <div className="border-b border-slate-200 px-4 py-3">
+              <h3 className="text-sm font-semibold text-slate-900">
+                {selectedDate} 일정
+              </h3>
+            </div>
+            <div className="space-y-2 max-h-[600px] overflow-y-auto p-4">
               {loading ? (
                 <p className="text-center text-xs text-slate-400 py-4">로딩 중...</p>
               ) : error ? (
@@ -801,11 +797,13 @@ function ScheduleManagePage() {
             </div>
           </div>
         </div>
+      </div>
+    </div>
 
         {/* 일정 추가/수정 모달 */}
         {showModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto">
+            <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto">
               <h3 className="mb-4 text-lg font-semibold text-slate-900">
                 {editingSchedule ? '일정 수정' : '일정 추가'}
               </h3>
@@ -1047,7 +1045,7 @@ function ScheduleManagePage() {
               
               <div className="flex-1 overflow-y-auto space-y-6 pr-2 custom-scrollbar">
                 {/* 기본 정보 */}
-                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="mb-2 flex items-center gap-2">
@@ -1240,7 +1238,7 @@ function ScheduleManagePage() {
         {/* 삭제 확인 모달 */}
         {showDeleteConfirmModal && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
               <div className="mb-4 flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-100 text-rose-600">
                   🗑️
@@ -1279,7 +1277,7 @@ function ScheduleManagePage() {
         {/* 반복 일정 처리 범위 선택 모달 */}
         {showRecurrenceModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl border-t-4 border-amber-500">
+            <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl border-t-4 border-amber-500">
               <div className="mb-4 flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-600">
                   ⚠️
@@ -1357,7 +1355,7 @@ function ScheduleManagePage() {
         {/* 명단 관리 모달 */}
         {showMemberManageModal && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl max-h-[80vh] flex flex-col">
+            <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl max-h-[80vh] flex flex-col">
               <h3 className="mb-4 text-lg font-bold text-slate-900">
                 {memberManageMode === 'ADD' ? '명단 추가' : '명단 삭제'}
               </h3>

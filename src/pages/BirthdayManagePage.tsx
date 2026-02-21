@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import type { Member } from '../types/member'
 import { getMembers } from '../services/memberService'
 import { formatPhoneNumber } from '../utils/format'
 
 function BirthdayManagePage() {
-  const navigate = useNavigate()
   const currentDate = new Date()
   const [selectedMonth, setSelectedMonth] = useState<number>(currentDate.getMonth() + 1)
   const [members, setMembers] = useState<Member[]>([])
@@ -79,88 +77,83 @@ function BirthdayManagePage() {
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/dashboard')}
-              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-            >
-              ←
-            </button>
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-200">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 text-xl">
-                🎂
-              </div>
-              <div>
-                <p className="text-base font-bold text-slate-900">생일자 조회</p>
-                <p className="text-xs text-slate-500">이번 달 생일자 확인</p>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold"
-            >
-              {months.map((month) => (
-                <option key={month.value} value={month.value}>
-                  {month.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </header>
-
-        {/* 로딩 / 에러 상태 */}
-        {loading ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm">
-            <p className="text-sm text-slate-500">생일자 정보를 불러오는 중입니다...</p>
-          </div>
-        ) : error ? (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-12 text-center shadow-sm">
-            <p className="text-sm text-rose-600">{error}</p>
-          </div>
-        ) : (
-          <>
-            {/* 통계 카드 */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <p className="text-xs text-slate-500">{selectedMonth}월 생일자</p>
-              <p className="mt-1 text-2xl font-bold text-slate-900">{sortedBirthdays.length}명</p>
-            </div>
-
-            {/* 생일자 목록 */}
-            {sortedBirthdays.length > 0 ? (
-              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-slate-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">이름</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">생일</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">연락처</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {sortedBirthdays.map((member) => (
-                        <tr key={member.memberId} className="hover:bg-slate-50">
-                          <td className="px-4 py-3 text-sm font-medium text-slate-900">{member.name}</td>
-                          <td className="px-4 py-3 text-sm text-slate-600">{formatDate(member.birthDate)}</td>
-                          <td className="px-4 py-3 text-sm text-slate-600">{formatPhoneNumber(member.phone)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 text-xl">
+                  🎂
+                </div>
+                <div>
+                  <p className="text-base font-bold text-slate-900">생일자 조회</p>
+                  <p className="text-xs text-slate-500">이번 달 생일자 확인</p>
                 </div>
               </div>
-            ) : (
-              <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm">
-                <p className="text-sm text-slate-500">{selectedMonth}월 생일자가 없습니다.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold"
+              >
+                {months.map((month) => (
+                  <option key={month.value} value={month.value}>
+                    {month.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </header>
+
+          {/* 로딩 / 에러 상태 */}
+          {loading ? (
+            <div className="p-12 text-center">
+              <p className="text-sm text-slate-500">생일자 정보를 불러오는 중입니다...</p>
+            </div>
+          ) : error ? (
+            <div className="border-t border-rose-200 bg-rose-50 p-12 text-center">
+              <p className="text-sm text-rose-600">{error}</p>
+            </div>
+          ) : (
+            <>
+              {/* 통계 카드 */}
+              <div className="border-b border-slate-200 bg-white p-4">
+                <p className="text-xs text-slate-500">{selectedMonth}월 생일자</p>
+                <p className="mt-1 text-2xl font-bold text-slate-900">{sortedBirthdays.length}명</p>
               </div>
-            )}
-          </>
-        )}
+
+              {/* 생일자 목록 */}
+              {sortedBirthdays.length > 0 ? (
+                <div className="bg-white">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">이름</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">생일</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">연락처</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {sortedBirthdays.map((member) => (
+                          <tr key={member.memberId} className="hover:bg-slate-50">
+                            <td className="px-4 py-3 text-sm font-medium text-slate-900">{member.name}</td>
+                            <td className="px-4 py-3 text-sm text-slate-600">{formatDate(member.birthDate)}</td>
+                            <td className="px-4 py-3 text-sm text-slate-600">{formatPhoneNumber(member.phone)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-12 text-center">
+                  <p className="text-sm text-slate-500">{selectedMonth}월 생일자가 없습니다.</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   )

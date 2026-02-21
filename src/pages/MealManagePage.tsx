@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { getMeals, addMealStock, consumeMealTicket, updateMeal, deleteMeal, type MealHistoryItem } from '../services/mealService'
 
 function MealManagePage() {
-  const navigate = useNavigate()
   
   // Data from Server
   const [currentStock, setCurrentStock] = useState(0)
@@ -180,10 +178,6 @@ function MealManagePage() {
   }
 
   // Calculate totals for display (Client-side calculation for stats cards)
-  const totalStock = (history || [])
-    .filter(item => item.category === 'STOCK')
-    .reduce((sum, item) => sum + item.amount, 0)
-    
   const totalUsed = (history || [])
     .filter(item => item.category === 'USE')
     .reduce((sum, item) => sum + Math.abs(item.amount), 0)
@@ -211,17 +205,11 @@ function MealManagePage() {
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <header className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div className="flex items-center gap-2 sm:gap-4">
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-50 transition-colors"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-            </button>
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-2xl bg-green-50 text-2xl shadow-inner">
+              <div className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-xl bg-green-50 text-2xl shadow-inner">
                 🎫
               </div>
               <div>
@@ -232,31 +220,33 @@ function MealManagePage() {
           </div>
         </header>
 
-        <div className="space-y-4 sm:space-y-6">
-          {/* 재고 현황 카드 */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <div className="col-span-2 sm:col-span-1 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-3 text-3xl opacity-10 group-hover:scale-110 transition-transform">🎫</div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">현재 보유 식권</p>
-              <div className="flex items-baseline gap-1">
-                <span className={`text-3xl font-black ${currentStock < 10 ? 'text-red-500' : 'text-slate-900'}`}>
-                  {currentStock}
-                </span>
-                <span className="text-sm font-bold text-slate-500">장</span>
-              </div>
-              {currentStock < 10 && (
-                <p className="mt-2 text-[10px] font-bold text-red-400 animate-pulse">재고가 부족합니다!</p>
-              )}
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">총 입고</p>
-              <p className="text-xl font-black text-slate-700">{totalStock}<span className="text-xs ml-0.5 text-slate-400">장</span></p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">총 사용</p>
-              <p className="text-xl font-black text-slate-700">{totalUsed}<span className="text-xs ml-0.5 text-slate-400">장</span></p>
-            </div>
+        <div className="p-6 space-y-4 sm:space-y-6">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {/* 현재 보유 식권 */}
+        <div className="col-span-2 sm:col-span-1 p-5 relative overflow-hidden group rounded-xl bg-slate-50">
+          <div className="absolute top-0 right-0 p-3 text-3xl opacity-10 group-hover:scale-110 transition-transform">🎫</div>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">현재 보유 식권</p>
+          <div className="flex items-baseline gap-1">
+            <span className={`text-3xl font-black ${currentStock < 10 ? 'text-red-500' : 'text-slate-900'}`}>
+              {currentStock}
+            </span>
+            <span className="text-sm font-bold text-slate-500">장</span>
           </div>
+          {currentStock < 10 && (
+            <p className="mt-2 text-[10px] font-bold text-red-400 animate-pulse">재고가 부족합니다!</p>
+          )}
+        </div>
+
+        {/* 이번달 사용량 */}
+        <div className="col-span-2 sm:col-span-1 p-5 relative overflow-hidden group rounded-xl bg-slate-50">
+          <div className="absolute top-0 right-0 p-3 text-3xl opacity-10 group-hover:scale-110 transition-transform">📊</div>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">이번달 사용량</p>
+          <div className="flex items-baseline gap-1">
+            <span className="text-3xl font-black text-slate-900">{totalUsed}</span>
+            <span className="text-sm font-bold text-slate-500">장</span>
+          </div>
+        </div>
+      </div>
 
           {/* 액션 버튼 */}
           <div className="flex flex-row justify-end gap-2 sm:gap-3">
@@ -277,7 +267,7 @@ function MealManagePage() {
           </div>
 
           {/* 통합 거래 내역 */}
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="overflow-hidden rounded-xl border border-slate-200">
             {/* Desktop Table View */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
@@ -408,6 +398,7 @@ function MealManagePage() {
              </div>
           </div>
         </div>
+      </div>
 
         {/* Dropdown Menu Portal */}
         {activeMenuId !== null && listMenuPos && (
@@ -450,7 +441,7 @@ function MealManagePage() {
         {/* 식권 입고 모달 */}
         {showStockModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
+            <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-lg">
               <h3 className="mb-4 text-lg font-semibold text-slate-900 flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-100 text-green-600 text-sm">
                   +
@@ -504,7 +495,7 @@ function MealManagePage() {
         {/* 식권 사용 모달 */}
         {showUsageModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
+            <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-lg">
               <h3 className="mb-4 text-lg font-semibold text-slate-900 flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-600 text-sm">
                   -
@@ -558,7 +549,7 @@ function MealManagePage() {
         {/* 식권 내역 수정 모달 */}
         {showUpdateModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
+            <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-lg">
               <h3 className="mb-4 text-lg font-semibold text-slate-900 flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100 text-orange-600 text-sm">
                   ✏️
@@ -621,7 +612,7 @@ function MealManagePage() {
         {/* 식권 내역 삭제 모달 */}
         {showDeleteModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
+            <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-lg">
               <h3 className="mb-4 text-lg font-semibold text-slate-900 flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100 text-red-600 text-sm">
                   🗑️

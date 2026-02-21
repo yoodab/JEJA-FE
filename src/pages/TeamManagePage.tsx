@@ -321,17 +321,10 @@ function TeamManagePage() {
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-      <div className="mx-auto max-w-6xl space-y-6">
-        {/* 헤더 */}
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/dashboard')}
-              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-            >
-              ←
-            </button>
+      <div className="mx-auto max-w-6xl">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          {/* 헤더 */}
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-xl">
                 🎯
@@ -341,28 +334,28 @@ function TeamManagePage() {
                 <p className="text-xs text-slate-500">팀 생성 및 팀원 관리</p>
               </div>
             </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowCreateModal(true)}
-            className="rounded-full bg-violet-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700"
-          >
-            + 새 팀 생성
-          </button>
-        </header>
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="rounded-full bg-violet-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700"
+            >
+              + 새 팀 생성
+            </button>
+          </header>
 
-        {/* 팀 목록 */}
-        {loading ? (
-          <div className="flex justify-center py-10">
-            <p className="text-slate-500">데이터를 불러오는 중입니다...</p>
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {teams.map((team) => (
-              <div
-                key={team.id}
-                className={`group relative rounded-xl border p-6 shadow-sm transition hover:shadow-md ${getClubColor(team.type)}`}
-              >
+          {/* 팀 목록 */}
+          <div className="p-6">
+            {loading ? (
+              <div className="flex justify-center py-10">
+                <p className="text-slate-500">데이터를 불러오는 중입니다...</p>
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {teams.map((team) => (
+                  <div
+                    key={team.id}
+                    className={`group relative rounded-xl border p-6 shadow-sm transition hover:shadow-md ${getClubColor(team.type)}`}
+                  >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-start justify-between gap-3">
@@ -454,6 +447,8 @@ function TeamManagePage() {
             ))}
           </div>
         )}
+      </div>
+    </div>
 
         {/* 팀 생성 모달 */}
         {showCreateModal && (
