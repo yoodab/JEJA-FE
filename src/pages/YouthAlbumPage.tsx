@@ -179,7 +179,9 @@ function YouthAlbumPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">청년부 앨범</h1>
-            <p className="mt-1 text-sm text-slate-600">예배와 행사 사진들을 모아두는 공간입니다.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              우리들의 소중한 추억을 기록하는 공간입니다.
+            </p>
           </div>
           <div className="flex items-center gap-3">
             {isManagerUser && (
@@ -190,12 +192,6 @@ function YouthAlbumPage() {
                 + 폴더 생성
               </button>
             )}
-            <Link
-              to="/user-dashboard"
-              className="text-sm font-semibold text-blue-600 hover:text-blue-700"
-            >
-              ← 메인으로
-            </Link>
           </div>
         </div>
 
@@ -219,9 +215,9 @@ function YouthAlbumPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {albums.map((album) => (
               <div
-                key={album.albumId}
-                className="group relative rounded-xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
-              >
+          key={album.albumId}
+          className="group relative transition"
+        >
                 <Link 
                   to={`/youth-album/${album.albumId}`}
                   state={{ album }}

@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useConfirm } from '../contexts/ConfirmContext'
 import { getMembers } from '../services/memberService'
@@ -8,7 +7,6 @@ import type { Member } from '../types/member'
 import { formatRoles, getMemberStatusColor, formatMemberStatus } from '../types/member'
 
 function NotificationSendPage() {
-  const navigate = useNavigate()
   const { confirm } = useConfirm()
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
@@ -128,33 +126,26 @@ function NotificationSendPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-      <div className="mx-auto max-w-4xl space-y-6">
-        {/* Header */}
-        <header className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <button
-            type="button"
-            onClick={() => navigate('/dashboard')}
-            className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-          >
-            ← 
-          </button>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 text-xl">
-              🔔
+      <div className="mx-auto max-w-6xl space-y-6">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          {/* Header */}
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 text-xl">
+                🔔
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-900">알림 보내기</h1>
+                <p className="text-sm text-slate-500">앱 푸시 알림 발송</p>
+              </div>
             </div>
-            <div>
-              <p className="text-base font-bold text-slate-900">알림 보내기</p>
-              <p className="text-xs text-slate-500">앱 푸시 알림 발송</p>
-            </div>
-          </div>
-        </header>
+          </header>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Left Column: Message Form */}
-          <div className="space-y-6">
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-lg font-bold text-slate-900">메시지 작성</h2>
-              <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid gap-0 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-200">
+            {/* Left Column: Message Form */}
+            <div className="p-6">
+              <h2 className="mb-6 text-lg font-bold text-slate-900">메시지 작성</h2>
+              <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700">발송 대상 추가</label>
                   <div className="flex gap-2">
@@ -176,7 +167,7 @@ function NotificationSendPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-semibold text-slate-700">제목</label>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">제목</label>
                   <input
                     type="text"
                     value={title}
@@ -188,11 +179,11 @@ function NotificationSendPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-semibold text-slate-700">내용</label>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">내용</label>
                   <textarea
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
-                    rows={5}
+                    rows={8}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     placeholder="알림 내용"
                     required
@@ -203,20 +194,21 @@ function NotificationSendPage() {
                   <button
                     type="submit"
                     disabled={sending}
-                    className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+                    className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50 transition-colors"
                   >
                     {sending ? '발송 중...' : '알림 발송하기'}
                   </button>
                 </div>
               </form>
             </div>
-          </div>
 
-          {/* Right Column: Target Selection */}
-          <div className="space-y-6">
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm h-full flex flex-col">
-              <h2 className="mb-4 text-lg font-bold text-slate-900">
-                대상 선택
+            {/* Right Column: Target Selection */}
+            <div className="p-6 flex flex-col h-[600px] md:h-auto">
+              <h2 className="mb-6 text-lg font-bold text-slate-900 flex justify-between items-center">
+                <span>대상 선택</span>
+                <span className="text-sm font-normal text-slate-500">
+                  선택됨: <span className="font-bold text-indigo-600">{selectedMemberIds.length}명</span>
+                </span>
               </h2>
               
               <div className="mb-4">
@@ -225,21 +217,17 @@ function NotificationSendPage() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="이름 검색..."
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
-              
-              <div className="mb-2 text-sm text-slate-600">
-                선택된 인원: <span className="font-bold text-indigo-600">{selectedMemberIds.length}명</span>
-              </div>
 
-              <div className="flex-1 overflow-y-auto max-h-[500px] border border-slate-100 rounded-lg">
+              <div className="flex-1 overflow-y-auto border border-slate-200 rounded-xl bg-slate-50">
                 {loading ? (
-                  <div className="p-4 text-center text-sm text-slate-500">로딩 중...</div>
+                  <div className="flex h-full items-center justify-center p-4 text-sm text-slate-500">로딩 중...</div>
                 ) : members.length === 0 ? (
-                  <div className="p-4 text-center text-sm text-slate-500">검색 결과가 없습니다.</div>
+                  <div className="flex h-full items-center justify-center p-4 text-sm text-slate-500">검색 결과가 없습니다.</div>
                 ) : (
-                  <div className="divide-y divide-slate-100">
+                  <div className="divide-y divide-slate-100 bg-white">
                     {members.map(member => (
                       <div
                         key={member.memberId}
@@ -248,12 +236,17 @@ function NotificationSendPage() {
                           selectedMemberIds.includes(member.memberId) ? 'bg-indigo-50' : 'hover:bg-slate-50'
                         }`}
                       >
-                        <input
-                          type="checkbox"
-                          checked={selectedMemberIds.includes(member.memberId)}
-                          readOnly
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                        />
+                        <div className={`flex h-5 w-5 items-center justify-center rounded border ${
+                          selectedMemberIds.includes(member.memberId) 
+                            ? 'border-indigo-500 bg-indigo-500 text-white' 
+                            : 'border-slate-300 bg-white'
+                        }`}>
+                          {selectedMemberIds.includes(member.memberId) && (
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
                         <div>
                           <p className="text-sm font-semibold text-slate-900">{member.name}</p>
                           <div className="flex gap-2 text-xs text-slate-500">
