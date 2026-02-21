@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../contexts/ConfirmContext'
 import type { Member, MemberStats } from '../types/member'
@@ -16,7 +15,6 @@ import { formatPhoneNumber } from '../utils/format'
 import { getFileUrl } from '../services/albumService'
 
 function MemberManagePage() {
-  const navigate = useNavigate()
   const { confirm } = useConfirm()
   
   // Data State
@@ -263,15 +261,9 @@ function MemberManagePage() {
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/dashboard')}
-              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-            >
-              ← 
-            </button>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-xl">
                 📋
@@ -301,33 +293,33 @@ function MemberManagePage() {
         </header>
 
         {/* Statistics Cards (Grid Layout) */}
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-xs text-slate-500">총 인원</p>
-            <p className="mt-1 text-2xl font-bold text-slate-900">{stats.totalCount}명</p>
+        <div className="grid grid-cols-2 gap-4 border-b border-slate-200 p-6 md:grid-cols-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-500">총 인원</p>
+            <p className="mt-2 text-3xl font-bold text-slate-900">{stats.totalCount}명</p>
           </div>
-          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-xs text-slate-500">재적</p>
-            <p className="mt-1 text-2xl font-bold text-emerald-600">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-500">재적</p>
+            <p className="mt-2 text-3xl font-bold text-emerald-600">
               {stats.activeCount}명
             </p>
           </div>
-          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-xs text-slate-500">비활동 (장결/이동/졸업)</p>
-            <p className="mt-1 text-2xl font-bold text-yellow-600">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-500">비활동 (장결/이동/졸업)</p>
+            <p className="mt-2 text-3xl font-bold text-yellow-600">
               {stats.inactiveCount}명
             </p>
           </div>
-          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-xs text-slate-500">새신자</p>
-            <p className="mt-1 text-2xl font-bold text-blue-600">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-500">새신자</p>
+            <p className="mt-2 text-3xl font-bold text-blue-600">
               {stats.newcomerCount}명
             </p>
           </div>
         </div>
 
         {/* Filter & Search */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="border-b border-slate-200 p-4">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex-1 min-w-[200px]">
               <input
@@ -356,7 +348,7 @@ function MemberManagePage() {
         </div>
 
         {/* Member Table */}
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="overflow-hidden">
           {loading ? (
             <div className="p-8 text-center text-sm text-slate-500">로딩 중...</div>
           ) : (
@@ -442,7 +434,7 @@ function MemberManagePage() {
 
         {/* Pagination Component */}
         {!loading && totalPages > 0 && (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 mt-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-6 py-4">
             <div className="text-sm text-slate-600 text-center sm:text-left">
               전체 {totalElements}명 중 {(totalElements === 0 ? 0 : currentPage * pageSize + 1)}-{Math.min((currentPage + 1) * pageSize, totalElements)}명 표시
             </div>
@@ -504,6 +496,7 @@ function MemberManagePage() {
             </div>
           </div>
         )}
+      </div>
 
       </div>
 

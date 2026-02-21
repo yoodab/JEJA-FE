@@ -200,15 +200,6 @@ export default function NewcomerRegistrationPage() {
             </div>
           )}
         </div>
-        
-        <div className="mt-6 text-center">
-            <button 
-                onClick={() => navigate(-1)}
-                className="text-sm text-slate-500 hover:text-slate-700 underline"
-            >
-                뒤로 가기
-            </button>
-        </div>
       </div>
     </div>
   )

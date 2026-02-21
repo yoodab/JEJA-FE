@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../contexts/ConfirmContext'
 import {
@@ -15,7 +14,6 @@ import {
 import type { Member } from '../types/member'
 
 function SoonManagePage() {
-  const navigate = useNavigate()
   const { confirm } = useConfirm()
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
   const [cells, setCells] = useState<Cell[]>([])
@@ -576,16 +574,10 @@ function SoonManagePage() {
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-6">
-      {/* 헤더 영역 */}
-      <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {/* 헤더 영역 */}
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => navigate('/dashboard')}
-            className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-          >
-            ←
-          </button>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-xl">
               🌱
@@ -626,75 +618,77 @@ function SoonManagePage() {
       </header>
 
       {/* 통계 카드 영역 */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">순 개수</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{cells.length}개</p>
+      <div className="grid grid-cols-1 gap-4 border-b border-slate-200 p-6 sm:grid-cols-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-slate-500">순 개수</p>
+          <p className="mt-2 text-3xl font-bold text-slate-900">{cells.length}개</p>
         </div>
-        <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">재적 인원</p>
-          <p className="mt-1 text-2xl font-bold text-emerald-600">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-slate-500">재적 인원</p>
+          <p className="mt-2 text-3xl font-bold text-emerald-600">
             {cells.reduce((acc, cell) => acc + cell.members.length + (cell.leaderMemberId ? 1 : 0), 0) + unassignedMembers.length}명
           </p>
         </div>
-        <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">미배정 인원</p>
-          <p className="mt-1 text-2xl font-bold text-yellow-600">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-slate-500">미배정 인원</p>
+          <p className="mt-2 text-3xl font-bold text-yellow-600">
             {unassignedMembers.length}명
           </p>
         </div>
       </div>
 
       {/* 순 목록 그리드 (읽기 전용 뷰) */}
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {cells.map((cell) => (
-          <div
-            key={cell.cellId}
-            className="group relative flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md"
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 p-4">
-              <div className="flex items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 font-bold">
-                  {cell.cellName.slice(0, 1)}
-                </span>
-                <div>
-                  <h3 className="font-bold text-slate-900">{cell.cellName}</h3>
-                  <p className="text-xs text-slate-500">
-                    순장: {cell.leaderName || '미정'} | 부순장: {cell.subLeaderName || '미정'}
-                  </p>
+      <div className="bg-slate-50 p-6 rounded-b-2xl">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {cells.map((cell) => (
+            <div
+              key={cell.cellId}
+              className="group relative flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 p-4">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 font-bold">
+                    {cell.cellName.slice(0, 1)}
+                  </span>
+                  <div>
+                    <h3 className="font-bold text-slate-900">{cell.cellName}</h3>
+                    <p className="text-xs text-slate-500">
+                      순장: {cell.leaderName || '미정'} | 부순장: {cell.subLeaderName || '미정'}
+                    </p>
+                  </div>
                 </div>
               </div>
-              {/* 수정/삭제 버튼 제거됨 */}
-            </div>
-            
-            <div className="flex-1 p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-500">
-                  순원 목록 ({cell.members.filter(m => m.memberId !== cell.leaderMemberId && m.memberId !== cell.subLeaderMemberId).length}명)
-                </span>
+              
+              <div className="flex-1 p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-500">
+                    순원 목록 ({cell.members.filter(m => m.memberId !== cell.leaderMemberId && m.memberId !== cell.subLeaderMemberId).length}명)
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {cell.members.length === 0 && !cell.leaderMemberId && !cell.subLeaderMemberId ? (
+                    <p className="text-sm text-slate-400">배정된 인원이 없습니다.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {cell.members
+                          .filter(m => m.memberId !== cell.leaderMemberId && m.memberId !== cell.subLeaderMemberId)
+                          .map((member) => (
+                        <span
+                          key={member.memberId}
+                          className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-200"
+                        >
+                          {member.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="space-y-2">
-                {cell.members.length === 0 && !cell.leaderMemberId && !cell.subLeaderMemberId ? (
-                  <p className="text-sm text-slate-400">배정된 인원이 없습니다.</p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {cell.members
-                        .filter(m => m.memberId !== cell.leaderMemberId && m.memberId !== cell.subLeaderMemberId)
-                        .map((member) => (
-                      <span
-                        key={member.memberId}
-                        className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-200"
-                      >
-                        {member.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
+    </div>
 
       {/* 순 배정 모달 (전체 화면) */}
       {showAssignmentModal && (

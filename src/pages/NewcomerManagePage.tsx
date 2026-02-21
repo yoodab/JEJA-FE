@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import { useConfirm } from '../contexts/ConfirmContext'
@@ -112,7 +111,6 @@ const getStatusFromTab = (tab: string): string | undefined => {
 }
 
 function NewcomerManagePage() {
-  const navigate = useNavigate()
   const { confirm } = useConfirm()
   const [newcomers, setNewcomers] = useState<Newcomer[]>([])
   const [showModal, setShowModal] = useState(false)
@@ -1236,30 +1234,21 @@ function NewcomerManagePage() {
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
-              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-            >
-              ← 
-            </button>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-xl">
-                🌸
-              </div>
-              <div>
-                <p className="text-base font-bold text-slate-900">새신자 관리</p>
-                <p className="text-xs text-slate-500">새신자 등록 및 관리</p>
-              </div>
-            </div>
-          </div>
-
-        </header>
-
         {/* 탭 */}
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-200">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-xl">
+                  🌸
+                </div>
+                <div>
+                  <p className="text-base font-bold text-slate-900">새신자 관리</p>
+                  <p className="text-xs text-slate-500">새신자 등록 및 관리</p>
+                </div>
+              </div>
+            </div>
+          </header>
           <div className="flex overflow-x-auto border-b border-slate-200">
             {tabs.map((tab) => (
               <button
