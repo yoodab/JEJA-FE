@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import {
   getAttendanceSheet,
@@ -22,7 +22,6 @@ interface FormationSettings {
 }
 
 function GroupFormationPage() {
-  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
   // --- 1. Schedule & Data State ---
@@ -257,18 +256,13 @@ function GroupFormationPage() {
   const selectedFemaleCount = selectedList.filter(m => m?.gender === 'FEMALE' || m?.gender === 'F' || m?.gender === '여자').length
 
   return (
-    <div className="min-h-screen bg-slate-50 px-2 py-4 text-slate-900 sm:px-4 sm:py-6">
-      <div className="mx-auto max-w-[1800px] space-y-4">
+    <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         
         {/* Header */}
-        <header className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigate(-1)}
-              className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-            >
-              ←
-            </button>
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-lg">
                 🔀
@@ -307,9 +301,9 @@ function GroupFormationPage() {
         </header>
 
         {/* Control Bar */}
-        <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-slate-200 p-6">
           {/* Top: Formation Controls */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
              <div className="flex items-center gap-2">
                <span className="text-sm font-bold text-slate-800">조 편성 설정</span>
              </div>
@@ -386,14 +380,15 @@ function GroupFormationPage() {
           </div>
         </div>
 
+        <div className="p-6 space-y-8">
         {/* Main Grid - Compact View */}
-        <div className="relative w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm min-h-[500px]">
+        <div className="relative w-full min-h-[500px]">
             {dataLoading ? (
               <div className="flex h-full items-center justify-center py-20">
                 <div className="text-slate-500">데이터를 불러오는 중입니다...</div>
               </div>
             ) : (
-              <div className="grid grid-cols-3 gap-1 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                 {filteredMembers.map(member => {
                   const isSelected = selectedMemberIds.has(member.memberId)
                   const isMale = member.gender === 'MALE' || member.gender === 'M' || member.gender === '남자'
@@ -403,23 +398,23 @@ function GroupFormationPage() {
                     <div
                       key={member.memberId}
                       onClick={() => toggleMemberSelection(member.memberId)}
-                      className={`cursor-pointer select-none rounded border px-1.5 py-1 transition-all hover:shadow-md ${
+                      className={`cursor-pointer select-none rounded-xl border px-4 py-3 transition-all hover:shadow-md ${
                         isSelected 
                           ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' 
                           : 'border-slate-100 bg-white hover:border-slate-300'
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1 overflow-hidden">
-                          <span className={`truncate text-sm font-bold ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <span className={`truncate text-base font-bold ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>
                             {member.name}
                           </span>
-                          {isMale && <span className="text-[10px] text-blue-400">M</span>}
-                          {isFemale && <span className="text-[10px] text-rose-400">F</span>}
-                          {member.birthDate && <span className="text-[10px] text-slate-500">{member.birthDate.slice(2, 4)}년생</span>}
+                          {isMale && <span className="text-xs font-medium text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded">남</span>}
+                          {isFemale && <span className="text-xs font-medium text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded">여</span>}
+                          {member.birthDate && <span className="text-xs text-slate-400">{member.birthDate.slice(2, 4)}년생</span>}
                         </div>
                         {isSelected && (
-                          <div className="h-2 w-2 rounded-full bg-blue-500" />
+                          <div className="h-2.5 w-2.5 rounded-full bg-blue-500" />
                         )}
                       </div>
                     </div>
@@ -431,8 +426,8 @@ function GroupFormationPage() {
 
         {/* Formation Result */}
         {groups.length > 0 && (
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-2">
+          <div className="border-t border-slate-200 pt-8">
+            <div className="mb-6 flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-900">편성 결과</h2>
               <div className="flex gap-2">
                 <button
@@ -494,6 +489,8 @@ function GroupFormationPage() {
             </div>
           </div>
         )}
+        </div>
+        </div>
 
         {/* Full Screen Result Modal */}
         {showLargeView && (

@@ -464,9 +464,6 @@ function TeamDetailPage() {
         <div className="lg:hidden mt-2 mb-4 space-y-4">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold text-slate-900">{team.clubName}</h1>
-            <Link to="/user-dashboard" className="text-sm font-bold text-blue-600">
-              ← 뒤로
-            </Link>
           </div>
         </div>
 
@@ -1007,7 +1004,7 @@ function TeamDetailPage() {
                   { id: 2, accessType: 'MANAGER', targetType: 'CLUB', targetValue: team.clubId.toString() }
                 ]}
                 hideAccessControl={true}
-                excludedQuestionTypes={['SCHEDULE_ATTENDANCE']}
+                excludedQuestionTypes={['SCHEDULE_ATTENDANCE', 'SCHEDULE_SURVEY']}
                 hideBasicInfo={true}
                 onSave={handleSaveTemplate}
                 onCancel={() => setShowTemplateEdit(false)}
