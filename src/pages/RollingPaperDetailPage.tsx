@@ -95,6 +95,42 @@ const RollingPaperDetailPage = () => {
   const [viewMode, setViewMode] = useState<'PAPER' | 'LIST'>('PAPER');
   const [stickerTab, setStickerTab] = useState<'STICKER' | 'EMOJI'>('STICKER');
 
+  const [isVisible, setIsVisible] = useState(true);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const currentScrollY = container.scrollTop;
+      
+      // 1. 최상단(스크롤 위치 10 이하)에서는 항상 메뉴가 보여야 함
+      if (currentScrollY <= 10) {
+        if (!isVisible) setIsVisible(true);
+        lastScrollY.current = currentScrollY;
+        return;
+      }
+
+      // 2. 5px 이상 스크롤했을 때만 방향 판단 (미세 떨림 방지)
+      const diff = currentScrollY - lastScrollY.current;
+      if (Math.abs(diff) < 5) return;
+
+      if (diff > 0) {
+        // 아래로 스크롤 중 -> 숨김 (이미 숨겨져 있으면 무시)
+        if (isVisible) setIsVisible(false);
+      } else {
+        // 위로 스크롤 중 -> 보임 (이미 보이고 있으면 무시)
+        if (!isVisible) setIsVisible(true);
+      }
+      
+      lastScrollY.current = currentScrollY;
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [paper, isVisible]); // isVisible 상태 변화에 따라 리스너의 클로저 갱신 필요 시 추가
+
   // Emoji helper
   const getEmojiUrl = (emoji: string) => {
     const codePoint = emoji.codePointAt(0)?.toString(16);
@@ -353,12 +389,17 @@ const RollingPaperDetailPage = () => {
 
   let bgStyle: React.CSSProperties = { backgroundColor: '#f8f9fa', color: 'black' };
   let effectType = '';
+  let bannerUrl: string | null = null;
+  let titleColor = paper.theme === 'LIGHT' ? '#000000' : '#ffffff';
 
   if (paper.theme === 'BLACK') bgStyle = { backgroundColor: '#1a1a1a', color: 'white' };
   else if (paper.theme === 'LIGHT') bgStyle = { backgroundColor: '#f8f9fa', color: 'black' };
   else if (paper.theme === 'CUSTOM' && paper.backgroundConfig) {
       try {
           const config = JSON.parse(paper.backgroundConfig);
+          
+          // Handle Title Color
+          if (config.titleColor) titleColor = config.titleColor;
           
           // Handle Background (support both new nested structure and old flat structure)
           const bgConfig = config.background || config;
@@ -373,8 +414,12 @@ const RollingPaperDetailPage = () => {
                  effectType = config.effect;
              } else {
                  effectType = config.effect.type || 'NONE';
-                 // We can also extract effectConfig if needed, but need to store it in a variable
              }
+          }
+
+          // Handle Banner
+          if (config.banner && config.banner.url) {
+              bannerUrl = getFileUrl(config.banner.url);
           }
       } catch {
           console.error("Failed to parse theme config");
@@ -395,35 +440,44 @@ const RollingPaperDetailPage = () => {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden flex flex-col bg-gray-200">
-      {/* Header - Fixed at top */}
-      <div className="absolute top-0 left-0 right-0 p-6 z-20 pointer-events-none">
-        <h1 className={`text-3xl font-bold text-center drop-shadow-md ${paper.theme === 'LIGHT' ? 'text-black' : 'text-white'}`}>
-          {paper.title}
-        </h1>
-      </div>
-
-      {/* Main Scrollable Area */}
+    <div className="min-h-screen bg-gray-100 flex justify-center">
+      {/* Container with background theme applied */}
       <div 
-        ref={scrollContainerRef}
-        className="flex-1 w-full relative overflow-y-auto overflow-x-hidden custom-scrollbar flex justify-center"
+        className="w-full max-w-[600px] h-[100dvh] shadow-2xl flex flex-col relative overflow-hidden transition-all"
+        style={bgStyle}
       >
-        {/* The Paper Container */}
-        <div 
-          className="w-full md:w-[700px] min-h-full relative shadow-2xl transition-all"
-          style={bgStyle}
-          ref={boardRef}
-        >
-          {/* Effect Layer - Inside Paper */}
+        {/* Global Effect Layer (Full Screen) */}
+        <div className="absolute inset-0 pointer-events-none z-20">
           <EffectLayer type={effectType} config={effectConfig} />
-          
-          {/* Overlay gradient for header visibility */}
-          <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-black/20 to-transparent pointer-events-none z-10"></div>
+        </div>
 
-          {viewMode === 'PAPER' ? (
-              /* PAPER MODE: Grid Layout */
-              <div className="relative z-10 w-full min-h-full p-4 md:p-8 pt-24 md:pt-20 grid grid-cols-3 gap-2 md:gap-8 content-start pb-60">
-              {paper.messages.map((msg) => {
+        {/* 1. Header (Absolute inside relative shell) */}
+        <header 
+          style={{
+            transform: `translateY(${isVisible ? '0' : '-100%'})`,
+            opacity: isVisible ? 1 : 0,
+            transition: 'transform 0.4s ease-in-out, opacity 0.4s ease-in-out'
+          }}
+          className="absolute top-0 left-0 right-0 z-50 w-full px-6 py-4 backdrop-blur-md bg-white/40 border-b border-black/5 flex justify-center items-center"
+        >
+          <h1 className="text-2xl font-bold truncate" style={{ color: titleColor }}>
+            {paper.title}
+          </h1>
+        </header>
+
+        {/* Scrollable Content Area */}
+        <div 
+          ref={scrollContainerRef}
+          className="flex-1 w-full overflow-y-auto overflow-x-hidden custom-scrollbar relative"
+        >
+          {/* Header Spacer - Pushes messages and stickers down by header size */}
+          <div className="pt-20 min-h-[120%] flex flex-col">
+            {/* Section 3: Messages Content: Starts right after banner */}
+            <div ref={boardRef} className="relative w-full flex-1">
+              {viewMode === 'PAPER' ? (
+                    /* PAPER MODE: Grid Layout */
+                    <div className="relative z-10 w-full p-4 md:p-8 pb-[320px] grid grid-cols-3 gap-2 md:gap-8 content-start">
+                  {paper.messages.map((msg) => {
                   // Generate stable random rotation based on ID or index
                   const rotation = ((msg.id * 15) % 30) - 5; // -5 to 5 degrees
                   const marginTop = ((msg.id * 7) % 10); // 0 to 20px offset
@@ -548,9 +602,9 @@ const RollingPaperDetailPage = () => {
               )}
               </div>
           ) : (
-              /* LIST MODE: Vertical Stack */
-              <div className="relative z-10 w-full min-h-full p-4 pt-24 pb-40 max-w-xl mx-auto space-y-6">
-                   {/* Back to Paper Button */}
+                  /* LIST MODE: Vertical Stack */
+                  <div className="relative z-10 w-full min-h-full p-4 pb-[320px] max-w-xl mx-auto space-y-6">
+                     {/* Back to Paper Button */}
                    <div className="flex justify-end mb-4 sticky top-20 z-20">
                       <button 
                       onClick={() => {
@@ -600,6 +654,26 @@ const RollingPaperDetailPage = () => {
                    ))}
               </div>
           )}
+          </div>
+        </div>
+
+        {/* 2. Banner Section (Absolute inside relative shell) */}
+        <div 
+          style={{
+            transform: `translateY(${isVisible ? '0' : '100%'})`,
+            opacity: isVisible ? 1 : 0,
+            transition: 'transform 0.4s ease-in-out, opacity 0.4s ease-in-out'
+          }}
+          className="absolute bottom-0 left-0 right-0 z-40 w-full h-[280px] overflow-hidden flex items-center justify-center bg-black/5"
+        >
+           {/* Background Banner Image */}
+           {bannerUrl && (
+              <img 
+                src={bannerUrl} 
+                alt="Banner Background" 
+                className="absolute inset-0 w-full h-full object-cover opacity-100" 
+              />
+           )}
         </div>
       </div>
 
@@ -634,7 +708,7 @@ const RollingPaperDetailPage = () => {
               <button onClick={() => setIsWriteModalOpen(false)} className="text-gray-500 hover:text-black">✕</button>
             </div>
             
-            <div className="p-4 overflow-y-auto flex-1">
+            <div className="p-4 overflow-y-auto flex-1 custom-scrollbar">
               {/* Preview Area */}
               <div 
                 className="w-full h-48 shadow-inner p-4 mb-4 rounded transition-all border relative overflow-hidden"
@@ -791,7 +865,7 @@ const RollingPaperDetailPage = () => {
                 </button>
              </div>
              
-             <div className="p-4 overflow-y-auto flex-1 bg-gray-50/30">
+             <div className="p-4 overflow-y-auto flex-1 bg-gray-50/30 custom-scrollbar">
                  {stickerTab === 'STICKER' ? (
                      <>
                         {/* Upload Section */}
@@ -977,7 +1051,8 @@ const RollingPaperDetailPage = () => {
          </div>
       )}
     </div>
-  );
+  </div>
+);
 };
 
 export default RollingPaperDetailPage;

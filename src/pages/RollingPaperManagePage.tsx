@@ -130,7 +130,7 @@ const RollingPaperManagePage = () => {
         await rollingPaperService.updateRollingPaper(editingPaperId, {
           title,
           theme,
-          backgroundConfig: backgroundConfig ? JSON.parse(backgroundConfig) : undefined
+          backgroundConfig: backgroundConfig || undefined
         });
         toast.success('롤링페이퍼가 수정되었습니다.');
       } else {
