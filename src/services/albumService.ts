@@ -68,11 +68,15 @@ export interface UpdateAlbumRequest {
 
 export const getFileUrl = (path: string | undefined): string => {
   if (!path) return ''
-  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  
+  // Remove backticks, quotes and whitespace from both ends
+  const sanitizedPath = path.trim().replace(/^[`"']|[`"']$/g, '').trim()
+  
+  if (sanitizedPath.startsWith('http://') || sanitizedPath.startsWith('https://')) return sanitizedPath
   
   const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
   const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
-  const cleanPath = path.startsWith('/') ? path.slice(1) : path
+  const cleanPath = sanitizedPath.startsWith('/') ? sanitizedPath.slice(1) : sanitizedPath
   
   return `${cleanBase}/${cleanPath}`
 }

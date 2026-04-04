@@ -31,8 +31,12 @@ export const rollingPaperService = {
     return response.data;
   },
 
-  updateRollingPaper: async (id: number, data: { title?: string, theme?: string, backgroundConfig?: Record<string, unknown> }): Promise<void> => {
-    await api.put(`/api/rolling-papers/${id}`, data);
+  updateRollingPaper: async (id: number, data: { title?: string, theme?: string, backgroundConfig?: string | Record<string, unknown> }): Promise<void> => {
+    const payload = { ...data };
+    if (payload.backgroundConfig && typeof payload.backgroundConfig !== 'string') {
+        payload.backgroundConfig = JSON.stringify(payload.backgroundConfig);
+    }
+    await api.put(`/api/rolling-papers/${id}`, payload);
   },
 
   deleteRollingPaper: async (id: number): Promise<void> => {

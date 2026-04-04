@@ -39,7 +39,7 @@ const ThemeEditorPage = () => {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
-  const [finalBannerUrl, setFinalBannerUrl] = useState<string | null>(() => initialConfig.banner?.url || null);
+  const [finalBannerUrl, setFinalBannerUrl] = useState<string | null>(() => getFileUrl(initialConfig.banner?.url) || null);
 
   // Background State
   const [bgType, setBgType] = useState<'COLOR' | 'GRADIENT' | 'IMAGE'>(() => initialConfig.background?.type || 'COLOR');
@@ -101,6 +101,10 @@ const ThemeEditorPage = () => {
   const saveTheme = async () => {
     if (!themeName) return toast.error('테마 이름을 입력해주세요.');
 
+    if (effectType === 'IMAGE' && !effectConfig.imageUrl) {
+      return toast.error('이미지 효과를 선택한 경우 이미지를 업로드해야 합니다.');
+    }
+
     // Construct Config
     let backgroundValue = bgColor;
     if (bgType === 'GRADIENT') {
@@ -124,7 +128,7 @@ const ThemeEditorPage = () => {
         value: backgroundValue
       },
       titleColor,
-      banner: finalBannerUrl ? { url: finalBannerUrl } : null,
+      banner: finalBannerUrl ? { url: getFileUrl(finalBannerUrl) } : null,
       effect: {
         type: effectType,
         config: effectConfig
@@ -254,7 +258,7 @@ const ThemeEditorPage = () => {
             {/* Banner Preview */}
             {finalBannerUrl && (
                 <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-[90%] z-20">
-                    <img src={finalBannerUrl} alt="Banner" className="w-full rounded shadow-lg" />
+                    <img src={finalBannerUrl} alt="Banner" className="w-full shadow-lg" />
                 </div>
             )}
           </div>
@@ -294,7 +298,11 @@ const ThemeEditorPage = () => {
                         </div>
                         
                         {bannerImage && (
-                            <div className="fixed inset-0 z-50 bg-black/90 flex flex-col">
+                            <div className="fixed inset-0 z-50 bg-black flex flex-col h-[100dvh]">
+                                <div className="p-4 flex justify-between items-center text-white bg-black/40 border-b border-white/10 shrink-0">
+                                    <h3 className="font-bold">배너 자르기</h3>
+                                    <button onClick={() => setBannerImage(null)} className="text-xl">✕</button>
+                                </div>
                                 <div className="relative flex-1">
                                     <Cropper
                                         image={bannerImage}
@@ -306,9 +314,12 @@ const ThemeEditorPage = () => {
                                         onZoomChange={setZoom}
                                     />
                                 </div>
-                                <div className="bg-white p-4 flex justify-between items-center">
-                                    <div className="w-1/2 pr-4">
-                                        <label className="text-xs font-bold text-gray-500">ZOOM</label>
+                                <div className="bg-white p-4 lg:p-6 flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
+                                    <div className="w-full sm:w-1/2">
+                                        <div className="flex justify-between mb-1">
+                                            <label className="text-xs font-bold text-gray-500">ZOOM</label>
+                                            <span className="text-xs font-bold text-blue-600">{zoom.toFixed(1)}x</span>
+                                        </div>
                                         <input
                                             type="range"
                                             value={zoom}
@@ -317,12 +328,12 @@ const ThemeEditorPage = () => {
                                             step={0.1}
                                             aria-labelledby="Zoom"
                                             onChange={(e) => setZoom(Number(e.target.value))}
-                                            className="w-full"
+                                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                                         />
                                     </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => setBannerImage(null)} className="px-4 py-2 text-gray-600">취소</button>
-                                        <button onClick={getCroppedImg} className="px-6 py-2 bg-blue-600 text-white rounded">완료</button>
+                                    <div className="flex gap-2 w-full sm:w-auto">
+                                        <button onClick={() => setBannerImage(null)} className="flex-1 sm:flex-none px-6 py-2.5 text-gray-600 font-medium bg-gray-100 hover:bg-gray-200 rounded transition-colors">취소</button>
+                                        <button onClick={getCroppedImg} className="flex-1 sm:flex-none px-10 py-2.5 bg-blue-600 text-white font-bold rounded shadow-lg hover:bg-blue-700 transition-colors">완료</button>
                                     </div>
                                 </div>
                             </div>

@@ -103,3 +103,15 @@ button[aria-label="WYSIWYG"] {
 .toastui-editor-contents a:hover {
   color: #1d4ed8;
 }
+
+/* Custom Scrollbar Hiding */
+.custom-scrollbar::-webkit-scrollbar,
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.custom-scrollbar,
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
